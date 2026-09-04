@@ -13,3 +13,6 @@ dist-single
 *.local
 .vscode
 .idea
+
+# Claude Code 로컬 설정(개발 서버 실행 정보). 공유할 필요 없음
+.claude/

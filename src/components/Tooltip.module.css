@@ -18,7 +18,7 @@
   background: var(--c-text);
   border-radius: var(--r-sm);
   box-shadow: var(--e2);
-  color: white; /* 역상 글자 토큰이 없어 CSS 키워드 사용(보고 참고) */
+  color: var(--c-text-inverse); /* 어두운 툴팁 배경 위 역상 글자 */
   white-space: normal;
   pointer-events: none; /* 마우스가 풍선 위로 지나가도 트리거가 깜빡이지 않게 */
 }
@@ -55,7 +55,7 @@
   padding: 2px 5px; /* PRD 미명시, 칩 모양을 위해 임의 지정 */
   border-radius: 4px;
   /* 흰 글자용 반투명 배경도 PRD가 직접 rgba로 지정한 값이라 그대로 씁니다(토큰 아님) */
-  background: rgba(255, 255, 255, 0.16);
-  color: white;
+  background: var(--c-surface-inverse);
+  color: var(--c-text-inverse);
   white-space: nowrap;
 }

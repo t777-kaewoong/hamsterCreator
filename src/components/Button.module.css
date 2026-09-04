@@ -59,9 +59,9 @@
 .primary {
   background: var(--c-primary);
   /* 진한 배경 위 글자는 흰색이어야 하는데 tokens.css에 "역상 글자" 토큰이 없습니다.
-     PRD §9.7 표에도 "#FFF"로 리터럴 지정되어 있어 CSS 키워드 white를 그대로 씁니다.
+     진한 배경 위 글자라 역상 토큰(--c-text-inverse)을 씁니다.
      (보고 참고: --c-text-inverse 같은 토큰 추가를 권장) */
-  color: white;
+  color: var(--c-text-inverse);
 }
 .primary:not(:disabled):hover {
   background: var(--c-primary-hover);
@@ -90,7 +90,7 @@
 
 .danger {
   background: var(--c-danger);
-  color: white; /* primary와 동일한 이유로 white 키워드 사용 */
+  color: var(--c-text-inverse); /* primary와 동일 — 진한 배경 위 역상 글자 */
 }
 /* PRD에 danger 호버색도 명시되어 있지 않고 --c-danger-hover 토큰도 없어서,
    새 색을 만드는 대신 밝기만 살짝 낮췄습니다(임의 결정) */

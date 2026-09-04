@@ -26,7 +26,7 @@
   background: var(--c-text);
   border-radius: var(--r-md);
   box-shadow: var(--e3);
-  color: white; /* 역상 글자 토큰이 없어 CSS 키워드 사용(보고 참고) */
+  color: var(--c-text-inverse); /* 어두운 토스트 배경 위 역상 글자 */
   animation: toast-enter var(--t-base) both;
 }
 
@@ -45,7 +45,7 @@
   padding: 0;
   border: none;
   background: transparent;
-  color: white;
+  color: var(--c-text-inverse);
   cursor: pointer;
   text-decoration: underline;
 }

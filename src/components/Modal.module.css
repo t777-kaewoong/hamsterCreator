@@ -1,6 +1,6 @@
 /*
   Modal.module.css — PRD §9.7 모달 규격.
-  오버레이 rgba(16,24,40,0.45), 패널 --c-surface + --r-xl + --e3.
+  오버레이 --c-overlay, 패널 --c-surface + --r-xl + --e3.
   헤더 60px, 푸터 68px, 본문은 그 사이 스크롤 영역.
 */
 
@@ -13,7 +13,7 @@
   justify-content: center;
   /* PRD가 직접 지정한 리터럴 값(토큰 아님) — 그림자 토큰(--e1~3)과 같은 계열의 잉크색이지만
      오버레이 전용 토큰은 tokens.css에 없어 그대로 씁니다(보고 참고) */
-  background: rgba(16, 24, 40, 0.45);
+  background: var(--c-overlay);
   animation: modal-overlay-in var(--t-base) both;
 }
 
