@@ -4,24 +4,64 @@
 */
 
 /*
-  Pretendard 서체를 자체 호스팅으로 불러옵니다(CDN 사용 안 함 — 오프라인에서도 동작해야 하므로).
-  이 CSS 파일은 npm 패키지 pretendard 안에 이미 들어있고, 한글 글자를 유니코드 범위별로
-  잘게 쪼갠 woff2 파일 수백 개를 참조합니다. 브라우저는 화면에 실제로 나타나는 글자의
-  범위만 필요할 때 내려받기 때문에 매번 모든 폰트를 다 받지는 않습니다.
-  (빌드 시 Vite 가 참조된 woff2 파일을 전부 dist/assets 로 복사해 두므로 실제 배포 용량은 커집니다.
-  이건 정상입니다 — 인터넷 연결 없이도 폰트가 로드되게 하려면 이 방식이 맞습니다.)
+  ── 서체: Pretendard 고정 서브셋 3종 ──────────────────────────────────
+  폰트 파일은 src/assets/fonts/ 안에 직접 넣어두고 씁니다(CDN 사용 안 함 —
+  인터넷이 끊긴 교실에서도 앱이 그대로 동작해야 하므로).
+
+  [굵기를 400/500/600 셋만 쓰는 이유]
+  PRD 9.4의 글자 스케일이 실제로 쓰는 굵기가 이 셋뿐입니다.
+  Pretendard 패키지에는 굵기 9종과 "가변(variable) 폰트"도 들어있는데,
+  그걸 전부 쓰면 빌드 결과에 폰트 파일이 1,600개 넘게 생기고 22MB가 됩니다.
+  특히 USB로 들고 다니는 '단일 HTML 대피로 빌드'가 31MB까지 부풀어 못 쓰게 됩니다.
+  고정 서브셋 3개만 쓰면 전부 합쳐 약 800KB로 끝납니다.
+
+  [굵기를 더 추가하고 싶다면]
+  1) https://github.com/orioncactus/pretendard 에서 원하는 굵기의
+     Pretendard-<이름>.subset.woff2 파일을 받아 src/assets/fonts/ 에 넣고
+  2) 아래 @font-face 블록을 복사해 font-weight 숫자와 파일명만 바꾸면 됩니다.
+     (Thin 100 / ExtraLight 200 / Light 300 / Regular 400 / Medium 500 /
+      SemiBold 600 / Bold 700 / ExtraBold 800 / Black 900)
+  단, 굵기 하나당 약 270KB씩 늘어난다는 점을 감안하세요.
+
+  [font-display: swap 을 지우면 안 되는 이유]
+  폰트를 다 받기 전까지 글자가 아예 안 보이는 현상(빈 화면)을 막아줍니다.
+  swap 이 있으면 폰트가 도착하기 전에는 '맑은 고딕'으로 즉시 글자가 보이고,
+  도착하는 순간 Pretendard 로 자연스럽게 바뀝니다.
+
+  라이선스: SIL Open Font License 1.1 — src/assets/fonts/LICENSE.txt 참고
 */
-@import 'pretendard/dist/web/static/pretendard-dynamic-subset.css';
+@font-face {
+  font-family: 'Pretendard';
+  font-style: normal;
+  font-weight: 400; /* 본문(.t-body, .t-caption) */
+  font-display: swap;
+  src: url('../assets/fonts/Pretendard-Regular.subset.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Pretendard';
+  font-style: normal;
+  font-weight: 500; /* 라벨·버튼 글자(.t-label) */
+  font-display: swap;
+  src: url('../assets/fonts/Pretendard-Medium.subset.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Pretendard';
+  font-style: normal;
+  font-weight: 600; /* 제목·강조(.t-display, .t-h1, .t-h2, .t-micro) */
+  font-display: swap;
+  src: url('../assets/fonts/Pretendard-SemiBold.subset.woff2') format('woff2');
+}
 
 :root {
   /*
-    앱 전체에서 쓰는 글꼴 목록(순서대로 시도).
-    'Pretendard Variable' 은 우리가 실제로 불러온 파일에는 없는 이름이라 항상 건너뛰고,
-    바로 다음의 'Pretendard'(위에서 불러온 서체)가 적용됩니다.
-    혹시 폰트 파일을 못 받는 상황(오프라인 첫 실행 등)이면 한국어 윈도우 기본값인
-    '맑은 고딕'으로 자연스럽게 대체됩니다 — 그래서 폴백 목록을 지우면 안 됩니다.
+    앱 전체에서 쓰는 글꼴 목록(앞에서부터 순서대로 시도).
+    맨 앞 Pretendard 가 위에서 불러온 서체입니다.
+    폰트를 아직 못 받았거나 로드에 실패하면 한국어 윈도우 기본값인
+    '맑은 고딕'으로 자연스럽게 대체됩니다 — 그래서 뒤쪽 폴백 목록을 지우면 안 됩니다.
   */
-  --font-sans: 'Pretendard Variable', Pretendard, -apple-system, 'Segoe UI', 'Malgun Gothic', sans-serif;
+  --font-sans: Pretendard, -apple-system, 'Segoe UI', 'Malgun Gothic', sans-serif;
 }
 
 /* 숫자를 다루는 곳(치수 입력, 표 등)에 붙이면 숫자 폭이 일정해져서 줄이 안 흔들립니다. */

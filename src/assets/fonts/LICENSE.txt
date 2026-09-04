@@ -1,0 +1,20 @@
+Pretendard
+==========
+
+이 폴더의 woff2 폰트 파일은 Pretendard 서체의 고정 서브셋입니다.
+
+  - Pretendard-Regular.subset.woff2   (굵기 400)
+  - Pretendard-Medium.subset.woff2    (굵기 500)
+  - Pretendard-SemiBold.subset.woff2  (굵기 600)
+
+원저작자 : 길형진 (orioncactus)
+원본 저장소 : https://github.com/orioncactus/pretendard
+라이선스 : SIL Open Font License 1.1 (OFL-1.1)
+
+OFL-1.1 요약
+------------
+- 자유롭게 사용·수정·재배포할 수 있습니다.
+- 폰트 파일 자체를 판매할 수는 없습니다(소프트웨어에 포함해 배포하는 것은 가능).
+- 재배포 시 이 라이선스 고지를 함께 포함해야 합니다.
+
+전체 라이선스 원문은 위 저장소의 LICENSE 파일을 참고하세요.
