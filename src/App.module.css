@@ -179,6 +179,78 @@
   color: var(--c-text-2);
 }
 
+/* ════════════════════════════════════════════════════════════
+   여기부터 M0-3 컴포넌트 카탈로그 전용 스타일.
+   위쪽(토큰 확인용) 스타일과 마찬가지로 색·간격·반경은 전부 토큰을 씁니다.
+   ════════════════════════════════════════════════════════════ */
+
+/* 카탈로그 섹션 맨 위 제목 줄. 페이지 맨 위 header와 같은 모양이라 title/subtitle 클래스를 재사용 */
+.catalogHeader {
+  padding-top: var(--sp-4);
+  border-top: 1px solid var(--c-border);
+}
+
+/* 섹션 안에서 소제목(비활성/로딩 등)을 나눌 때 */
+.subTitle {
+  color: var(--c-text-2);
+  margin-top: var(--sp-2);
+}
+
+/* 버튼 variant × size 그리드 */
+.buttonGrid {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.buttonRow {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.buttonRowLabel {
+  width: 56px;
+  flex-shrink: 0;
+  color: var(--c-text-3);
+}
+
+/* 한 줄에 여러 버튼을 나란히 놓을 때(비활성/로딩/아이콘+글자 예시) */
+.buttonInline {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+}
+
+/* 입력 필드 4개를 2열로 */
+.inputGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(200px, 1fr));
+  gap: var(--sp-4);
+}
+
+/* 세그먼트·상태 칩·토스트·모달처럼 컨트롤을 한 줄에 늘어놓는 공통 레이아웃 */
+.inlineControls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-6);
+}
+
+/* 탭 필 가로 스크롤 데모 — 폭을 일부러 좁혀서 페이드가 보이게 함 */
+.tabPillsDemo {
+  max-width: 340px;
+}
+
+/* 툴팁 데모 — 좌/우 배치 툴팁이 옆 버튼과 겹치지 않도록 넉넉히 띄움 */
+.tooltipDemo {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-12);
+  padding: var(--sp-6) 0;
+}
+
 /* 불투명도 토큰(--c-ghost) 데모 전용 */
 .ghostDemo {
   position: relative;

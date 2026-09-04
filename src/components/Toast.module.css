@@ -1,0 +1,63 @@
+/*
+  Toast.module.css — PRD §9.7 토스트 규격.
+  화면 하단 중앙, 폭 최대 420px, 높이 48px, 배경 --c-text, 글자 흰색, 반경 --r-md, 그림자 --e3.
+*/
+
+.viewport {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: var(--sp-6); /* 화면 아래에서 얼마나 띄울지는 PRD 미명시, 24px(--sp-6)로 임의 지정 */
+  display: flex;
+  justify-content: center;
+  pointer-events: none; /* 토스트가 없을 때는 화면 클릭을 막지 않음 */
+  z-index: 1000;
+}
+
+.toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  width: 100%;
+  max-width: 420px;
+  height: 48px;
+  padding: 0 var(--sp-4);
+  background: var(--c-text);
+  border-radius: var(--r-md);
+  box-shadow: var(--e3);
+  color: white; /* 역상 글자 토큰이 없어 CSS 키워드 사용(보고 참고) */
+  animation: toast-enter var(--t-base) both;
+}
+
+.danger {
+  /* PRD 본문에는 danger 톤의 색이 따로 적혀있지 않아, 기존 --c-danger 토큰으로 임의 지정했습니다 */
+  background: var(--c-danger);
+}
+
+.message {
+  flex: 1;
+  min-width: 0;
+}
+
+.action {
+  flex-shrink: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: white;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+/* 아래에서 12px 올라오며 진입(PRD §9.7). 사라질 때는 애니메이션 없이 즉시 없어집니다. */
+@keyframes toast-enter {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

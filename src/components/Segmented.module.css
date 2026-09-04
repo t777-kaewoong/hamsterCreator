@@ -1,0 +1,39 @@
+/*
+  Segmented.module.css — PRD §9.7 세그먼트 컨트롤 규격.
+  높이 34px, 트랙 배경 --c-surface-3, 반경 --r-md, 내부 여백 3px.
+  선택된 항목만 --c-surface 배경 + --e1 그림자 + --r-sm 로 떠 보입니다.
+*/
+
+.track {
+  display: inline-flex;
+  align-items: center;
+  height: 34px;
+  padding: 3px;
+  background: var(--c-surface-3);
+  border-radius: var(--r-md);
+}
+
+.item {
+  flex: 1 1 0;
+  min-width: 64px; /* 항목당 최소 폭. PRD §9.7 */
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 var(--sp-2);
+  border: none;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--c-text-2);
+  cursor: pointer;
+  transition:
+    background-color var(--t-fast),
+    color var(--t-fast),
+    box-shadow var(--t-fast);
+}
+
+.itemSelected {
+  background: var(--c-surface);
+  box-shadow: var(--e1);
+  color: var(--c-text);
+}

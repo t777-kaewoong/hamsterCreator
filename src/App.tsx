@@ -1,7 +1,20 @@
 // 최상위 화면 컴포넌트.
-// M0-2 단계: 디자인 토큰(tokens.css)이 제대로 정의됐는지 눈으로 확인하기 위한 임시 화면입니다.
-// 실제 편집기 레이아웃이 아니라 색·타이포·반경·그림자·간격 토큰을 한 페이지에 늘어놓은 것뿐입니다.
-// M0-4 단계에서 이 화면이 실제 컴포넌트 카탈로그로 바뀝니다.
+// 위쪽 절반(M0-2)은 디자인 토큰(tokens.css)이 제대로 정의됐는지 눈으로 확인하는 화면이고,
+// 아래쪽 절반(M0-3)은 기본 UI 컴포넌트 8종을 한 페이지에 모아 보여주는 카탈로그입니다.
+// 실제 편집기 화면이 아니라 "부품이 PRD §9.7 수치대로 만들어졌는지" 확인하는 용도입니다.
+import { useState } from 'react'
+import { Save, Plus, Search, Undo2, Redo2 } from 'lucide-react'
+import {
+  Button,
+  Input,
+  Segmented,
+  TabPills,
+  Tooltip,
+  StatusChip,
+  Modal,
+  useToast,
+} from './components'
+import type { ButtonVariant, ButtonSize, StatusChipStatus } from './components'
 import styles from './App.module.css'
 
 // 색 토큰 그룹. value 는 화면에 참고용으로 보여줄 텍스트일 뿐, 실제 스와치 색은
@@ -93,7 +106,55 @@ function Swatch({ token, value }: ColorToken) {
   )
 }
 
+// ── 여기부터 M0-3 컴포넌트 카탈로그용 데이터 ──────────────────────────
+
+// 버튼 variant 그리드에 쓸 목록. icon은 글자가 없어 별도 줄로 따로 그립니다.
+const catalogButtonVariants: { variant: ButtonVariant; label: string }[] = [
+  { variant: 'primary', label: '주요' },
+  { variant: 'secondary', label: '보조' },
+  { variant: 'ghost', label: '고스트' },
+  { variant: 'danger', label: '위험' },
+]
+const catalogButtonSizes: ButtonSize[] = ['sm', 'md', 'lg']
+
+// 세그먼트 예시 2종 (PRD §9.14에 실제로 나오는 선택지를 그대로 씀)
+const directionOptions = [
+  { value: 'h', label: '가로' },
+  { value: 'v', label: '세로' },
+]
+const sortOptions = [
+  { value: 'sheets', label: '장수 최소' },
+  { value: 'seams', label: '이음매 최소' },
+  { value: 'waste', label: '낭비 최소' },
+]
+
+// 탭 필 예시 — PRD §9.11의 팔레트 테마 목록 그대로
+const themeTabOptions = [
+  { value: 'dungeon', label: '던전' },
+  { value: 'forest', label: '숲' },
+  { value: 'ice', label: '얼음' },
+  { value: 'adventure', label: '모험' },
+  { value: 'candy', label: '사탕' },
+  { value: 'dino', label: '공룡' },
+  { value: 'icon', label: '아이콘' },
+  { value: 'track', label: '트랙' },
+  { value: 'myImage', label: '내 이미지' },
+]
+
+// 상태 칩 예시 3종
+const statusChipExamples: StatusChipStatus[] = ['saved', 'saving', 'unsaved']
+
 export default function App() {
+  // 카탈로그 데모에 쓸 상태값들. 실제 편집기 로직과는 무관하고, 각 컴포넌트가
+  // "값을 받아 화면에 반영하는지"를 눈으로 확인하기 위한 것들입니다.
+  const { show } = useToast()
+  const [direction, setDirection] = useState('h')
+  const [sortKey, setSortKey] = useState('sheets')
+  const [theme, setTheme] = useState('dungeon')
+  const [cellSize, setCellSize] = useState(25)
+  const [columnCount, setColumnCount] = useState(5)
+  const [modalOpen, setModalOpen] = useState(false)
+
   return (
     <div className={styles.page}>
       <header>
@@ -207,6 +268,197 @@ export default function App() {
             </div>
           ))}
         </div>
+      </section>
+
+      {/* ══════════════════════════════════════════════════════════════
+          여기서부터 M0-3: 기본 UI 컴포넌트 카탈로그.
+          위 토큰들이 실제 컴포넌트(버튼·입력·세그먼트 등)에 어떻게 쓰이는지 모아 보여줍니다.
+          ══════════════════════════════════════════════════════════════ */}
+      <header className={styles.catalogHeader}>
+        <h1 className={`${styles.title} t-display`}>컴포넌트 카탈로그</h1>
+        <p className={`${styles.subtitle} t-body`}>
+          M0-3: PRD §9.7 명세대로 만든 기본 컴포넌트 8종입니다.
+        </p>
+      </header>
+
+      {/* 버튼 */}
+      <section className={styles.section}>
+        <h2 className={`${styles.sectionTitle} t-h2`}>버튼</h2>
+
+        <div className={styles.buttonGrid}>
+          {catalogButtonVariants.map(({ variant, label }) => (
+            <div key={variant} className={styles.buttonRow}>
+              <span className={`${styles.buttonRowLabel} t-caption`}>{label}</span>
+              {catalogButtonSizes.map((size) => (
+                <Button key={size} variant={variant} size={size}>
+                  버튼
+                </Button>
+              ))}
+            </div>
+          ))}
+          <div className={styles.buttonRow}>
+            <span className={`${styles.buttonRowLabel} t-caption`}>아이콘</span>
+            {catalogButtonSizes.map((size) => (
+              <Button key={size} variant="icon" size={size} icon={<Save size={18} />} aria-label="저장" />
+            ))}
+          </div>
+        </div>
+
+        <h3 className={`${styles.subTitle} t-h2`}>아이콘 + 글자</h3>
+        <div className={styles.buttonInline}>
+          <Button variant="primary" icon={<Save size={18} />}>
+            저장
+          </Button>
+          <Button variant="secondary" icon={<Plus size={18} />} iconPosition="right">
+            추가
+          </Button>
+        </div>
+
+        <h3 className={`${styles.subTitle} t-h2`}>비활성</h3>
+        <div className={styles.buttonInline}>
+          {catalogButtonVariants.map(({ variant, label }) => (
+            <Button key={variant} variant={variant} disabled>
+              {label}
+            </Button>
+          ))}
+          <Button variant="icon" icon={<Save size={18} />} aria-label="저장" disabled />
+        </div>
+
+        <h3 className={`${styles.subTitle} t-h2`}>로딩</h3>
+        <div className={styles.buttonInline}>
+          <Button variant="primary" loading>
+            만드는 중…
+          </Button>
+          <Button variant="danger" loading>
+            지우는 중…
+          </Button>
+        </div>
+      </section>
+
+      {/* 입력 */}
+      <section className={styles.section}>
+        <h2 className={`${styles.sectionTitle} t-h2`}>입력</h2>
+        <div className={styles.inputGrid}>
+          <Input label="말판 이름" placeholder="예: 우리 반 미로 탐험" />
+          <Input
+            label="칸 크기"
+            unit="mm"
+            type="number"
+            value={cellSize}
+            onChange={(e) => setCellSize(Number(e.target.value))}
+            hint="위·아래 화살표로 1씩, Shift+화살표로 10씩"
+          />
+          <Input label="파일 이름" defaultValue="" error="파일 이름을 입력하세요" />
+          <Input
+            label="열 개수"
+            type="number"
+            value={columnCount}
+            onChange={(e) => setColumnCount(Number(e.target.value))}
+          />
+        </div>
+      </section>
+
+      {/* 세그먼트 */}
+      <section className={styles.section}>
+        <h2 className={`${styles.sectionTitle} t-h2`}>세그먼트 컨트롤</h2>
+        <div className={styles.inlineControls}>
+          <Segmented options={directionOptions} value={direction} onChange={setDirection} aria-label="방향" />
+          <Segmented options={sortOptions} value={sortKey} onChange={setSortKey} aria-label="정렬 기준" />
+        </div>
+      </section>
+
+      {/* 탭 필 */}
+      <section className={styles.section}>
+        <h2 className={`${styles.sectionTitle} t-h2`}>탭 필</h2>
+        <p className="t-caption" style={{ color: 'var(--c-text-3)' }}>
+          폭을 좁게 고정해 가로 스크롤과 좌우 페이드를 확인할 수 있게 했습니다.
+        </p>
+        <div className={styles.tabPillsDemo}>
+          <TabPills options={themeTabOptions} value={theme} onChange={setTheme} aria-label="팔레트 테마" />
+        </div>
+      </section>
+
+      {/* 툴팁 */}
+      <section className={styles.section}>
+        <h2 className={`${styles.sectionTitle} t-h2`}>툴팁</h2>
+        <p className="t-caption" style={{ color: 'var(--c-text-3)' }}>
+          마우스를 400ms 이상 올리고 있으면 나타납니다. 상하좌우 배치와 단축키 칩 예시입니다.
+        </p>
+        <div className={styles.tooltipDemo}>
+          <Tooltip content="저장" shortcut="Ctrl+S" placement="top">
+            <Button variant="icon" icon={<Save size={18} />} aria-label="저장" />
+          </Tooltip>
+          <Tooltip content="검색" shortcut="Ctrl+F" placement="right">
+            <Button variant="icon" icon={<Search size={18} />} aria-label="검색" />
+          </Tooltip>
+          <Tooltip content="실행취소" placement="bottom">
+            <Button variant="icon" icon={<Undo2 size={18} />} aria-label="실행취소" />
+          </Tooltip>
+          <Tooltip content="다시 실행" placement="left">
+            <Button variant="icon" icon={<Redo2 size={18} />} aria-label="다시 실행" />
+          </Tooltip>
+        </div>
+      </section>
+
+      {/* 상태 칩 */}
+      <section className={styles.section}>
+        <h2 className={`${styles.sectionTitle} t-h2`}>상태 칩</h2>
+        <div className={styles.inlineControls}>
+          {statusChipExamples.map((status) => (
+            <StatusChip key={status} status={status} />
+          ))}
+        </div>
+      </section>
+
+      {/* 토스트 */}
+      <section className={styles.section}>
+        <h2 className={`${styles.sectionTitle} t-h2`}>토스트</h2>
+        <div className={styles.inlineControls}>
+          <Button
+            variant="secondary"
+            onClick={() =>
+              show({
+                message: '저장했습니다',
+                action: { label: '실행취소', onClick: () => show({ message: '실행취소했습니다' }) },
+              })
+            }
+          >
+            기본 토스트 (실행취소 포함)
+          </Button>
+          <Button variant="danger" onClick={() => show({ message: '저장에 실패했습니다', tone: 'danger' })}>
+            오류 토스트
+          </Button>
+        </div>
+      </section>
+
+      {/* 모달 */}
+      <section className={styles.section}>
+        <h2 className={`${styles.sectionTitle} t-h2`}>모달</h2>
+        <div className={styles.inlineControls}>
+          <Button variant="primary" onClick={() => setModalOpen(true)}>
+            출력 계획 모달 열기
+          </Button>
+        </div>
+        <Modal
+          open={modalOpen}
+          onClose={() => setModalOpen(false)}
+          title="출력 계획"
+          footer={
+            <>
+              <Button variant="ghost" onClick={() => setModalOpen(false)}>
+                취소
+              </Button>
+              <Button variant="primary" onClick={() => setModalOpen(false)}>
+                확인
+              </Button>
+            </>
+          }
+        >
+          <p className="t-body">
+            이 모달은 Esc로 닫히고, 열려 있는 동안 Tab 키가 모달 밖으로 나가지 않습니다. 실제 출력
+            계획기(PRD §9.14)는 M2 단계에서 이 Modal 컴포넌트 위에 만들어질 예정입니다.
+          </p>
+        </Modal>
       </section>
     </div>
   )

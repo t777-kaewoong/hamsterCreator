@@ -1,0 +1,61 @@
+/*
+  Tooltip.module.css — PRD §9.7 툴팁 규격.
+  배경 --c-text(#1A1D21과 같은 값), 글자 흰색 12px, 반경 --r-sm, 여백 6px 10px, 그림자 --e2.
+*/
+
+.wrapper {
+  position: relative;
+  display: inline-flex; /* 아이콘 버튼을 감싸도 툴바 정렬이 흐트러지지 않도록 */
+}
+
+.bubble {
+  position: absolute;
+  z-index: 1000; /* 다른 UI 위로 항상 떠야 하는 요소라 넉넉한 값을 씀(디자인 토큰 대상 아님) */
+  display: flex;
+  align-items: center;
+  padding: 6px 10px; /* PRD §9.7 고정 여백 */
+  max-width: 240px; /* 긴 설명이 화면을 가로지르지 않도록(PRD 미명시, 임의 지정) */
+  background: var(--c-text);
+  border-radius: var(--r-sm);
+  box-shadow: var(--e2);
+  color: white; /* 역상 글자 토큰이 없어 CSS 키워드 사용(보고 참고) */
+  white-space: normal;
+  pointer-events: none; /* 마우스가 풍선 위로 지나가도 트리거가 깜빡이지 않게 */
+}
+
+/* ── 방향별 위치 (간단한 절대 위치, 라이브러리 없이) ───────── */
+.top {
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-bottom: var(--sp-2);
+}
+.bottom {
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-top: var(--sp-2);
+}
+.left {
+  right: 100%;
+  top: 50%;
+  transform: translateY(-50%);
+  margin-right: var(--sp-2);
+}
+.right {
+  left: 100%;
+  top: 50%;
+  transform: translateY(-50%);
+  margin-left: var(--sp-2);
+}
+
+/* 단축키 칩. 본문 뒤 6px 간격, 반경 4px, 글자 11px — 전부 PRD §9.7 고정값 */
+.shortcut {
+  margin-left: 6px;
+  padding: 2px 5px; /* PRD 미명시, 칩 모양을 위해 임의 지정 */
+  border-radius: 4px;
+  /* 흰 글자용 반투명 배경도 PRD가 직접 rgba로 지정한 값이라 그대로 씁니다(토큰 아님) */
+  background: rgba(255, 255, 255, 0.16);
+  color: white;
+  white-space: nowrap;
+}

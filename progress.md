@@ -29,18 +29,45 @@ Last updated: 2026-09-05 03:12
   - git 초기화, 브랜치 `main`, 첫 커밋 `09b8bd0`
   - 우회 사항: npm이 React 19를 기본 설치 → 18로 고정 / TS 7이 `baseUrl` 제거 → `paths`를 상대경로로 / 윈도우 셸 호환 위해 `cross-env` 추가
 
+- [x] **M0-2 디자인 토큰 + 전역 스타일** (2026-09-05)
+  - `tokens.css` — PRD §9.3~9.5의 토큰 49개 전수 반영 (중립/강조/의미색/캔버스/반경/그림자/모션/간격)
+  - `reset.css` — box-sizing, `:focus-visible` 링(포커스 링 제거 안 함), `prefers-reduced-motion` 대응
+  - `typography.css` — 타이포 스케일 7종 클래스 + `.t-nums`
+  - `App.tsx`를 토큰 확인용 임시 화면으로 교체. 하드코딩 hex 0건, 전부 토큰 참조
+  - 커밋 `bc9ca79`
+- [x] **M0-2a 폰트 전략 수정** (2026-09-05) — Opus 판단으로 교체
+  - 문제: `pretendard-dynamic-subset`이 폰트 1,647개 / 22.3MB, CSS 548KB 생성 → 대피로 단일 HTML 빌드가 31MB로 사용 불가
+  - 해결: PRD §9.4가 쓰는 400/500/600 굵기만 고정 서브셋 woff2 3개로 직접 `@font-face`. `pretendard` 패키지 제거, 파일을 `src/assets/fonts/`로 이관
+  - 결과: 폰트 **804KB/3개**, CSS **5.32KB**, 대피로 빌드 **1.23MB**, dist 전체 949KB/7파일
+  - OFL-1.1 라이선스 고지 추가 (`src/assets/fonts/LICENSE.txt`) — 저장소가 Public이라 필요
+  - 커밋 `650d42b`
+  - 브라우저 실측 검증: 토큰 49개 전부 정상 렌더, `font-family`가 Pretendard로 해석됨
+
+- [x] **M0-3 기본 컴포넌트** (2026-09-05)
+  - `src/components/`에 8종 추가: `Button` `Input` `Segmented` `TabPills` `Tooltip` `StatusChip` `Toast`(+`useToast`) `Modal`, `index.ts`로 재export
+  - PRD §9.7 수치 그대로 구현. `App.tsx`를 컴포넌트 카탈로그로 확장(기존 토큰 확인 섹션은 유지)
+  - 인터랙션 전부 브라우저에서 실측 검증: 숫자 입력 화살표(1/Shift+10), Segmented 좌우 화살표 이동,
+    Modal 포커스 트랩(Tab 순환)·Esc·body 스크롤 잠금·포커스 복귀, Toast 교체(1개만)·3초/6초 자동 소멸,
+    Tooltip 400ms 지연 표시·즉시 사라짐·단축키 칩, StatusChip saving 점 깜빡임, TabPills 스크롤 페이드 좌우 전환
+  - 하드코딩 hex 리터럴 0건(`grep -rE "#[0-9A-Fa-f]{6}" src/components/` 확인)
+  - 토큰 공백 발견: 역상(흰) 글자용 토큰이 tokens.css에 없음 — PRD가 "#FFF"로 직접 리터럴 지정한 자리
+    (primary/danger 버튼 글자, Tooltip/Toast 글자)에 한해 CSS 키워드 `white`를 그대로 씀. `--c-text-inverse`
+    같은 토큰 추가를 다음 토큰 개정 때 권장
+  - 번들: JS 147.14kB→164.76kB(gzip 47.62kB→53.14kB), CSS 5.33kB→13.75kB(gzip 1.82kB→3.77kB, 아이콘 6개 트리셰이킹 포함)
+  - 커밋 예정
+
 ## In Progress
-- [ ] M0-2 디자인 토큰 (PRD §9.3~9.5)
+- [ ] M0-4 저장소 어댑터(`FsaStore`/`DownloadStore`)
 
 ## Next Steps
-1. M0-2 디자인 토큰 (색·타이포·간격·모서리·그림자·모션 CSS 변수 + 전역 리셋)
-2. M0-3 기본 컴포넌트 (PRD §9.7: 버튼·입력·세그먼트·탭 필·툴팁·상태 칩·토스트·모달)
-3. M0-4 저장소 어댑터(`FsaStore`/`DownloadStore`) + 컴포넌트 카탈로그 페이지
-4. M1 격자 편집기 코어 (PRD §9.18의 3~7단계)
+1. M0-4 저장소 어댑터(`FsaStore`/`DownloadStore`) + 시작 화면(PRD §9.8)
+2. M1 격자 편집기 코어 (PRD §9.18의 3~7단계)
 
 ## Changed Files
 - `package.json`, `vite.config.ts`, `tsconfig*.json`, `index.html`: 빌드 설정
-- `src/main.tsx`, `src/App.tsx`: 최소 진입점 (M0-2에서 토큰 적용 예정)
+- `src/main.tsx`: `ToastProvider`로 앱 전체를 감쌈 (M0-3)
+- `src/App.tsx`, `src/App.module.css`: 토큰 확인 화면 + 컴포넌트 카탈로그
+- `src/components/`: 기본 컴포넌트 8종 (`Button` `Input` `Segmented` `TabPills` `Tooltip` `StatusChip` `Toast` `Modal`) + `index.ts`
 - `.github/workflows/deploy.yml`: Pages 자동 배포
 - `.gitignore`
 

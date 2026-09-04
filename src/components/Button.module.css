@@ -1,0 +1,181 @@
+/*
+  Button.module.css
+  PRD §9.7 버튼 표를 그대로 옮겼습니다. 값을 바꾸고 싶으면:
+  - 높이: .sm / .md / .lg
+  - 배경·글자·테두리: .primary / .secondary / .ghost / .danger / .icon
+  - 호버·눌림·비활성 공통 동작: 아래쪽 상태 셀렉터들
+*/
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px; /* 아이콘-글자 간격. PRD §9.7 고정값(토큰 스케일에 없는 값이라 그대로 px) */
+  position: relative;
+  border: 1px solid transparent; /* secondary만 실제 테두리가 보임. 두께를 맞춰 레이아웃이 안 흔들리게 함 */
+  border-radius: var(--r-md);
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background-color var(--t-fast),
+    border-color var(--t-fast),
+    transform var(--t-fast);
+}
+
+/* ── 높이 (크기 변형) ───────────────────────────────────── */
+.sm {
+  height: 30px;
+}
+.md {
+  height: 36px;
+}
+.lg {
+  height: 44px;
+}
+
+/* ── 좌우 여백 (변형별) ─────────────────────────────────── */
+.primary,
+.secondary,
+.danger {
+  padding: 0 16px;
+}
+.ghost {
+  padding: 0 12px;
+}
+.icon {
+  padding: 0;
+}
+.icon.sm {
+  width: 30px;
+}
+.icon.md {
+  width: 36px;
+}
+.icon.lg {
+  width: 44px;
+}
+
+/* ── 변형별 배경·글자·테두리 ────────────────────────────── */
+.primary {
+  background: var(--c-primary);
+  /* 진한 배경 위 글자는 흰색이어야 하는데 tokens.css에 "역상 글자" 토큰이 없습니다.
+     PRD §9.7 표에도 "#FFF"로 리터럴 지정되어 있어 CSS 키워드 white를 그대로 씁니다.
+     (보고 참고: --c-text-inverse 같은 토큰 추가를 권장) */
+  color: white;
+}
+.primary:not(:disabled):hover {
+  background: var(--c-primary-hover);
+}
+.primary:not(:disabled):active {
+  background: var(--c-primary-active);
+}
+
+.secondary {
+  background: var(--c-surface);
+  color: var(--c-text);
+  border-color: var(--c-border-strong);
+}
+/* PRD에 secondary 호버색이 명시되어 있지 않아, ghost/icon과 같은 --c-surface-3을 썼습니다(임의 결정) */
+.secondary:not(:disabled):hover {
+  background: var(--c-surface-3);
+}
+
+.ghost {
+  background: transparent;
+  color: var(--c-text-2);
+}
+.ghost:not(:disabled):hover {
+  background: var(--c-surface-3);
+}
+
+.danger {
+  background: var(--c-danger);
+  color: white; /* primary와 동일한 이유로 white 키워드 사용 */
+}
+/* PRD에 danger 호버색도 명시되어 있지 않고 --c-danger-hover 토큰도 없어서,
+   새 색을 만드는 대신 밝기만 살짝 낮췄습니다(임의 결정) */
+.danger:not(:disabled):hover {
+  filter: brightness(0.92);
+}
+
+.icon {
+  background: transparent;
+  color: var(--c-text-2);
+}
+.icon:not(:disabled):hover {
+  background: var(--c-surface-3);
+}
+
+/* ── 공통 상태: 눌림 / 비활성 ───────────────────────────── */
+.button:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* 포커스 링(box-shadow)은 reset.css의 :focus-visible 전역 규칙을 그대로 씁니다.
+   여기서 다시 정의하지 않습니다 — 값이 어긋날 일이 없게 하기 위함입니다. */
+
+/* ── 아이콘 크기 고정 (버튼 크기와 무관하게 18px, PRD §9.7) ─── */
+.icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+.icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.label {
+  display: inline-block;
+}
+
+/* ── 로딩 진행 막대 (PRD §9.14: 버튼 안에 좌→우로 채워지는 2px 막대) ─
+   실제 진행률 값이 없는 범용 버튼이라, 반복되는 "채워짐" 애니메이션으로 표현했습니다. */
+.progressTrack {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  overflow: hidden;
+  border-radius: 0 0 var(--r-md) var(--r-md);
+}
+
+.progressBar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  width: 100%;
+  transform-origin: left;
+  transform: scaleX(0);
+  background: var(--c-primary);
+  animation: button-progress-fill 1.1s ease-in-out infinite;
+}
+/* 진한 배경(primary/danger) 위에서는 흰색 막대가 보여야 눈에 띕니다.
+   rgba(255,255,255,0.6)도 토큰에 없는 값이라 보고에 남깁니다. */
+.primary .progressBar,
+.danger .progressBar {
+  background: rgba(255, 255, 255, 0.6);
+}
+
+@keyframes button-progress-fill {
+  0% {
+    transform: scaleX(0);
+  }
+  70% {
+    transform: scaleX(1);
+  }
+  100% {
+    transform: scaleX(1);
+    opacity: 0;
+  }
+}

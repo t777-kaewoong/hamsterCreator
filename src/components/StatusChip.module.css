@@ -1,0 +1,48 @@
+/*
+  StatusChip.module.css — PRD §9.7 상태 칩 규격.
+  높이 24px, 반경 --r-pill, 좌우 여백 10px, 글자 .t-micro, 좌측 6px 원형 점.
+*/
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  height: 24px;
+  padding: 0 10px;
+  border-radius: var(--r-pill);
+  /* 칩 배경색이 PRD에 명시되어 있지 않아, 점+글자가 배경 위에서 잘 보이도록
+     연한 --c-surface-2를 임의로 깔았습니다(보고 참고). */
+  background: var(--c-surface-2);
+  color: var(--c-text-2);
+}
+
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.saved {
+  background: var(--c-ok);
+}
+
+.unsaved {
+  background: var(--c-danger);
+}
+
+.saving {
+  background: var(--c-warn);
+  /* 점만 1.2초 주기로 깜빡입니다(PRD §9.7 고정값 — --t-* 토큰과는 다른 별도 지정 애니메이션) */
+  animation: status-dot-blink 1.2s ease-in-out infinite;
+}
+
+@keyframes status-dot-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
+}

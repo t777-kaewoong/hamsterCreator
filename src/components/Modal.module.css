@@ -1,0 +1,79 @@
+/*
+  Modal.module.css — PRD §9.7 모달 규격.
+  오버레이 rgba(16,24,40,0.45), 패널 --c-surface + --r-xl + --e3.
+  헤더 60px, 푸터 68px, 본문은 그 사이 스크롤 영역.
+*/
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* PRD가 직접 지정한 리터럴 값(토큰 아님) — 그림자 토큰(--e1~3)과 같은 계열의 잉크색이지만
+     오버레이 전용 토큰은 tokens.css에 없어 그대로 씁니다(보고 참고) */
+  background: rgba(16, 24, 40, 0.45);
+  animation: modal-overlay-in var(--t-base) both;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  max-height: 88vh;
+  background: var(--c-surface);
+  border-radius: var(--r-xl);
+  box-shadow: var(--e3);
+  animation: modal-panel-in var(--t-slow) both;
+}
+
+.panel:focus {
+  outline: none; /* 패널 자체는 시각적으로 표시할 포커스 링이 필요 없음(포커스 트랩의 임시 착지점일 뿐) */
+}
+
+.header {
+  flex-shrink: 0;
+  height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--sp-4); /* 패널 내부 여백 기본값 16px(PRD §9.5) */
+  border-bottom: 1px solid var(--c-border);
+}
+
+.body {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--sp-4);
+}
+
+.footer {
+  flex-shrink: 0;
+  height: 68px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--sp-3);
+  padding: 0 var(--sp-4);
+  border-top: 1px solid var(--c-border);
+}
+
+@keyframes modal-overlay-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes modal-panel-in {
+  from {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}

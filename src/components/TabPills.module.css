@@ -1,0 +1,61 @@
+/*
+  TabPills.module.css — PRD §9.7 탭 필 규격.
+  높이 32px, 좌우 여백 12px, 반경 --r-pill.
+  기본 투명 배경 + --c-text-2, 선택 시 --c-primary-soft 배경 + --c-primary 글자.
+*/
+
+.wrapper {
+  position: relative;
+}
+
+.scroller {
+  display: flex;
+  gap: var(--sp-2); /* 탭 사이 간격. PRD에 명시 안 돼 8px(--sp-2)로 임의 지정 */
+  overflow-x: auto;
+  /* 스크롤바를 숨깁니다(PRD §9.7). 스크롤 자체는 그대로 됩니다. */
+  scrollbar-width: none;
+}
+.scroller::-webkit-scrollbar {
+  display: none;
+}
+
+.pill {
+  flex-shrink: 0; /* 좁아지지 않고 가로로 밀려나야 스크롤이 생깁니다 */
+  white-space: nowrap;
+  height: 32px;
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: var(--r-pill);
+  background: transparent;
+  color: var(--c-text-2);
+  cursor: pointer;
+  transition:
+    background-color var(--t-fast),
+    color var(--t-fast);
+}
+
+.pillSelected {
+  background: var(--c-primary-soft);
+  color: var(--c-primary);
+}
+
+/* 좌우 끝 그라데이션 페이드. 이 컴포넌트가 놓이는 배경이 --c-surface(패널 배경, 흰색)라고
+   가정했습니다 — 다른 배경 위에 쓸 거면 이 값을 그 배경색으로 바꿔야 자연스럽습니다. */
+.fade {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 12px;
+  pointer-events: none;
+}
+.fadeLeft {
+  left: 0;
+  background: linear-gradient(to right, var(--c-surface), transparent);
+}
+.fadeRight {
+  right: 0;
+  background: linear-gradient(to left, var(--c-surface), transparent);
+}
