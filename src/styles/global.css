@@ -1,0 +1,7 @@
+/*
+  전역 스타일 진입점. main.tsx 에서 이 파일 하나만 import 하면 됩니다.
+  순서가 중요합니다: 토큰(변수 정의) → 리셋(변수를 사용) → 타이포그래피(글꼴 로드 + 변수 사용).
+*/
+@import './tokens.css';
+@import './reset.css';
+@import './typography.css';

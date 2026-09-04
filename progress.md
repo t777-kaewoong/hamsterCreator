@@ -1,5 +1,5 @@
 # Progress: 햄스터S 말판 제작 웹앱 (hamsterCreator)
-Last updated: 2026-09-05 03:01
+Last updated: 2026-09-05 03:12
 
 ## Goal
 - 햄스터S 말판·라인트레이서 트랙을 화면에서 배치하고, 원하는 용지로 나눠 인쇄할 수 있는 정확한 축척의 PDF와 정답 코드를 뽑아주는 교사용 웹 도구
@@ -21,15 +21,36 @@ Last updated: 2026-09-05 03:01
 - 2026-09-05 스타일은 CSS 커스텀 프로퍼티 + CSS Modules. 유틸리티 프레임워크 미사용 (토큰을 단일 진실 공급원으로)
 - 2026-09-05 **작업 방식**: 코딩은 Sonnet, 모호하거나 추상적인 판단은 Opus로 올려서 처리. 단계 종료마다 이 문서에 기록 + 한 줄 보고. 코드 주석은 사용자가 직접 수정할 수 있도록 한글로 구체적으로 작성
 
+## Completed
+- [x] **M0-1 프로젝트 스캐폴딩 + 배포 파이프라인** (2026-09-05)
+  - Vite 8.2.2 + React 18.3.1 + TypeScript 7.0.2, `npm run build` 성공 (140.9kB, gzip 45.9kB)
+  - `base: '/hamsterCreator/'` 적용 확인. 대피로 빌드 `npm run build:single`도 성공 (단일 HTML 141.3kB)
+  - GitHub Actions Pages 워크플로 작성 (`main` push + 수동 실행)
+  - git 초기화, 브랜치 `main`, 첫 커밋 `09b8bd0`
+  - 우회 사항: npm이 React 19를 기본 설치 → 18로 고정 / TS 7이 `baseUrl` 제거 → `paths`를 상대경로로 / 윈도우 셸 호환 위해 `cross-env` 추가
+
 ## In Progress
-- [ ] M0-1 프로젝트 스캐폴딩 (Vite + React + TS) + GitHub Actions Pages 배포 파이프라인
+- [ ] M0-2 디자인 토큰 (PRD §9.3~9.5)
 
 ## Next Steps
-1. M0-1 스캐폴딩 + 배포 파이프라인
-2. M0-2 디자인 토큰 (PRD §9.3~9.5: 색·타이포·간격·모서리·그림자·모션 CSS 변수)
-3. M0-3 기본 컴포넌트 (PRD §9.7: 버튼·입력·세그먼트·탭 필·툴팁·상태 칩·토스트·모달)
-4. M0-4 저장소 어댑터(`FsaStore`/`DownloadStore`) + 컴포넌트 카탈로그 페이지
-5. M1 격자 편집기 코어 (PRD §9.18의 3~7단계)
+1. M0-2 디자인 토큰 (색·타이포·간격·모서리·그림자·모션 CSS 변수 + 전역 리셋)
+2. M0-3 기본 컴포넌트 (PRD §9.7: 버튼·입력·세그먼트·탭 필·툴팁·상태 칩·토스트·모달)
+3. M0-4 저장소 어댑터(`FsaStore`/`DownloadStore`) + 컴포넌트 카탈로그 페이지
+4. M1 격자 편집기 코어 (PRD §9.18의 3~7단계)
+
+## Changed Files
+- `package.json`, `vite.config.ts`, `tsconfig*.json`, `index.html`: 빌드 설정
+- `src/main.tsx`, `src/App.tsx`: 최소 진입점 (M0-2에서 토큰 적용 예정)
+- `.github/workflows/deploy.yml`: Pages 자동 배포
+- `.gitignore`
+
+## Commands Run
+```text
+npm install            → 성공
+npm run build          → 성공, dist/ 생성 (140.86kB / gzip 45.90kB)
+npm run build:single   → 성공, dist-single/index.html 141.25kB
+git init && git commit → 09b8bd0
+```
 
 ## Risks / Open Questions
 - SP-6: 자유곡선을 곡선과 겹치지 않게 시트 분할하는 알고리즘의 실용성 — M1.5에서 확인. 실패 시 사용자가 이음매 위치를 직접 지정

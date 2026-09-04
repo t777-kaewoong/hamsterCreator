@@ -1,0 +1,83 @@
+/*
+  타이포그래피: 서체 로드 + 크기 스케일 유틸리티 클래스.
+  값 출처: docs/03_prd.md §9.4
+*/
+
+/*
+  Pretendard 서체를 자체 호스팅으로 불러옵니다(CDN 사용 안 함 — 오프라인에서도 동작해야 하므로).
+  이 CSS 파일은 npm 패키지 pretendard 안에 이미 들어있고, 한글 글자를 유니코드 범위별로
+  잘게 쪼갠 woff2 파일 수백 개를 참조합니다. 브라우저는 화면에 실제로 나타나는 글자의
+  범위만 필요할 때 내려받기 때문에 매번 모든 폰트를 다 받지는 않습니다.
+  (빌드 시 Vite 가 참조된 woff2 파일을 전부 dist/assets 로 복사해 두므로 실제 배포 용량은 커집니다.
+  이건 정상입니다 — 인터넷 연결 없이도 폰트가 로드되게 하려면 이 방식이 맞습니다.)
+*/
+@import 'pretendard/dist/web/static/pretendard-dynamic-subset.css';
+
+:root {
+  /*
+    앱 전체에서 쓰는 글꼴 목록(순서대로 시도).
+    'Pretendard Variable' 은 우리가 실제로 불러온 파일에는 없는 이름이라 항상 건너뛰고,
+    바로 다음의 'Pretendard'(위에서 불러온 서체)가 적용됩니다.
+    혹시 폰트 파일을 못 받는 상황(오프라인 첫 실행 등)이면 한국어 윈도우 기본값인
+    '맑은 고딕'으로 자연스럽게 대체됩니다 — 그래서 폴백 목록을 지우면 안 됩니다.
+  */
+  --font-sans: 'Pretendard Variable', Pretendard, -apple-system, 'Segoe UI', 'Malgun Gothic', sans-serif;
+}
+
+/* 숫자를 다루는 곳(치수 입력, 표 등)에 붙이면 숫자 폭이 일정해져서 줄이 안 흔들립니다. */
+.t-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* 시작 화면 제목처럼 가장 크게 강조할 때 */
+.t-display {
+  font-size: 24px;
+  line-height: 32px;
+  font-weight: 600;
+  letter-spacing: -0.01em; /* body 이상 크기라 한글 자간을 살짝 좁힘(PRD §9.4) */
+}
+
+/* 모달 제목 */
+.t-h1 {
+  font-size: 18px;
+  line-height: 26px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+/* 패널 섹션 제목 */
+.t-h2 {
+  font-size: 15px;
+  line-height: 22px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+/* 기본 본문 글자 크기. 이 크기부터 위로(display/h1/h2/body) 자간을 좁힙니다 */
+.t-body {
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+}
+
+/* 입력 라벨, 버튼 글자 */
+.t-label {
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 500;
+}
+
+/* 보조 설명 글자 */
+.t-caption {
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 400;
+}
+
+/* 칩·배지·시트 번호처럼 아주 작은 글자 */
+.t-micro {
+  font-size: 11px;
+  line-height: 14px;
+  font-weight: 600;
+}

@@ -1,0 +1,122 @@
+/*
+  전역 리셋 스타일시트.
+  브라우저마다 기본으로 다르게 주는 여백·글꼴을 지우고, 우리 토큰(tokens.css)을
+  기본값으로 깔아줍니다. 이 파일이 global.css 를 통해 tokens.css 다음에 로드되어야
+  아래에서 쓰는 var(--c-bg) 같은 변수들이 정상적으로 값을 가집니다.
+*/
+
+/* 모든 요소의 박스 크기 계산 방식을 border-box 로 통일.
+   width에 padding·border 가 포함되어 계산되어서 레이아웃 실수가 줄어듭니다. */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+/* 브라우저 기본 여백 제거. 이걸 안 하면 컴포넌트마다 예상 못 한 여백이 생깁니다. */
+html,
+body,
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+p,
+figure,
+blockquote,
+dl,
+dd {
+  margin: 0;
+}
+
+body,
+ul,
+ol {
+  padding: 0;
+}
+
+/* 목록의 점·숫자 마커 제거. 필요한 곳에서만 개별적으로 다시 넣습니다. */
+ul,
+ol {
+  list-style: none;
+}
+
+html {
+  /* 시스템 글꼴 크기 설정을 존중하면서 기준값을 16px 로 고정 */
+  font-size: 16px;
+  height: 100%;
+}
+
+body {
+  height: 100%;
+  /* 앱 전체 배경/글자색의 기본값. 화면마다 다시 지정할 필요 없이 여기서 한 번만 설정 */
+  background: var(--c-bg);
+  color: var(--c-text);
+  font-family: var(--font-sans);
+  line-height: 1.5;
+  /* 폰트 렌더링을 살짝 더 매끄럽게 (macOS/Windows 공통으로 무해한 힌트) */
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+#root {
+  height: 100%;
+}
+
+/* 이미지·캔버스는 기본이 inline 이라 아래쪽에 미세한 틈이 생깁니다.
+   block 으로 바꾸고, 부모보다 커지지 않도록 max-width 를 걸어둡니다. */
+img,
+canvas {
+  display: block;
+  max-width: 100%;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/*
+  포커스 링.
+  outline 을 없애더라도 반드시 box-shadow 링으로 대체합니다 — 키보드 사용자가
+  지금 어디에 포커스가 있는지 알 수 없게 되는 것은 접근성 문제입니다(PRD §9.17).
+  outline: none 을 단독으로 쓰지 않도록 주의하세요.
+*/
+:focus {
+  outline: none;
+}
+
+:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--c-primary-ring);
+}
+
+/*
+  마우스 사용자에게는 표시하지 않고, 키보드로 탭 이동할 때만 보이게 하려고
+  :focus 대신 :focus-visible 을 기준으로 링을 그립니다.
+*/
+
+/*
+  움직임에 민감한 사용자를 위한 설정(운영체제의 "동작 줄이기" 옵션을 켠 경우).
+  모든 트랜지션·애니메이션을 사실상 순간적으로 끝나게 만듭니다(PRD §9.5).
+  텍스트 선택 방지 같은 건 넣지 않습니다 — 사용자가 안내문이나 값을 복사할 수 있어야 합니다.
+*/
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
