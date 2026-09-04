@@ -1,0 +1,57 @@
+# main 브랜치에 푸시하면 자동으로 빌드해서 GitHub Pages에 배포하는 워크플로입니다.
+# Settings > Pages > Source 를 "GitHub Actions"로 설정해야 동작합니다.
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  # Actions 탭에서 수동으로 재배포하고 싶을 때 쓰는 버튼
+  workflow_dispatch:
+
+# Pages 배포 권한. 이 세 줄이 빠지면 "권한 없음" 오류가 납니다.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 배포가 겹쳐 실행되면 이전 배포를 취소하고 최신 것만 반영합니다.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 저장소 코드 가져오기
+        uses: actions/checkout@v4
+
+      - name: Node 20 설치
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # package-lock.json 기준으로 정확히 동일한 버전을 설치 (npm install 대신 npm ci)
+      - name: 의존성 설치
+        run: npm ci
+
+      # vite.config.ts 의 base: '/hamsterCreator/' 경로로 dist/ 폴더에 빌드됨
+      - name: 빌드
+        run: npm run build
+
+      - name: Pages 아티팩트 업로드
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: GitHub Pages에 배포
+        id: deployment
+        uses: actions/deploy-pages@v4

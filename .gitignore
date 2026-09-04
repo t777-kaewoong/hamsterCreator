@@ -1,0 +1,15 @@
+# 설치된 패키지 — package.json 만 있으면 npm install 로 다시 만들 수 있음
+node_modules
+
+# 빌드 산출물 — npm run build / build:single 로 다시 만들 수 있음
+dist
+dist-single
+
+# tsc -b 가 남기는 빌드 캐시 (내용물이 아니라 캐시라서 커밋할 필요 없음)
+*.tsbuildinfo
+
+# OS·에디터가 알아서 만드는 파일들
+.DS_Store
+*.local
+.vscode
+.idea

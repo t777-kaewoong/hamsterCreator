@@ -1,0 +1,10 @@
+{
+  // 실제 컴파일 옵션은 두 파일에 나눠 정의합니다.
+  // - tsconfig.app.json : 브라우저에서 돌아가는 src/ 코드용
+  // - tsconfig.node.json : vite.config.ts 같은 Node 환경 설정 파일용
+  "files": [],
+  "references": [
+    { "path": "./tsconfig.app.json" },
+    { "path": "./tsconfig.node.json" }
+  ]
+}
