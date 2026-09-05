@@ -1,13 +1,20 @@
 # Progress: 햄스터S 말판 제작 웹앱 (hamsterCreator)
-Last updated: 2026-09-05 11:30
+Last updated: 2026-09-05 11:40
 
 ## Goal
 - 햄스터S 말판·라인트레이서 트랙을 화면에서 배치하고, 원하는 용지로 나눠 인쇄할 수 있는 정확한 축척의 PDF와 정답 코드를 뽑아주는 교사용 웹 도구
 - v1 완료 기준: PRD §1.2의 S1~S4, S6, S7 전부 통과
 
 ## Current Status
-- Status: In progress
-- Current focus: **M1 격자 편집기 코어 — 다음은 텍스트·마커 도구와 인스펙터**
+- Status: **일시중단 (사용자 요청, 2026-09-05 11:40)**
+- Current focus: **M1 격자 편집기 코어 진행 중. 다음 착수 지점 = M1-5 (텍스트·마커 도구 + 인스펙터 + 시작 화면)**
+- 작업 트리 깨끗함, 마지막 커밋 `5b337d7`. **원격 푸시는 안 된 상태** (사용자 지시로 배포·푸시는 전체 작업 완료 후)
+
+### 재개할 때 이것부터
+1. `npm install` (필요 시) → `npm run dev` → `http://localhost:5273/hamsterCreator/`
+2. 지금까지 만든 것: 편집기 레이아웃 + 캔버스(팬·줌·눈금자) + 팔레트(타일 35종·아이콘 8종) + 도구 6종(B/L/R/I/E/V) + 실행취소
+3. **아직 없는 것**: 텍스트·마커 도구, 인스펙터 내용, 시작 화면, 자유곡선 트랙, PDF 출력, 타일링, 정답 생성
+4. 다음 작업은 아래 `Next Steps`의 1번부터
 - Repo: `https://github.com/t777-kaewoong/hamsterCreator` (**Private로 전환됨**, 원격 연결됨. 배포는 모든 작업 완료 후로 미룸)
 - 배포 URL(예정): `https://t777-kaewoong.github.io/hamsterCreator/`
 
