@@ -1,5 +1,5 @@
 # Progress: 햄스터S 말판 제작 웹앱 (hamsterCreator)
-Last updated: 2026-09-05 06:05
+Last updated: 2026-09-05 07:10
 
 ## Goal
 - 햄스터S 말판·라인트레이서 트랙을 화면에서 배치하고, 원하는 용지로 나눠 인쇄할 수 있는 정확한 축척의 PDF와 정답 코드를 뽑아주는 교사용 웹 도구
@@ -7,8 +7,8 @@ Last updated: 2026-09-05 06:05
 
 ## Current Status
 - Status: In progress
-- Current focus: **M0 완료. 다음은 M1 격자 편집기 코어(§9.18 3~7단계)**
-- Repo: `https://github.com/t777-kaewoong/hamsterCreator` (Public, 원격 연결·푸시 완료)
+- Current focus: **M1 격자 편집기 코어 — 다음은 캔버스 뷰포트(§9.18 4단계)**
+- Repo: `https://github.com/t777-kaewoong/hamsterCreator` (**Private로 전환됨**, 원격 연결됨. 배포는 모든 작업 완료 후로 미룸)
 - 배포 URL(예정): `https://t777-kaewoong.github.io/hamsterCreator/`
 
 ## Decisions
@@ -87,14 +87,25 @@ Last updated: 2026-09-05 06:05
   - 브라우저 검증: 35종 로드, 테마별 개수 일치, 이미지 433×433 실제 로드 확인
   - PRD FR-8.1·§3.1의 "36종"을 35종으로 정정
 
+- [x] **M1-1 레이아웃 골격 + 도구 레일** (2026-09-05)
+  - `src/features/editor/` — `EditorLayout` `TopBar` `ToolRail` `editorStore`(zustand)
+  - 기존 카탈로그 화면은 `src/features/catalog/CatalogPage.tsx`로 이동. `?catalog`로 접근(개발용)
+  - **브라우저 실측 검증** (뷰포트 1320×860): 상단바 56 / 도구레일 64 / 팔레트 280 / 인스펙터 300 / 캔버스 676, 합계 1320 — PRD §9.2 명세와 전부 일치
+  - 도구 버튼 44×44px, 11종(V L B R I E T M / P D O), 그룹 구분선 확인
+  - **단축키 11종 전부 동작 확인**. 입력창 포커스 중에는 차단되는 것도 확인
+  - 뷰포트 1150px(<1180)에서 인스펙터 자동 접힘 확인 (§9.2 명세)
+  - 하드코딩 색 0건. 번들 JS 188.28kB(gzip 61.10kB), CSS 18.27kB, 대피로 1.28MB
+  - 커밋 `6b0e95a`
+  - 알아둘 점: 좁은 창에서 자동 접힌 뒤 창을 다시 넓혀도 인스펙터가 자동으로 펴지지는 않음(수동 버튼 필요). PRD가 접기만 규정해서 그대로 뒀으나, 사용성 다듬을 때 재검토 대상
+
 ## In Progress
-- [ ] M1 격자 편집기 코어 — 레이아웃 골격 + 도구 레일 (§9.18 3단계)
+- [ ] M1-2 캔버스 뷰포트 — 좌표 변환·렌더 레이어·눈금자 (§9.18 4단계, §9.12)
 
 ## Next Steps
-1. §9.18 3단계 레이아웃 골격 + 도구 레일 (§9.2, §9.10)
-2. §9.18 4단계 캔버스 뷰포트 — 좌표 변환·렌더 레이어·눈금자 (§9.12)
-3. §9.18 5단계 팔레트 패널 (§9.11)
-4. §9.18 6단계 인스펙터 (§9.13), 7단계 시작 화면 (§9.8)
+1. §9.18 4단계 캔버스 뷰포트 — 좌표 변환·렌더 레이어·눈금자 (§9.12)
+2. §9.18 5단계 팔레트 패널 (§9.11)
+3. §9.18 6단계 인스펙터 (§9.13), 7단계 시작 화면 (§9.8)
+4. M1.5 자유곡선 트랙 (FR-10)
 
 ## Changed Files
 - `package.json`, `vite.config.ts`, `tsconfig*.json`, `index.html`: 빌드 설정
@@ -114,7 +125,7 @@ git init && git commit → 09b8bd0
 
 ## Risks / Open Questions
 - 초안 id를 "브라우저 세션 1회 = 초안 1슬롯"으로 발급함. 맵 문서에 안정적인 id 필드가 없어서 내린 절충인데, 한 세션에서 맵 A→B로 갈아타면 A의 초안이 덮어써짐. M1에서 맵 전환이 실제로 생기면 `meta.createdAt` 기반 키로 바꿀지 재검토
-- GitHub Pages는 저장소 Settings → Pages → Source를 "GitHub Actions"로 지정해야 배포가 시작됨 (수동 1회)
+- **저장소가 Private로 전환됨 → 무료 플랜에서는 GitHub Pages 배포 불가** (Pro/Team/Enterprise 필요). 배포 시점에 ①Public 복귀 ②플랜 업그레이드 ③대피로 단일 HTML만 사용 중 택일 필요. 사용자 지시로 배포는 모든 작업 완료 후로 미룸
 - SP-6: 자유곡선을 곡선과 겹치지 않게 시트 분할하는 알고리즘의 실용성 — M1.5에서 확인. 실패 시 사용자가 이음매 위치를 직접 지정
 - SP-7: Pretendard 서브셋 + `pdf-lib` 폰트 임베드에서 한글이 정상 출력되는지 — M2 착수 시 최소 예제로 확인
 - 햄스터S 바닥 센서 2개의 좌우 간격(mm) 미확인 — FR-10.9의 40mm 기준을 정밀화할 때 필요 (M6)
