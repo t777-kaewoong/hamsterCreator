@@ -136,9 +136,13 @@ export function drawGridLayer(ctx: CanvasRenderingContext2D, viewport: Viewport,
 
   ctx.save()
   ctx.strokeStyle = tokens['--c-print-black']
+  ctx.fillStyle = tokens['--c-print-black']
   ctx.lineWidth = widthPx
-  // 트랙 구간끼리 만나는 교차점(격자 노드)에서 각지게 끊기지 않고 둥글게 이어지도록 round 사용.
-  ctx.lineCap = 'round'
+  // ⚠ 선 끝은 반드시 'butt'(딱 끊기)여야 합니다.
+  //   'round'나 'square'로 두면 선이 끝점보다 "선폭의 절반"(8mm 선이면 4mm)만큼 더 길어집니다.
+  //   화면에서는 티가 안 나지만 인쇄물의 실제 치수가 달라져서, 로봇이 칸 수를 세는
+  //   board_forward() 동작과 어긋나게 됩니다. 로보메이션 공식 말판도 네모난 끝을 씁니다.
+  ctx.lineCap = 'butt'
 
   const strokeNodeSegment = (aC: number, aR: number, bC: number, bR: number) => {
     const a = nodeCenterMm(aC, aR, pitch)
@@ -154,6 +158,34 @@ export function drawGridLayer(ctx: CanvasRenderingContext2D, viewport: Viewport,
   // edges.h[c,r] = 노드 (c,r)~(c+1,r) 가로 연결, edges.v[c,r] = 노드 (c,r)~(c,r+1) 세로 연결
   for (const [c, r] of doc.edges.h) strokeNodeSegment(c, r, c + 1, r)
   for (const [c, r] of doc.edges.v) strokeNodeSegment(c, r, c, r + 1)
+
+  // 교차점 메우기.
+  // 선 끝을 'butt'으로 끊으면, 선이 꺾이는 자리에 선폭의 절반짜리 정사각형 빈틈이 생깁니다.
+  // (가로 선은 노드까지만 오고, 세로 선은 노드부터 시작하므로 모서리 한 귀퉁이가 비어 보임)
+  // 그래서 선이 2개 이상 만나는 노드에만 선폭 크기의 정사각형을 채워 넣습니다.
+  // 선이 1개뿐인 노드(막다른 길)는 채우지 않습니다 — 채우면 선이 4mm 길어져 버립니다.
+  const degree = new Map<string, number>()
+  const bump = (c: number, r: number) => {
+    const k = `${c},${r}`
+    degree.set(k, (degree.get(k) ?? 0) + 1)
+  }
+  for (const [c, r] of doc.edges.h) {
+    bump(c, r)
+    bump(c + 1, r)
+  }
+  for (const [c, r] of doc.edges.v) {
+    bump(c, r)
+    bump(c, r + 1)
+  }
+  for (const stub of doc.stubs) bump(stub.node[0], stub.node[1])
+
+  for (const [key, deg] of degree) {
+    if (deg < 2) continue // 막다른 길은 건너뜀
+    const [c, r] = key.split(',').map(Number)
+    const center = nodeCenterMm(c, r, pitch)
+    const p = viewport.mapToScreen(center.mx, center.my)
+    ctx.fillRect(p.x - widthPx / 2, p.y - widthPx / 2, widthPx, widthPx)
+  }
 
   // 진입로: 격자 노드에서 맵 바깥으로 반 칸(pitch/2)만큼 더 그은 선
   for (const stub of doc.stubs) {
