@@ -1,0 +1,143 @@
+/*
+  캔버스 뷰포트 레이아웃 (PRD §9.12).
+
+  ── 구조 ──────────────────────────────────────────────────────────────
+  CSS Grid를 "24px 눈금자 두께 / 나머지 본체"로 나눠서 코너·상단자·좌측자·본체를
+  각각 독립된 <canvas>로 둡니다(작업 지시 팁). 이렇게 하면 본체 캔버스의 좌표 변환이
+  눈금자 두께를 신경 쓸 필요 없이 깔끔해집니다.
+
+    ┌────────┬──────────────────────┐
+    │ corner │     rulerTop         │  24px
+    ├────────┼──────────────────────┤
+    │ ruler  │                      │
+    │ Left   │        body          │  1fr
+    │        │ (줌 클러스터·미니맵) │
+    └────────┴──────────────────────┘
+      24px            1fr
+*/
+
+.root {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-columns: 24px 1fr;
+  grid-template-rows: 24px 1fr;
+}
+
+.corner {
+  grid-row: 1;
+  grid-column: 1;
+  background: var(--c-surface-2);
+  border-right: 1px solid var(--c-border);
+  border-bottom: 1px solid var(--c-border);
+}
+
+.rulerTop {
+  grid-row: 1;
+  grid-column: 2;
+  display: block;
+  border-bottom: 1px solid var(--c-border);
+}
+
+.rulerLeft {
+  grid-row: 2;
+  grid-column: 1;
+  display: block;
+  border-right: 1px solid var(--c-border);
+}
+
+.body {
+  grid-row: 2;
+  grid-column: 2;
+  position: relative;
+  overflow: hidden;
+  cursor: default;
+  /* 브라우저가 팬(드래그)·핀치 제스처를 자체적으로 가로채지 않도록. 우리가 직접 처리합니다. */
+  touch-action: none;
+}
+
+.bodyCanvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+}
+
+/* ── 줌 클러스터 (PRD §9.12: 우하단 여백 16px, 높이 36px, 반경 --r-pill, 그림자 --e2) ── */
+.zoomCluster {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  z-index: 2;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 6px;
+  background: var(--c-surface);
+  border-radius: var(--r-pill);
+  box-shadow: var(--e2);
+}
+
+.zoomIconButton {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: var(--r-pill);
+  background: transparent;
+  color: var(--c-text-2);
+  cursor: pointer;
+  transition: background var(--t-fast), color var(--t-fast);
+}
+.zoomIconButton:hover {
+  background: var(--c-surface-3);
+  color: var(--c-text);
+}
+
+/* 배율 표시 — 클릭하면 100%로(PRD 명시). 숫자만 있어 t-nums(표 숫자 정렬 폭)를 같이 씁니다. */
+.zoomLabel {
+  min-width: 44px;
+  height: 28px;
+  padding: 0 6px;
+  border: none;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--c-text);
+  cursor: pointer;
+  transition: background var(--t-fast);
+}
+.zoomLabel:hover {
+  background: var(--c-surface-3);
+}
+
+.zoomDivider {
+  width: 1px;
+  height: 18px;
+  background: var(--c-border);
+  margin: 0 2px;
+}
+
+/* ── 미니맵 (PRD §9.12: 우상단 여백 16px, 폭 160px, 배경 80% 불투명, 반경 --r-md, 그림자 --e1) ──
+   top 값이 16px가 아니라 아래처럼 큰 이유: 인스펙터 접기 버튼(EditorLayout.tsx의 floatRight,
+   top 12px + 높이 30px)이 이미 캔버스 우상단을 차지하고 있어서, PRD가 요구한 "버튼 바로
+   아래 8px 간격"을 계산해 넣었습니다 = 12(버튼 top) + 30(버튼 높이) + 8(간격) = 50px.
+   버튼 위치가 바뀌면 이 값도 같이 맞춰야 합니다. */
+.minimapPanel {
+  position: absolute;
+  top: 50px;
+  right: 16px;
+  z-index: 2;
+  border-radius: var(--r-md);
+  box-shadow: var(--e1);
+  overflow: hidden;
+  /* --c-surface(#FFFFFF)를 그대로 쓰되 80% 불투명도만 섞습니다. opacity 속성을 쓰면
+     안의 캔버스 내용까지 같이 옅어지므로, background-color 자체에만 알파를 섞는
+     color-mix를 씁니다(하드코딩 rgba 없이 토큰 값을 그대로 재사용). */
+  background-color: color-mix(in srgb, var(--c-surface) 80%, transparent);
+}
+
+.minimapCanvas {
+  display: block;
+}

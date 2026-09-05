@@ -5,13 +5,14 @@
 // --ed-* 변수에 몰아뒀으니, 치수를 바꾸고 싶으면 이 컴포넌트가 아니라 그 CSS 파일만
 // 고치면 됩니다.
 //
-// 팔레트·캔버스·인스펙터는 이번 단계에서는 내용이 없는 빈 자리라, 가운데에
-// "다음 단계에서 채워질 자리"라는 안내만 표시합니다(TopBar·ToolRail은 실제로 동작함).
+// 팔레트·인스펙터는 이번 단계에서도 아직 내용이 없는 빈 자리라 안내만 표시합니다.
+// 캔버스 자리는 이번 단계(M1-2, §9.12)부터 CanvasViewport가 실제로 채웁니다.
 import { useEffect, useState } from 'react'
 import { PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, TriangleAlert } from 'lucide-react'
 import { Button, Tooltip } from '@/components'
 import TopBar from './TopBar'
 import ToolRail from './ToolRail'
+import CanvasViewport from '@/features/canvas/CanvasViewport'
 import styles from './EditorLayout.module.css'
 
 /** 이 폭 미만이면 인스펙터를 자동으로 접습니다(PRD §9.2). */
@@ -65,7 +66,7 @@ export default function EditorLayout() {
         </div>
 
         <div className={styles.canvasArea}>
-          <Placeholder label="여기는 캔버스입니다 (다음 단계에서 채워집니다)" />
+          <CanvasViewport />
 
           {/* 팔레트/인스펙터 접기 버튼은 패널 안이 아니라 캔버스 위에 띄웁니다.
               패널을 접으면 폭이 0이 되어 버튼도 같이 사라져 다시 펼 수 없기 때문입니다
