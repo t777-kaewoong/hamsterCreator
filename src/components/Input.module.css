@@ -46,6 +46,22 @@
   color: var(--c-text);
 }
 
+/* 입력창 왼쪽 아이콘(검색 아이콘 등). 16px 고정, 글자와 8px(--sp-2) 간격 (PRD §9.11) */
+.leadingIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  margin-right: var(--sp-2);
+  color: var(--c-text-3);
+}
+.leadingIcon svg {
+  width: 16px;
+  height: 16px;
+}
+
 .input::placeholder {
   color: var(--c-text-3);
 }

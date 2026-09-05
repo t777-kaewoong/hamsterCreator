@@ -30,6 +30,12 @@ export const DEFAULT_COLS = 5
 /** 새 맵을 만들 때 기본 행(세로 칸) 개수. */
 export const DEFAULT_ROWS = 4
 
+/** 사용자 업로드 이미지를 저장할 때 맞추는 최대 한 변 픽셀 수(FR-8.3).
+ *  내장 타일(src/assets/tiles)이 50mm를 433px로 담고 있는 것과 같은 해상도라,
+ *  업로드 이미지도 이 값으로 맞추면 내장 타일과 나란히 놓아도 화질이 어색하게 갈리지 않습니다.
+ *  원본이 이보다 작으면 확대하지 않고 원본 크기(정사각형 크롭 후)를 그대로 씁니다. */
+export const USER_ASSET_MAX_PX = 433
+
 /** 용지 규격 한 항목. */
 export interface PaperSize {
   /** 용지 id. print.sheet 필드에 그대로 씀(예: "A4") */

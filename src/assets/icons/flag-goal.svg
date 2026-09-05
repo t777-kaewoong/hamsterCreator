@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 50 50">
+  <!-- 도착 깃발: 검은 깃대 + 흰 바탕에 검은 사각형을 번갈아 채운 체크무늬 깃발.
+       체크무늬도 전부 꽉 찬 사각형(면)으로만 그렸습니다. -->
+  <rect x="9" y="4" width="4" height="43" rx="1.5" fill="#000000" />
+  <rect x="13" y="6" width="30" height="18" fill="#FFFFFF" />
+  <rect x="13" y="6" width="5" height="6" fill="#000000" />
+  <rect x="23" y="6" width="5" height="6" fill="#000000" />
+  <rect x="33" y="6" width="5" height="6" fill="#000000" />
+  <rect x="18" y="12" width="5" height="6" fill="#000000" />
+  <rect x="28" y="12" width="5" height="6" fill="#000000" />
+  <rect x="38" y="12" width="5" height="6" fill="#000000" />
+  <rect x="13" y="18" width="5" height="6" fill="#000000" />
+  <rect x="23" y="18" width="5" height="6" fill="#000000" />
+  <rect x="33" y="18" width="5" height="6" fill="#000000" />
+</svg>

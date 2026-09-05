@@ -8,7 +8,7 @@
 // 지금 단계(M1-1, 레이아웃 골격)에서는 아래 값만 다룹니다.
 // 실행취소(undo/redo) 스택은 다음 단계에서 별도로 추가합니다.
 import { create } from 'zustand'
-import type { MapDoc } from '@/lib/model/types'
+import type { MapDoc, UserAsset } from '@/lib/model/types'
 import { createMapStore } from '@/lib/storage'
 import type { StoreKind } from '@/lib/storage'
 
@@ -43,9 +43,34 @@ interface EditorState {
   /** 저장 상태 칩에 표시할 상태 */
   saveState: SaveState
 
+  // ── 팔레트 패널(§9.11)이 쓰는 상태 ──────────────────────────────────
+  /** 팔레트에서 지금 열려 있는 테마 탭. 'dungeon'~'dino' 6종 + 'icon' · 'track' · 'myImages' */
+  activeTheme: string
+  /** 팔레트 검색어. 비어있지 않으면 테마 탭을 무시하고 전체 타일을 이름으로 필터링합니다 */
+  paletteQuery: string
+  /** 지금 스탬프로 선택된 타일/아이콘/내 이미지의 id. 캔버스 타일 도구가 이 값을 찍습니다.
+   *  내장 타일·아이콘은 원래 id 그대로, 사용자 이미지는 "asset:u1"처럼 userAssets 키에
+   *  "asset:" 접두어를 붙인 값입니다(types.ts의 Cell.art/Prop.asset 참조 규칙과 동일). */
+  stampTileId: string | null
+
   setTool: (id: ToolId) => void
   setDoc: (doc: MapDoc | null) => void
   setSaveState: (saveState: SaveState) => void
+
+  setActiveTheme: (theme: string) => void
+  setPaletteQuery: (query: string) => void
+  /**
+   * 타일/아이콘/내 이미지를 스탬프로 선택합니다.
+   *
+   * [왜 도구까지 같이 바꾸는가] PRD §9.11: "타일 클릭 = 스탬프 모드 진입. 동시에 도구가
+   * 자동으로 타일(B)로 전환됩니다. 사용자가 도구를 먼저 고르게 강요하지 않습니다."
+   * 팔레트에서 그림을 고르는 행위 자체가 "이제 이걸 찍겠다"는 의도이므로, 도구 레일에서
+   * 따로 B를 누르게 하지 않고 여기서 activeTool을 함께 바꿔줍니다.
+   */
+  setStampTile: (id: string | null) => void
+  /** 업로드한 이미지를 doc.userAssets에 추가하고, 생성된 키("u1" 등)를 돌려줍니다.
+   *  아직 열린 맵이 없으면(doc이 null) 아무 것도 하지 않고 null을 돌려줍니다. */
+  addUserAsset: (asset: UserAsset) => string | null
 }
 
 // storeKind/canOverwrite는 createMapStore()가 돌려주는 값 중 세션 내내 변하지 않는
@@ -53,14 +78,33 @@ interface EditorState {
 // 스토어 초기화 시점에 딱 한 번만 확인하면 충분합니다.
 const probe = createMapStore()
 
-export const useEditorStore = create<EditorState>()((set) => ({
+export const useEditorStore = create<EditorState>()((set, get) => ({
   doc: null,
   activeTool: 'select',
   storeKind: probe.kind,
   canOverwrite: probe.canOverwrite,
   saveState: 'saved',
+  activeTheme: 'dungeon',
+  paletteQuery: '',
+  stampTileId: null,
 
   setTool: (id) => set({ activeTool: id }),
   setDoc: (doc) => set({ doc }),
   setSaveState: (saveState) => set({ saveState }),
+
+  setActiveTheme: (theme) => set({ activeTheme: theme }),
+  setPaletteQuery: (query) => set({ paletteQuery: query }),
+  setStampTile: (id) => set({ stampTileId: id, activeTool: 'stamp' }),
+
+  addUserAsset: (asset) => {
+    const doc = get().doc
+    if (!doc) return null
+    // "u1"부터 시작해 비어있는 번호를 찾습니다. 파일을 열고 닫는 동안 삭제된 번호가
+    // 있을 수 있어 항상 개수+1이 아니라 실제로 안 쓰인 번호를 찾습니다.
+    let n = 1
+    while (doc.userAssets[`u${n}`]) n += 1
+    const key = `u${n}`
+    set({ doc: { ...doc, userAssets: { ...doc.userAssets, [key]: asset } } })
+    return key
+  },
 }))

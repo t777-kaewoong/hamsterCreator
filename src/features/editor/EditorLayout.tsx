@@ -13,6 +13,7 @@ import { Button, Tooltip } from '@/components'
 import TopBar from './TopBar'
 import ToolRail from './ToolRail'
 import CanvasViewport from '@/features/canvas/CanvasViewport'
+import PalettePanel from '@/features/palette/PalettePanel'
 import styles from './EditorLayout.module.css'
 
 /** 이 폭 미만이면 인스펙터를 자동으로 접습니다(PRD §9.2). */
@@ -62,7 +63,7 @@ export default function EditorLayout() {
         </div>
 
         <div className={`${styles.paletteArea} ${paletteCollapsed ? styles.collapsed : ''}`}>
-          <Placeholder label="여기는 팔레트입니다 (다음 단계에서 채워집니다)" />
+          <PalettePanel />
         </div>
 
         <div className={styles.canvasArea}>

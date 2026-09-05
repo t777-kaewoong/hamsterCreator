@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 50 50">
+  <!-- 신호등: 검은 몸체 + 빨강·노랑·초록 원 3개. 몸체가 진한 배경이라 신호 원이
+       또렷하게 도드라져 보입니다. -->
+  <rect x="15" y="3" width="20" height="44" rx="6" fill="#000000" />
+  <circle cx="25" cy="13" r="6" fill="#DC2626" />
+  <circle cx="25" cy="25" r="6" fill="#FACC15" />
+  <circle cx="25" cy="37" r="6" fill="#22C55E" />
+</svg>

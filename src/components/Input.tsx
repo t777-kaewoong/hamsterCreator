@@ -3,7 +3,7 @@
 // 숫자 입력(type="number")은 위/아래 화살표 키로 1씩, Shift와 함께 10씩 값을 바꿀 수 있습니다
 // (브라우저 기본 스핀 버튼은 Shift 10단위를 지원하지 않아 직접 구현했습니다 — PRD §9.7).
 import { forwardRef, useId, useRef } from 'react'
-import type { InputHTMLAttributes, KeyboardEvent, MutableRefObject } from 'react'
+import type { InputHTMLAttributes, KeyboardEvent, MutableRefObject, ReactNode } from 'react'
 import styles from './Input.module.css'
 
 export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
@@ -15,6 +15,9 @@ export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   error?: string
   /** 보조 설명 글자. error가 없을 때만 보입니다 */
   hint?: string
+  /** 입력창 왼쪽에 붙일 아이콘 (예: 팔레트 검색창의 돋보기, PRD §9.11). lucide-react 아이콘을
+   *  16px 크기로 넣어주세요. 생략하면 기존과 동일하게 아이콘 없는 입력창입니다 */
+  icon?: ReactNode
 }
 
 /**
@@ -22,7 +25,7 @@ export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
  * <Input label="칸 크기" unit="mm" type="number" value={size} onChange={...} /> 처럼 씁니다.
  */
 const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
-  { label, unit, error, hint, className, id, type, onKeyDown, ...rest },
+  { label, unit, error, hint, icon, className, id, type, onKeyDown, ...rest },
   forwardedRef,
 ) {
   const autoId = useId()
@@ -66,6 +69,11 @@ const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
         </label>
       )}
       <div className={rowClassNames}>
+        {icon && (
+          <span className={styles.leadingIcon} aria-hidden="true">
+            {icon}
+          </span>
+        )}
         <input
           ref={setRefs}
           id={inputId}
