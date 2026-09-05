@@ -1,0 +1,69 @@
+/*
+  도구 레일 스타일 (PRD §9.10).
+  가로 폭 자체는 EditorLayout.module.css의 --ed-rail-w 그리드 트랙이 정합니다.
+  이 파일은 그 안에서 버튼을 어떻게 세로로 늘어놓고 꾸미는지만 다룹니다.
+*/
+
+.rail {
+  /* 그리드가 준 칸을 그대로 채웁니다. */
+  width: 100%;
+  height: 100%;
+  overflow-y: hidden; /* PRD: 도구 레일은 세로 스크롤 없음 */
+
+  background: var(--c-surface);
+  border-right: 1px solid var(--c-border);
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-1); /* 버튼 간격 4px */
+  padding-top: var(--sp-2); /* 상단 여백 8px */
+}
+
+.toolButton {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--r-md);
+  border: none;
+  background: transparent;
+  color: var(--c-text-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  cursor: pointer;
+  transition: background var(--t-fast), color var(--t-fast);
+}
+
+.toolButton:hover {
+  background: var(--c-surface-3);
+}
+
+/* 선택된 도구: 배경 --c-primary-soft + 아이콘 --c-primary (PRD §9.10 필수 명세) */
+.toolButton.active {
+  background: var(--c-primary-soft);
+  color: var(--c-primary);
+}
+
+/* 격자 도구 / 곡선 도구 그룹 사이 구분선.
+   위아래 여백 8px + 1px 선 + 폭 32px, 레일 안에서 가운데 정렬합니다. */
+.divider {
+  width: 32px;
+  height: 1px;
+  background: var(--c-border);
+  margin: var(--sp-2) 0;
+}
+
+/* 도형 도구 우측 하단의 작은 삼각형 — 이 도구는 길게 누르면 하위 메뉴가 열릴 예정이라는
+   시각 힌트입니다(PRD §9.10). 지금은 표시만 하고 실제 하위 메뉴 동작은 없습니다. */
+.submenuMark {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 0 0 5px 5px;
+  border-color: transparent transparent currentColor transparent;
+  opacity: 0.6;
+}

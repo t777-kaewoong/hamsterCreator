@@ -1,0 +1,90 @@
+/*
+  상단바 스타일 (PRD §9.9).
+  높이 자체는 EditorLayout.module.css의 --ed-topbar-h 그리드 행이 정합니다(56px).
+  여기서는 좌/중앙/우 3그룹을 어떻게 배치하는지만 다룹니다.
+
+  grid-template-columns: 1fr auto 1fr 을 쓰는 이유 — 가운데(실행취소/재실행)를
+  화면 중앙에 정확히 놓기 위해서입니다. 좌우 group의 내용 길이가 서로 달라도
+  가운데 그룹은 항상 정가운데에 남습니다.
+*/
+.bar {
+  height: 100%;
+  padding: 0 var(--sp-3); /* 좌우 여백 12px */
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: var(--sp-2); /* 요소 간 간격 8px */
+
+  background: var(--c-surface);
+  border-bottom: 1px solid var(--c-border);
+}
+
+.leftGroup,
+.centerGroup,
+.rightGroup {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0; /* 파일명 ellipsis가 동작하려면 flex 아이템도 줄어들 수 있어야 함 */
+}
+
+.leftGroup {
+  justify-self: start;
+}
+.centerGroup {
+  justify-self: center;
+}
+.rightGroup {
+  justify-self: end;
+}
+
+/* 파일명. 클릭하면 인라인 입력으로 바뀝니다. */
+.fileName {
+  max-width: 240px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  padding: 4px 6px;
+  color: var(--c-text);
+  cursor: pointer;
+  text-align: left;
+}
+.fileName:hover {
+  background: var(--c-surface-3);
+}
+
+.fileNameInput {
+  max-width: 240px;
+  width: 180px;
+  height: 28px;
+  padding: 0 6px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--c-border-strong);
+  background: var(--c-surface);
+  color: var(--c-text);
+}
+.fileNameInput:focus-visible {
+  border-color: var(--c-primary);
+  box-shadow: 0 0 0 3px var(--c-primary-ring);
+}
+
+/* 규격 칩. 예: "A4 · 5×4 · 250×200mm" */
+.sizeChip {
+  flex-shrink: 0;
+  white-space: nowrap;
+  background: var(--c-surface-3);
+  color: var(--c-text-2);
+  padding: 4px 8px;
+  border-radius: var(--r-sm);
+}
+
+/* 저장 버튼과 미리보기 버튼 사이 세로 구분선 (PRD: 1px, 높이 24px) */
+.divider {
+  width: 1px;
+  height: 24px;
+  background: var(--c-border);
+}
