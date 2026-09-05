@@ -160,7 +160,7 @@
     "bytes": 18578
   },
   {
-    "id": "adv-potion",
+    "id": "adventure-potion",
     "name": "물약",
     "theme": "adventure",
     "themeName": "모험",
@@ -170,7 +170,7 @@
     "bytes": 23591
   },
   {
-    "id": "adv-shield",
+    "id": "adventure-shield",
     "name": "방패와 검",
     "theme": "adventure",
     "themeName": "모험",
@@ -180,7 +180,7 @@
     "bytes": 24181
   },
   {
-    "id": "adv-book",
+    "id": "adventure-book",
     "name": "책",
     "theme": "adventure",
     "themeName": "모험",
@@ -190,7 +190,7 @@
     "bytes": 2663
   },
   {
-    "id": "adv-sandstone",
+    "id": "adventure-sandstone",
     "name": "사암 바닥",
     "theme": "adventure",
     "themeName": "모험",
@@ -200,7 +200,7 @@
     "bytes": 4122
   },
   {
-    "id": "adv-cracked",
+    "id": "adventure-cracked",
     "name": "갈라진 바닥",
     "theme": "adventure",
     "themeName": "모험",
@@ -210,7 +210,7 @@
     "bytes": 20422
   },
   {
-    "id": "adv-scroll",
+    "id": "adventure-scroll",
     "name": "두루마리",
     "theme": "adventure",
     "themeName": "모험",
@@ -220,7 +220,7 @@
     "bytes": 4995
   },
   {
-    "id": "adv-bowl",
+    "id": "adventure-bowl",
     "name": "물약 그릇",
     "theme": "adventure",
     "themeName": "모험",

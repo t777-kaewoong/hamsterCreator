@@ -5,6 +5,17 @@
 // 그림 파일은 src/assets/tiles/*.png 에 있고, 설명(이름·테마·분류)은 같은 폴더의
 // manifest.json 에 있습니다. 이 파일은 그 둘을 짝지어 주는 역할만 합니다.
 
+//
+// ⚠ [타일 파일 이름 규칙 — 광고 차단기에 걸리는 이름을 쓰지 마세요]
+// 모험 테마 타일은 원래 `adv-book.png` 처럼 `adv-` 로 시작했는데, 크롬에 흔히 깔려
+// 있는 광고 차단 확장(uBlock Origin, AdBlock 등)이 `adv-` 를 광고(advertisement)로
+// 보고 요청 자체를 막아버립니다(콘솔에 `net::ERR_BLOCKED_BY_CLIENT`).
+// 그런데 아래 import.meta.glob 은 eager: true 라서, 개발 서버에서는 이 png 들이
+// 하나하나 "모듈"로 불려옵니다. 그중 하나라도 차단되면 모듈 그래프 전체가 실패해
+// **앱이 아예 안 뜨고 흰 화면만 나옵니다**(실제로 겪은 문제라 `adventure-` 로 바꿨습니다).
+// 그래서 타일·아이콘 파일 이름에 다음 낱말을 넣지 마세요:
+//   ad / ads / adv / advert / banner / popup / promo / sponsor / analytics / track
+// 학교 컴퓨터에는 광고 차단기가 깔려 있는 경우가 많아 특히 조심해야 합니다.
 import manifest from '@/assets/tiles/manifest.json'
 
 /** 타일이 칸을 어떻게 채우는지. 팔레트 묶음과 '영역 채우기' 동작에 씁니다. */

@@ -8,12 +8,15 @@ import { fileURLToPath, URL } from 'node:url'
 const isSingleFile = process.env.SINGLE_FILE === '1'
 
 // https://vite.dev/config/
-export default defineConfig({
-  // GitHub Pages 배포 경로. 저장소가 t777-kaewoong/hamsterCreator 이므로
-  // 평소 빌드는 '/hamsterCreator/' 하위 경로에서 서빙됩니다.
-  // 단, 단일 HTML 대피로 빌드는 file:// 로 직접 열어야 하므로 상대 경로 './' 를 씁니다.
-  // ※ 저장소 이름을 바꾸면 이 값도 반드시 같이 바꿔야 합니다.
-  base: isSingleFile ? './' : '/hamsterCreator/',
+export default defineConfig(({ command }) => ({
+  // 앱이 서빙될 기준 경로. 상황마다 달라야 해서 세 갈래로 나눕니다.
+  // - 개발 서버(npm run dev)     : '/' — 주소창에 http://localhost:5173 만 치면 바로 열립니다.
+  //   개발 중에 하위 경로를 쓸 이유가 전혀 없는데(배포 주소와 무관), '/hamsterCreator/'로
+  //   두면 루트로 들어왔을 때 한 번 더 넘어가야 하고 주소를 외워야 해서 헷갈리기만 합니다.
+  // - 일반 빌드(GitHub Pages)     : '/hamsterCreator/' — 저장소 이름이 곧 하위 경로입니다.
+  //   ※ 저장소 이름을 바꾸면 이 값도 반드시 같이 바꿔야 합니다.
+  // - 단일 HTML 대피로 빌드       : './' — file:// 로 직접 열어야 하므로 상대 경로.
+  base: command === 'serve' ? '/' : isSingleFile ? './' : '/hamsterCreator/',
 
   plugins: [
     react(),
@@ -59,4 +62,4 @@ export default defineConfig({
     // (실제 출력 폴더는 build:single 스크립트의 --outDir 옵션이 최종 결정합니다)
     outDir: isSingleFile ? 'dist-single' : 'dist',
   },
-})
+}))
