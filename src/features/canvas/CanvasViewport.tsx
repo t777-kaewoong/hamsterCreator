@@ -21,7 +21,7 @@ import type { MapDoc } from '@/lib/model/types'
 import { REFERENCE_PX_PER_MM, Viewport, ZOOM_WHEEL_STEP } from './viewport'
 import { LayeredRenderer } from './renderer'
 import type { LayerName } from './renderer'
-import { drawArtLayer, drawGridLayer, drawPaperLayer, mapSizeMm } from './drawBoard'
+import { drawArtLayer, drawGridLayer, drawPaperLayer, drawPropsLayer, mapSizeMm } from './drawBoard'
 import { drawOverlayLayer } from './drawOverlay'
 import { ToolController } from './toolInteractions'
 import { drawHorizontalRuler, drawVerticalRuler } from './ruler'
@@ -114,7 +114,7 @@ export default function CanvasViewport() {
   useEffect(() => {
     docRef.current = doc
     if (doc) {
-      rendererRef.current?.markDirty('paper', 'art', 'grid')
+      rendererRef.current?.markDirty('paper', 'art', 'grid', 'props')
       engineRef.current?.maybeFitOnce()
       engineRef.current?.syncUiState()
       engineRef.current?.scheduleAll()
@@ -153,11 +153,12 @@ export default function CanvasViewport() {
       if (name === 'paper') drawPaperLayer(ctx, viewportRef.current, currentDoc, tokens)
       else if (name === 'art') drawArtLayer(ctx, viewportRef.current, currentDoc)
       else if (name === 'grid') drawGridLayer(ctx, viewportRef.current, currentDoc, tokens)
+      else if (name === 'props') drawPropsLayer(ctx, viewportRef.current, currentDoc)
       else if (name === 'overlay') {
         const overlay = toolControllerRef.current?.overlay
         if (overlay) drawOverlayLayer(ctx, viewportRef.current, currentDoc, tokens, overlay)
       }
-      // 'props'는 프롭·라벨을 놓는 도구가 아직 없어 계속 빈 채로 둡니다.
+      // 라벨은 이 단계에도 아직 놓는 도구가 없어 계속 빈 채로 둡니다.
     }
 
     // 도구 컨트롤러: 포인터/키보드 입력을 실제 도구 동작(타일 찍기, 격자선 긋기 등)으로
@@ -353,6 +354,35 @@ export default function CanvasViewport() {
     bodyWrap.addEventListener('pointerleave', handlePointerLeaveBody)
     bodyWrap.addEventListener('auxclick', preventAuxClick)
 
+    // ── FR-3.2: 팔레트 → 캔버스 드래그 앤 드롭 ──────────────────────────────────────
+    // dragover에서 반드시 preventDefault()를 호출해야 drop 이벤트가 옵니다(브라우저
+    // 기본값은 "이 요소는 드롭을 못 받는다"라서, 막지 않으면 drop이 아예 발생하지 않음).
+    function handleDragOver(e: DragEvent) {
+      e.preventDefault()
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'
+      const rect = bodyWrap!.getBoundingClientRect()
+      toolControllerRef.current?.handleDragOver(e.clientX - rect.left, e.clientY - rect.top, e.shiftKey)
+    }
+    // dragleave는 bodyWrap 안의 자식 요소(캔버스, 줌 클러스터 등) 사이를 넘나들 때도
+    // 발생합니다(mouseleave와 달리 자식으로 들어가도 한 번 발생). 그걸 그대로 고스트를
+    // 지우는 신호로 쓰면 캔버스 위에서 드래그하는 내내 고스트가 깜빡입니다. 그래서 실제로
+    // bodyWrap 사각형 밖으로 나갔을 때만(좌표로 직접 확인) 고스트를 지웁니다.
+    function handleDragLeaveBody(e: DragEvent) {
+      const rect = bodyWrap!.getBoundingClientRect()
+      const outside = e.clientX < rect.left || e.clientX >= rect.right || e.clientY < rect.top || e.clientY >= rect.bottom
+      if (outside) toolControllerRef.current?.handleDragLeave()
+    }
+    function handleDrop(e: DragEvent) {
+      e.preventDefault()
+      const assetId = e.dataTransfer?.getData('text/plain')
+      if (!assetId) return
+      const rect = bodyWrap!.getBoundingClientRect()
+      toolControllerRef.current?.handleDrop(assetId, e.clientX - rect.left, e.clientY - rect.top, e.shiftKey)
+    }
+    bodyWrap.addEventListener('dragover', handleDragOver)
+    bodyWrap.addEventListener('dragleave', handleDragLeaveBody)
+    bodyWrap.addEventListener('drop', handleDrop)
+
     // ── Space바를 누르고 있는 동안 커서를 grab으로(누르기 전엔 도구별 커서) ─────────────────
     function handleKeyDown(e: KeyboardEvent) {
       if (e.code !== 'Space' || isTypingTarget(document.activeElement)) return
@@ -393,6 +423,9 @@ export default function CanvasViewport() {
       bodyWrap.removeEventListener('pointercancel', handlePointerUpOrCancel)
       bodyWrap.removeEventListener('pointerleave', handlePointerLeaveBody)
       bodyWrap.removeEventListener('auxclick', preventAuxClick)
+      bodyWrap.removeEventListener('dragover', handleDragOver)
+      bodyWrap.removeEventListener('dragleave', handleDragLeaveBody)
+      bodyWrap.removeEventListener('drop', handleDrop)
       window.removeEventListener('keydown', handleKeyDown)
       window.removeEventListener('keyup', handleKeyUp)
       window.removeEventListener('keydown', handleToolShortcutKeyDown)

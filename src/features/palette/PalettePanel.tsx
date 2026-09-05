@@ -73,9 +73,11 @@ export default function PalettePanel() {
   }
 
   function handleDragStart(e: DragEvent<HTMLButtonElement>, item: PaletteItem) {
-    // 드롭 처리(캔버스에 실제로 배치하는 것)는 다음 단계 몫이라, 지금은 드래그를
-    // 시작하는 순간 곧바로 스탬프를 선택해둡니다 — 사용자 입장에서는 "이 타일을 쓰겠다"는
-    // 의사표시가 이미 끝난 상태이니, 나중에 드롭 로직이 생기기 전까지는 이걸로 대신합니다.
+    // 드래그를 시작하는 순간 곧바로 스탬프로 선택해둡니다. 실제 배치는 캔버스 쪽
+    // drop 핸들러(toolInteractions.ts의 ToolController.handleDrop)가 dataTransfer에서
+    // id를 읽어 처리하지만, 그 사이(dragover) 동안 보여줄 배치 예정 고스트는 브라우저
+    // 보안 정책상 dataTransfer.getData()를 못 읽어서(드롭 순간에만 값을 읽을 수 있음)
+    // 여기서 미리 스토어에 올려둔 stampTileId를 그대로 씁니다.
     setStampTile(item.id)
     e.dataTransfer.effectAllowed = 'copy'
     e.dataTransfer.setData('text/plain', item.id)

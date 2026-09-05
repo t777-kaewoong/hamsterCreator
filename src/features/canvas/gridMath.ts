@@ -98,6 +98,43 @@ export function toggleEdge(edges: Edges, kind: 'h' | 'v', c: number, r: number):
 }
 
 /**
+ * 두 mm 점 사이를 최대 maxStepMm 간격으로 선형 보간합니다. 시작점(from)은 포함하지 않고
+ * 끝점(to)은 항상 포함합니다 — 호출부가 "직전 위치는 이미 처리했다"고 가정하기 때문입니다.
+ * 두 점이 완전히 같으면(마우스가 안 움직였으면) 빈 배열을 돌려줍니다.
+ *
+ * [왜 필요한가 — 드래그 보간] pointermove 이벤트는 마우스를 빠르게 움직이면 간격이
+ * 듬성듬성 옵니다. 직전 위치와 지금 위치 사이의 거리가 셀 하나보다 크면 그 사이
+ * 칸(또는 노드)을 하나도 거치지 않고 건너뛰어 버립니다 — 실제로 캔버스를 가로로
+ * 빠르게 드래그했을 때 5칸 중 2번째 칸이 빠지는 결함으로 나타났습니다. 이 함수로 그
+ * 구간을 촘촘하게 쪼개 순서대로 샘플을 만들면, 호출부가 각 샘플 지점마다 칸/노드
+ * 처리를 해서 아무 것도 건너뛰지 않습니다.
+ *
+ * [간격을 pitch/2로 고르는 이유는 toolInteractions.ts 호출부 주석 참고]
+ */
+export function interpolateMmPoints(
+  fromMx: number,
+  fromMy: number,
+  toMx: number,
+  toMy: number,
+  maxStepMm: number,
+): { mx: number; my: number }[] {
+  const dx = toMx - fromMx
+  const dy = toMy - fromMy
+  const dist = Math.hypot(dx, dy)
+  if (dist === 0) return []
+  // 거리를 maxStepMm "이하" 간격으로 나누려면 최소 이만큼의 구간이 필요합니다.
+  // 올림(ceil)을 써야 각 구간이 확실히 maxStepMm을 넘지 않습니다(내림이면 마지막
+  // 구간 하나가 더 길어질 수 있음).
+  const steps = Math.max(1, Math.ceil(dist / maxStepMm))
+  const points: { mx: number; my: number }[] = []
+  for (let i = 1; i <= steps; i++) {
+    const t = i / steps
+    points.push({ mx: fromMx + dx * t, my: fromMy + dy * t })
+  }
+  return points
+}
+
+/**
  * 클릭 지점(mm)에서 가장 가까운 엣지 하나를 찾습니다(L 도구 단순 클릭 토글용, FR-2.2).
  *
  * 이 앱이 다루는 격자는 A4 5×4(20칸)~A0 23×16(368칸) 수준이라, 존재 가능한 엣지 후보를

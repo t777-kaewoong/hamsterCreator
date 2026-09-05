@@ -81,6 +81,32 @@ export function drawOverlayLayer(
     ctx.restore()
   }
 
+  // ②-2 Shift 자유 배치 고스트(FR-3.8) — 스탬프 고스트와 겉모습(불투명도 0.55 +
+  //     2px 파선 테두리)은 같지만, 칸 좌상단이 아니라 "커서 = 이 오브젝트의 중심"이 되도록
+  //     그립니다. 격자를 무시하는 배치라 stampGhost와 달리 칸 좌표(c, r) 대신 mm 좌표를 씁니다.
+  if (overlay.freePropGhost) {
+    const { mx, my, tileId, rot, flip } = overlay.freePropGhost
+    const center = viewport.mapToScreen(mx, my)
+    const bitmap = tileBitmapCache.get(tileId)
+
+    if (bitmap) {
+      ctx.save()
+      ctx.globalAlpha = Number(tokens['--c-ghost']) || 0.55
+      ctx.translate(center.x, center.y)
+      if (rot !== 0) ctx.rotate((rot * Math.PI) / 180)
+      if (flip) ctx.scale(-1, 1)
+      ctx.drawImage(bitmap, -sizePx / 2, -sizePx / 2, sizePx, sizePx)
+      ctx.restore()
+    }
+
+    ctx.save()
+    ctx.strokeStyle = tokens['--c-primary']
+    ctx.lineWidth = 2
+    ctx.setLineDash([4, 4])
+    ctx.strokeRect(center.x - sizePx / 2, center.y - sizePx / 2, sizePx, sizePx)
+    ctx.restore()
+  }
+
   // ③ 선 긋기 드래그 미리보기 — 직전에 확정된 노드부터 지금 커서까지 러버밴드 선을 긋습니다.
   //    L 도구는 인접 노드에 닿는 즉시 실제 엣지를 확정 짓기 때문에(즉시 반영), 이 선분은
   //    "다음 걸음이 이어질 방향"을 보여주는 역할을 합니다.

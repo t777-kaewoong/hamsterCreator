@@ -118,6 +118,42 @@ export function drawArtLayer(ctx: CanvasRenderingContext2D, viewport: Viewport, 
   })
 }
 
+/** ③-2 자유 배치 오브젝트(props, FR-3.8). Shift로 격자를 무시하고 놓은 아이콘·타일·
+ *  이미지를 자기 x/y/w/h/rot 값 그대로 그립니다(§5 렌더 순서: cells→strokes→edges→
+ *  props→labels 중 이 파일이 담당하는 부분. 이 앱의 레이어 합성 순서(renderer.ts)에서는
+ *  격자선과 같은 'grid' 다음 'props' 레이어에 해당합니다).
+ *
+ *  [cells와 props를 나눠 쓰는 이유] cells는 50mm 격자 칸에 딱 맞물려야 하는 바닥·벽
+ *  타일용(D3: 인덱스 = r*cols+c로 칸 위치가 곧 배열 자리), props는 격자에 갇히지 않고
+ *  아무 mm 좌표에나 놓이는 오브젝트용입니다. 두 배열을 분리해두면 "이 칸에 뭐가
+ *  있는지"(cells)와 "자유롭게 놓인 게 뭐가 있는지"(props)를 서로 다른 방식으로 다룰 수
+ *  있습니다 — 격자 칸은 인덱스로 바로 찾고, 프롭은 좌표·크기를 직접 들고 다닙니다.
+ *
+ *  [타일 캐시를 그대로 재사용] Prop.asset은 Cell.art와 같은 문자열 규칙(내장 타일 id·
+ *  "icon/이름"·"asset:u1")을 씁니다. 지금은 내장 타일만 tileBitmapCache에 미리
+ *  디코드돼 있어 실제로 그려지고, 아이콘·사용자 이미지는 이 단계 이전부터 이미 같은
+ *  한계가 있었습니다(칸 아트도 마찬가지) — 이 단계에서 새로 생긴 제약이 아닙니다.
+ */
+export function drawPropsLayer(ctx: CanvasRenderingContext2D, viewport: Viewport, doc: MapDoc): void {
+  for (const prop of doc.props) {
+    const bitmap = tileBitmapCache.get(prop.asset)
+    if (!bitmap) continue // 아직 디코드 전이거나(로드 완료 시 다시 그려짐) 캐시에 없는 종류
+
+    const wPx = viewport.mmToPx(prop.w)
+    const hPx = viewport.mmToPx(prop.h)
+    const topLeft = viewport.mapToScreen(prop.x, prop.y)
+    const centerX = topLeft.x + wPx / 2
+    const centerY = topLeft.y + hPx / 2
+
+    ctx.save()
+    ctx.translate(centerX, centerY)
+    if (prop.rot !== 0) ctx.rotate((prop.rot * Math.PI) / 180)
+    if (prop.flip) ctx.scale(-1, 1)
+    ctx.drawImage(bitmap, -wPx / 2, -hPx / 2, wPx, hPx)
+    ctx.restore()
+  }
+}
+
 /** 방향 문자를 (dx, dy) 단위 벡터로. 맵 좌표는 y가 아래로 증가하므로 N은 -y, S는 +y입니다. */
 const DIR_VECTOR: Record<Direction, [number, number]> = {
   N: [0, -1],
