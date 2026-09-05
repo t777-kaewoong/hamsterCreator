@@ -20,6 +20,9 @@
 
     // import 할 때 "@/lib/model/..." 처럼 쓸 수 있게 하는 별칭 설정.
     // vite.config.ts 의 alias 설정과 항상 짝을 맞춰야 합니다.
+    // manifest.json 처럼 JSON 파일을 import 할 수 있게 허용합니다(타일 카탈로그에서 사용)
+    "resolveJsonModule": true,
+
     "paths": {
       "@/*": ["./src/*"]
     }
