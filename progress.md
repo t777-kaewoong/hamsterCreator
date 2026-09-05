@@ -1,5 +1,5 @@
 # Progress: 햄스터S 말판 제작 웹앱 (hamsterCreator)
-Last updated: 2026-09-05 03:12
+Last updated: 2026-09-05 04:05
 
 ## Goal
 - 햄스터S 말판·라인트레이서 트랙을 화면에서 배치하고, 원하는 용지로 나눠 인쇄할 수 있는 정확한 축척의 PDF와 정답 코드를 뽑아주는 교사용 웹 도구
@@ -8,7 +8,7 @@ Last updated: 2026-09-05 03:12
 ## Current Status
 - Status: In progress
 - Current focus: **M0 — 스캐폴딩 + GitHub Actions 배포 + 디자인 토큰 + 기본 컴포넌트**
-- Repo: `https://github.com/t777-kaewoong/hamsterCreator` (아직 로컬 git 미초기화)
+- Repo: `https://github.com/t777-kaewoong/hamsterCreator` (로컬 git 초기화 완료, 원격 미연결)
 - 배포 URL(예정): `https://t777-kaewoong.github.io/hamsterCreator/`
 
 ## Decisions
@@ -53,8 +53,13 @@ Last updated: 2026-09-05 03:12
   - 토큰 공백 발견: 역상(흰) 글자용 토큰이 tokens.css에 없음 — PRD가 "#FFF"로 직접 리터럴 지정한 자리
     (primary/danger 버튼 글자, Tooltip/Toast 글자)에 한해 CSS 키워드 `white`를 그대로 씀. `--c-text-inverse`
     같은 토큰 추가를 다음 토큰 개정 때 권장
-  - 번들: JS 147.14kB→164.76kB(gzip 47.62kB→53.14kB), CSS 5.33kB→13.75kB(gzip 1.82kB→3.77kB, 아이콘 6개 트리셰이킹 포함)
-  - 커밋 예정
+  - 번들: JS 147.14kB→164.78kB(gzip 47.62kB→53.15kB), CSS 5.33kB→13.97kB(gzip 1.82kB→3.79kB, 아이콘 6개 트리셰이킹 포함)
+  - 커밋 `a1eb896`
+- [x] **M0-3a 역상 색 토큰 보강** (2026-09-05) — Opus 판단
+  - M0-3에서 발견된 토큰 공백(진한 배경 위 글자색이 토큰에 없음)을 메움
+  - `--c-text-inverse` `--c-surface-inverse` `--c-overlay` 3종 추가, Button/Toast/Tooltip/Modal의 리터럴 6곳 치환
+  - `docs/03_prd.md` §9.3에도 동일 토큰 반영해 명세와 코드를 일치시킴
+  - 커밋 `35c30e7`
 
 ## In Progress
 - [ ] M0-4 저장소 어댑터(`FsaStore`/`DownloadStore`)

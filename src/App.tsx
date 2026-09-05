@@ -2,7 +2,7 @@
 // 위쪽 절반(M0-2)은 디자인 토큰(tokens.css)이 제대로 정의됐는지 눈으로 확인하는 화면이고,
 // 아래쪽 절반(M0-3)은 기본 UI 컴포넌트 8종을 한 페이지에 모아 보여주는 카탈로그입니다.
 // 실제 편집기 화면이 아니라 "부품이 PRD §9.7 수치대로 만들어졌는지" 확인하는 용도입니다.
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Save, Plus, Search, Undo2, Redo2 } from 'lucide-react'
 import {
   Button,
@@ -15,6 +15,13 @@ import {
   useToast,
 } from './components'
 import type { ButtonVariant, ButtonSize, StatusChipStatus } from './components'
+import { DEFAULT_COLS, DEFAULT_ROWS } from './lib/model/constants'
+import { createFullGridMap } from './lib/model/factory'
+import { serializeMap } from './lib/model/serialize'
+import type { MapDoc } from './lib/model/types'
+import { createMapStore, UserCancelledError } from './lib/storage'
+import type { MapStore } from './lib/storage'
+import { isDraftAvailable, saveDraft } from './lib/storage/draft'
 import styles from './App.module.css'
 
 // 색 토큰 그룹. value 는 화면에 참고용으로 보여줄 텍스트일 뿐, 실제 스와치 색은
@@ -154,6 +161,75 @@ export default function App() {
   const [cellSize, setCellSize] = useState(25)
   const [columnCount, setColumnCount] = useState(5)
   const [modalOpen, setModalOpen] = useState(false)
+
+  // ── M0-4 저장소 확인용 상태 ──────────────────────────────────────────
+  // store는 useState(() => ...)로 딱 한 번만 만듭니다. FsaStore는 파일 핸들을 인스턴스
+  // 안에 들고 있어야 덮어쓰기가 되므로, 렌더될 때마다 새로 만들면 안 됩니다.
+  const [store] = useState<MapStore>(() => createMapStore())
+  const [mapDoc, setMapDoc] = useState<MapDoc | null>(null)
+  // localStorage 사용 가능 여부는 페이지 로드 시점에 한 번만 확인하면 충분합니다
+  // (실행 중 갑자기 file://로 바뀌지는 않으므로).
+  const [draftAvailable] = useState(() => isDraftAvailable())
+
+  // 맵이 바뀔 때마다 초안 자동 저장을 예약합니다(500ms 디바운스는 draft.ts 안에서 처리).
+  useEffect(() => {
+    if (mapDoc) saveDraft(mapDoc)
+  }, [mapDoc])
+
+  const mapStats = useMemo(() => {
+    if (!mapDoc) return null
+    const json = serializeMap(mapDoc)
+    // 한글은 UTF-8로 3바이트라 문자열 길이(length)와 실제 파일 바이트 수가 다릅니다.
+    // Blob으로 감싸면 인코딩된 실제 바이트 수를 정확히 잴 수 있습니다.
+    const byteSize = new Blob([json]).size
+    return {
+      title: mapDoc.meta.title || '(제목 없음)',
+      cols: mapDoc.board.cols,
+      rows: mapDoc.board.rows,
+      cellCount: mapDoc.cells.length,
+      edgeCount: mapDoc.edges.h.length + mapDoc.edges.v.length,
+      byteSize,
+    }
+  }, [mapDoc])
+
+  function handleNewMap() {
+    setMapDoc(createFullGridMap(DEFAULT_COLS, DEFAULT_ROWS, { title: '새 말판' }))
+    show({ message: `새 맵을 만들었습니다 (${DEFAULT_COLS}×${DEFAULT_ROWS})` })
+  }
+
+  async function handleOpen() {
+    try {
+      const doc = await store.open()
+      setMapDoc(doc)
+      show({ message: `"${doc.meta.title || '(제목 없음)'}" 파일을 열었습니다` })
+    } catch (err) {
+      // 취소는 실패가 아니므로 토스트를 띄우지 않습니다.
+      if (err instanceof UserCancelledError) return
+      show({ message: `파일을 여는 데 실패했습니다: ${(err as Error).message}`, tone: 'danger' })
+    }
+  }
+
+  async function handleSave() {
+    if (!mapDoc) return
+    try {
+      await store.save(mapDoc)
+      show({ message: store.canOverwrite ? '저장했습니다' : '내려받았습니다' })
+    } catch (err) {
+      if (err instanceof UserCancelledError) return
+      show({ message: `저장에 실패했습니다: ${(err as Error).message}`, tone: 'danger' })
+    }
+  }
+
+  async function handleSaveAs() {
+    if (!mapDoc) return
+    try {
+      await store.saveAs(mapDoc)
+      show({ message: '다른 이름으로 저장했습니다' })
+    } catch (err) {
+      if (err instanceof UserCancelledError) return
+      show({ message: `저장에 실패했습니다: ${(err as Error).message}`, tone: 'danger' })
+    }
+  }
 
   return (
     <div className={styles.page}>
@@ -459,6 +535,82 @@ export default function App() {
             계획기(PRD §9.14)는 M2 단계에서 이 Modal 컴포넌트 위에 만들어질 예정입니다.
           </p>
         </Modal>
+      </section>
+
+      {/* ══════════════════════════════════════════════════════════════
+          여기서부터 M0-4: 저장소 확인.
+          맵 파일을 실제로 저장→불러오기 왕복할 수 있는지 눈으로 확인하는 화면입니다
+          (FsaStore 덮어쓰기 / DownloadStore 다운로드 폴백이 이 브라우저에서 자동으로 골라짐).
+          ══════════════════════════════════════════════════════════════ */}
+      <header className={styles.catalogHeader}>
+        <h1 className={`${styles.title} t-display`}>저장소 확인</h1>
+        <p className={`${styles.subtitle} t-body`}>
+          M0-4: 맵 문서(.hsmap.json) 저장·불러오기와 초안 자동 저장이 실제로 동작하는지 확인합니다.
+        </p>
+      </header>
+
+      <section className={styles.section}>
+        <h2 className={`${styles.sectionTitle} t-h2`}>저장소 상태</h2>
+        <div className={styles.inlineControls}>
+          <StatusChip
+            status={store.canOverwrite ? 'saved' : 'unsaved'}
+            label={
+              store.kind === 'file-overwrite'
+                ? '파일 덮어쓰기 가능 (FsaStore)'
+                : '다운로드 폴백 (DownloadStore)'
+            }
+          />
+          <StatusChip
+            status={draftAvailable ? 'saved' : 'unsaved'}
+            label={draftAvailable ? '초안 자동 저장 사용 가능' : '초안 자동 저장 불가 (file:// 등)'}
+          />
+        </div>
+
+        <div className={styles.buttonInline}>
+          <Button variant="secondary" onClick={handleNewMap}>
+            새 맵 만들기(5×4)
+          </Button>
+          <Button variant="secondary" onClick={handleOpen}>
+            파일 열기
+          </Button>
+          <Button variant="secondary" onClick={handleSave} disabled={!mapDoc}>
+            저장
+          </Button>
+          <Button variant="secondary" onClick={handleSaveAs} disabled={!mapDoc}>
+            다른 이름으로 저장
+          </Button>
+        </div>
+
+        {mapStats ? (
+          <dl className={styles.mapInfoGrid}>
+            <div className={styles.mapInfoRow}>
+              <dt className="t-caption">제목</dt>
+              <dd className="t-body">{mapStats.title}</dd>
+            </div>
+            <div className={styles.mapInfoRow}>
+              <dt className="t-caption">격자</dt>
+              <dd className="t-body t-nums">
+                {mapStats.cols} × {mapStats.rows}
+              </dd>
+            </div>
+            <div className={styles.mapInfoRow}>
+              <dt className="t-caption">셀 개수</dt>
+              <dd className="t-body t-nums">{mapStats.cellCount}</dd>
+            </div>
+            <div className={styles.mapInfoRow}>
+              <dt className="t-caption">켜진 엣지 수</dt>
+              <dd className="t-body t-nums">{mapStats.edgeCount}</dd>
+            </div>
+            <div className={styles.mapInfoRow}>
+              <dt className="t-caption">JSON 크기</dt>
+              <dd className="t-body t-nums">{mapStats.byteSize.toLocaleString()} bytes</dd>
+            </div>
+          </dl>
+        ) : (
+          <p className="t-caption" style={{ color: 'var(--c-text-3)' }}>
+            아직 맵이 없습니다. "새 맵 만들기"를 눌러보세요.
+          </p>
+        )}
       </section>
     </div>
   )

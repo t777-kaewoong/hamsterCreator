@@ -269,3 +269,30 @@
   background: var(--c-primary);
   border-radius: var(--r-sm);
 }
+
+/* ════════════════════════════════════════════════════════════
+   M0-4 저장소 확인 섹션 전용 스타일.
+   ════════════════════════════════════════════════════════════ */
+
+/* 현재 맵 정보(제목·격자·셀 개수 등)를 라벨/값 두 열로 늘어놓는 목록 */
+.mapInfoGrid {
+  display: grid;
+  grid-template-columns: 140px 1fr;
+  row-gap: var(--sp-2);
+  column-gap: var(--sp-4);
+  margin: 0;
+}
+
+/* dl > div로 한 행씩 감싸고 display:contents로 grid 자식 취급되게 함 */
+.mapInfoRow {
+  display: contents;
+}
+
+.mapInfoRow dt {
+  color: var(--c-text-3);
+}
+
+.mapInfoRow dd {
+  margin: 0;
+  color: var(--c-text);
+}
