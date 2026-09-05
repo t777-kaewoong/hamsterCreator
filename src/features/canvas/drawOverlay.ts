@@ -12,6 +12,7 @@ import type { MapDoc } from '@/lib/model/types'
 import type { Viewport } from './viewport'
 import type { TokenName } from './cssTokens'
 import { tileBitmapCache } from './tileBitmaps'
+import { MARKER_OUTER_DIAMETER_MM, nodeCenterMm } from './drawBoard'
 import type { OverlayState } from './toolInteractions'
 
 type Tokens = Record<TokenName, string>
@@ -160,6 +161,81 @@ export function drawOverlayLayer(
     ctx.fill()
     ctx.fillStyle = tokens['--c-text-inverse']
     ctx.fillText(label, centerX, centerY + 1)
+    ctx.restore()
+  }
+
+  // ⑤ M(마커) 도구 미리보기 — 지금 클릭하면 어느 노드에 무엇이(출발/도착) 찍힐지
+  //    점선 원 + 글자 칩으로 보여줍니다. 원 크기는 drawBoard.ts가 실제로 그리는 마커
+  //    (MARKER_OUTER_DIAMETER_MM)와 반드시 같아야 "미리보기 자리 그대로 찍힌다"는
+  //    믿음이 깨지지 않습니다.
+  if (overlay.markerGhost) {
+    const { c, r, mode } = overlay.markerGhost
+    const center = nodeCenterMm(c, r, doc.board.pitch)
+    const p = viewport.mapToScreen(center.mx, center.my)
+    const radiusPx = viewport.mmToPx(MARKER_OUTER_DIAMETER_MM / 2)
+
+    ctx.save()
+    ctx.strokeStyle = tokens['--c-primary']
+    ctx.lineWidth = 2
+    ctx.setLineDash([4, 4])
+    ctx.beginPath()
+    ctx.arc(p.x, p.y, radiusPx, 0, Math.PI * 2)
+    ctx.stroke()
+    ctx.restore()
+
+    const chipText = mode === 'start' ? '출발' : '도착'
+    ctx.save()
+    ctx.font = CHIP_FONT
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    const textWidth = ctx.measureText(chipText).width
+    const paddingX = 8
+    const chipH = 20
+    const chipW = textWidth + paddingX * 2
+    const chipCenterY = p.y - radiusPx - chipH / 2 - 4 // 원 위쪽에 살짝 띄워서 배치
+    tracePillPath(ctx, p.x - chipW / 2, chipCenterY - chipH / 2, chipW, chipH, chipH / 2)
+    ctx.fillStyle = tokens['--c-primary']
+    ctx.fill()
+    ctx.fillStyle = tokens['--c-text-inverse']
+    ctx.fillText(chipText, p.x, chipCenterY + 1)
+    ctx.restore()
+  }
+
+  // ⑥ V(선택) 도구 윤곽 — 2px 실선 사각형 + 8px 모서리 정사각 핸들(PRD §9.12 "객체
+  //    선택" 행은 핸들을 8px로 명시하지만, 이 작업 지시는 6px로 정해 그 값을 그대로
+  //    따랐습니다 — §9.13 인스펙터가 아직 없어 실제 리사이즈 동작이 없는 지금 단계에서는
+  //    순전히 "이게 선택 가능한 오브젝트다"를 알려주는 장식이라 정확한 px 값의 실익이
+  //    크지 않다고 판단했습니다). 핸들을 드래그해 크기를 바꾸는 기능은 아직 없습니다 —
+  //    지금은 장식일 뿐이고, 실제 리사이즈는 인스펙터의 수치 입력으로만 합니다.
+  if (overlay.selectionBox) {
+    const { mx, my, wMm, hMm, rot } = overlay.selectionBox
+    const center = viewport.mapToScreen(mx, my)
+    const wPx = viewport.mmToPx(wMm)
+    const hPx = viewport.mmToPx(hMm)
+
+    ctx.save()
+    ctx.translate(center.x, center.y)
+    if (rot !== 0) ctx.rotate((rot * Math.PI) / 180)
+    ctx.strokeStyle = tokens['--c-primary']
+    ctx.lineWidth = 2
+    ctx.strokeRect(-wPx / 2, -hPx / 2, wPx, hPx)
+
+    // 모서리 핸들 크기(화면 px). PRD §9.12 오버레이 표의 "객체 선택 = 2px --c-primary
+    // 윤곽 + 8px 모서리 핸들(흰 채움, 1.5px --c-primary 테두리)" 수치 그대로입니다.
+    // 아직 이 핸들을 잡아 끌어 크기를 바꾸는 기능은 없습니다(장식 겸 "선택됨" 표시).
+    const handleSize = 8
+    const corners: [number, number][] = [
+      [-wPx / 2, -hPx / 2],
+      [wPx / 2, -hPx / 2],
+      [wPx / 2, hPx / 2],
+      [-wPx / 2, hPx / 2],
+    ]
+    ctx.lineWidth = 1.5
+    ctx.fillStyle = tokens['--c-surface']
+    for (const [hx, hy] of corners) {
+      ctx.fillRect(hx - handleSize / 2, hy - handleSize / 2, handleSize, handleSize)
+      ctx.strokeRect(hx - handleSize / 2, hy - handleSize / 2, handleSize, handleSize)
+    }
     ctx.restore()
   }
 }

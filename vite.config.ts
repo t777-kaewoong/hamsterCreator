@@ -29,6 +29,19 @@ export default defineConfig({
     },
   },
 
+  server: {
+    // 개발 서버 포트를 5173으로 못 박습니다.
+    // strictPort: true 를 주지 않으면, 5173이 이미 쓰이고 있을 때 vite가 말없이
+    // 5174, 5175... 로 옮겨 갑니다. 그러면 터미널에 찍힌 주소와 평소 쓰던 주소가
+    // 달라져서 "흰 화면"만 보이는 일이 생깁니다.
+    // strictPort: true 면 포트가 막혀 있을 때 그냥 실패하므로 원인이 바로 보입니다.
+    port: 5173,
+    strictPort: true,
+    // 실행하면 브라우저를 자동으로 열어 줍니다. base('/hamsterCreator/')까지
+    // 포함된 정확한 주소로 열리므로 주소를 직접 칠 필요가 없습니다.
+    open: true,
+  },
+
   build: {
     // 대피로 빌드 결과물은 일반 빌드(dist)와 섞이지 않도록 dist-single 에 따로 둡니다.
     // (실제 출력 폴더는 build:single 스크립트의 --outDir 옵션이 최종 결정합니다)

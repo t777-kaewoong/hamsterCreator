@@ -141,3 +141,25 @@
 .minimapCanvas {
   display: block;
 }
+
+/* ── T(텍스트) 도구 인라인 라벨 입력창 ──────────────────────────────────────────
+   라벨의 mm 좌표를 화면 좌표로 바꾼 지점(left/top, CanvasViewport.tsx가 계산)에
+   중심이 오도록 transform으로 절반씩 당겨 배치합니다. PRD에 이 입력창 자체의 규격이
+   없어(캔버스 위에 뜨는 임시 편집 UI라 §9.13 인스펙터 표에도 없음) 다른 입력창과
+   비슷한 반경·그림자 토큰만 가져다 썼습니다(PRD 미규정 — 임의로 정함). */
+.labelInput {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  z-index: 3;
+  min-width: 48px;
+  max-width: 240px;
+  padding: 2px 6px;
+  border: 1.5px solid var(--c-primary);
+  border-radius: var(--r-sm);
+  box-shadow: var(--e2);
+  background: var(--c-surface);
+  color: var(--c-text);
+  font: 600 14px Pretendard, -apple-system, 'Segoe UI', 'Malgun Gothic', sans-serif;
+  text-align: center;
+  outline: none;
+}

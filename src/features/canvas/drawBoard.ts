@@ -2,12 +2,14 @@
 //
 // 여기 있는 함수들은 renderer.ts가 레이어별로 dirty일 때 호출해주는 "그리기 담당자"입니다.
 // 화면 좌표 계산은 전부 viewport.ts에 위임하고, 이 파일은 "무엇을 어떤 순서로 그릴지"만
-// 담당합니다. 색은 절대 직접 적지 않고 cssTokens.ts에서 읽은 값만 씁니다.
+// 담당합니다. 색은 절대 직접 적지 않고 cssTokens.ts에서 읽은 값만 씁니다(단, 마커는
+// 예외 — 아래 drawMarkersLayer 주석 참고).
 //
-// 이번 단계에서 그리는 것: 종이(아트보드) · 셀 경계 안내선 · 격자 노드 점 · 격자선(+진입로) ·
-// 칸에 놓인 아트 타일. 자유곡선(strokes)·프롭·라벨·마커는 그 데이터를 실제로 만드는 도구가
-// 아직 없어서(다음 단계 이후) 이 단계에서는 그리지 않습니다.
-import type { Direction, MapDoc } from '@/lib/model/types'
+// 그리는 것: 종이(아트보드) · 셀 경계 안내선 · 격자 노드 점 · 격자선(+진입로) ·
+// 칸에 놓인 아트 타일 · 자유 배치 오브젝트(props) · 텍스트 라벨(labels, FR-4.1/4.2) ·
+// 출발·도착 마커(markers, FR-4.3/4.4). 자유곡선(strokes)은 곡선 도구가 생기는 다음
+// 단계 이후에 이 파일에 추가됩니다.
+import type { Direction, Label, MapDoc } from '@/lib/model/types'
 import type { MapPoint, Viewport } from './viewport'
 import type { TokenName } from './cssTokens'
 import { parseShadowToken } from './cssTokens'
@@ -19,6 +21,13 @@ export const GUIDE_MIN_PX_PER_MM = 1.2
 
 /** 격자 노드 점의 지름(화면 CSS px 고정, mm로 안 커짐 — PRD §9.12 표). */
 const NODE_DIAMETER_PX = 3
+
+/** 라벨에 쓰는 폰트. typography.css에 400/500/600 세 굵기만 내려받아 두었으므로
+ *  그중 가장 굵은 600을 씁니다(작업 지시 명시) — 말판 위 작은 글자는 얇으면 인쇄했을 때
+ *  잘 안 보이기 때문입니다. 폴백 스택은 이 파일의 다른 캔버스 폰트 문자열(예:
+ *  drawOverlay.ts의 CHIP_FONT)과 통일했습니다. */
+const LABEL_FONT_WEIGHT = 600
+const LABEL_FONT_FAMILY = 'Pretendard, -apple-system, "Segoe UI", "Malgun Gothic", sans-serif'
 
 type Tokens = Record<TokenName, string>
 
@@ -154,12 +163,201 @@ export function drawPropsLayer(ctx: CanvasRenderingContext2D, viewport: Viewport
   }
 }
 
+/**
+ * 라벨 하나의 mm 단위 가로·세로 크기를 잽니다. hitTest.ts(클릭 판정)와 drawLabelsLayer
+ * (실제 렌더)가 "이 라벨이 화면에서 얼마나 큰 사각형을 차지하는가"에 대해 서로 다른
+ * 기준을 쓰면, 클릭은 되는데 안 그려져 있거나 그 반대인 상황이 생깁니다. 그래서 두 곳이
+ * 반드시 이 함수 하나만 공유하도록 export합니다.
+ *
+ * [줌 배율과 무관해야 하는 이유] hitTest는 항상 mm 좌표만 다루고 지금 화면이 몇 %로
+ * 확대돼 있는지 모릅니다(그래야 어느 배율에서 클릭해도 같은 결과가 나옵니다). 그래서
+ * viewport.ts가 "배율 100%"의 기준으로 삼은 것과 같은 방식(REFERENCE_PX_PER_MM=1,
+ * "1mm = 화면 1px")을 그대로 빌려, 폰트 크기를 label.size(mm) 값 그대로 px 단위에
+ * 대입해 측정합니다. 이러면 ctx.measureText가 돌려주는 px 폭이 곧 mm 폭입니다.
+ *
+ * 세로 크기는 폰트마다 실제 글자 높이(ascent/descent)가 들쭉날쭉해서 그대로 재면
+ * 라벨마다 미묘하게 다른 히트박스가 나옵니다. 대신 "size" 값 자체를 글자 높이로
+ * 그대로 씁니다 — 애초에 PRD가 size를 "글자 크기"라고 부르므로 자연스러운 근사입니다.
+ */
+export function measureLabelBoxMm(ctx: CanvasRenderingContext2D, label: Label): { wMm: number; hMm: number } {
+  ctx.save()
+  ctx.font = `${LABEL_FONT_WEIGHT} ${label.size}px ${LABEL_FONT_FAMILY}`
+  // 빈 텍스트(라벨을 막 만들어 아직 아무것도 안 친 상태)도 클릭으로 다시 잡을 수 있도록
+  // 공백 한 칸만큼의 최소 히트박스를 줍니다.
+  const text = label.text.length > 0 ? label.text : ' '
+  const wMm = ctx.measureText(text).width
+  ctx.restore()
+  return { wMm, hMm: label.size }
+}
+
+/**
+ * ③-3 텍스트 라벨(labels, FR-4.1/4.2). props 레이어 안에서 props 다음에 이어 그립니다 —
+ * §5 고정 렌더 순서(… → props → labels → markers)를 지키면서도, 이 셋을 위해 굳이 새
+ * 오프스크린 레이어를 늘리지 않았습니다. renderer.ts의 5레이어는 레이어 하나가 늘 때마다
+ * dirty 판정·합성(drawImage) 비용이 함께 늘어나는데, props·labels·markers는 "자유
+ * 배치 오브젝트를 다룬다"는 성격이 같아 거의 항상 같은 편집 동작(T/M 도구, 인스펙터)에서
+ * 같이 dirty해집니다 — 따로 나눠봤자 실익 없이 레이어 수만 늘어납니다.
+ */
+export function drawLabelsLayer(
+  ctx: CanvasRenderingContext2D,
+  viewport: Viewport,
+  doc: MapDoc,
+  tokens: Tokens,
+): void {
+  for (const label of doc.labels) {
+    if (label.text.length === 0) continue // 방금 만들어 아직 글자를 안 친 라벨은 그릴 게 없음
+    const center = viewport.mapToScreen(label.x, label.y)
+    const sizePx = viewport.mmToPx(label.size)
+
+    ctx.save()
+    ctx.translate(center.x, center.y)
+    if (label.rot !== 0) ctx.rotate((label.rot * Math.PI) / 180)
+    ctx.font = `${LABEL_FONT_WEIGHT} ${sizePx}px ${LABEL_FONT_FAMILY}`
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+
+    if (label.onLine) {
+      // FR-4.2 "선 위 흰 글씨" 모드(공식 자료의 +2/-3 스타일). 이 모드는 라벨이 검정
+      // 격자선(8mm) 위에 놓이는 것을 전제로 하므로, 글자 뒤에 따로 검정 배경 알약을
+      // 깔 필요가 없습니다(이미 검정 선이 배경 역할을 합니다). 다만 사용자가 라벨을
+      // 선에서 살짝 벗어나게 놓아도(격자에 스냅되지 않는 자유 좌표라 흔한 일) 흰 글씨가
+      // 흰 종이 위로 나가는 순간 안 보이게 되므로, 아주 얇은 검은 외곽선을 먼저 그려
+      // 최소한의 가독성을 보장합니다. 선폭을 글자 크기의 8%로 정한 것은 PRD 미규정 —
+      // 임의로 정함(너무 두꺼우면 획이 뭉개지고, 너무 얇으면 흰 종이 위에서 안 보임).
+      ctx.lineWidth = sizePx * 0.08
+      ctx.strokeStyle = tokens['--c-print-black']
+      ctx.lineJoin = 'round'
+      ctx.strokeText(label.text, 0, 0)
+      ctx.fillStyle = '#ffffff'
+      ctx.fillText(label.text, 0, 0)
+    } else {
+      ctx.fillStyle = label.color
+      ctx.fillText(label.text, 0, 0)
+    }
+    ctx.restore()
+  }
+}
+
 /** 방향 문자를 (dx, dy) 단위 벡터로. 맵 좌표는 y가 아래로 증가하므로 N은 -y, S는 +y입니다. */
 const DIR_VECTOR: Record<Direction, [number, number]> = {
   N: [0, -1],
   E: [1, 0],
   S: [0, 1],
   W: [-1, 0],
+}
+
+// ── 출발·도착 마커(markers, FR-4.3/4.4) ─────────────────────────────────
+//
+// [왜 색을 토큰이 아니라 '#111'로 직접 적는가 — 이 파일의 다른 규칙에 대한 예외]
+// 이 파일 맨 위 주석은 "색은 절대 직접 적지 않고 cssTokens.ts에서 읽은 값만 쓴다"고
+// 못박았지만, 마커는 화면 전용 표시가 아니라 인쇄물에 그대로 나가는 그림입니다
+// (drawGridLayer가 --c-print-black을 쓰는 것과 같은 이유). 게다가 §9.17은 "색에만
+// 의존해 구분하지 말 것"을 요구하는데, 흑백 인쇄에서는 --c-ok(초록)나 --c-primary
+// (보라) 같은 토큰이 전부 같은 회색으로 뭉개져 버립니다. 그래서 색으로 출발/도착을
+// 구분하지 않고 모양(속 빈 원+화살표 vs 겹원 과녁)만으로 구분하며, 색은 인쇄 검정
+// 계열 하나(#111)로 통일해 다른 인쇄 요소(격자선 #000)와 아주 살짝만 다르게(순수
+// 검정과 구분되는 잉크로 보이도록) 정했습니다.
+//
+// [34mm/22mm/3mm 크기 — PRD 미규정, 임의로 정함] PRD §9.12 표에는 "출발 마커: 지름
+// 28px 원 + 흰 깃발 아이콘"처럼 화면 픽셀 고정 크기가 적혀 있지만, 그 항목은 "상호작용
+// 오버레이"(호버·고스트처럼 화면에만 보이고 인쇄되지 않는 것) 표 안에 있습니다. FR-4.3/
+// 4.4가 요구하는 마커는 그와 달리 실제 인쇄되는 말판 그림의 일부라서 mm 단위 실크기가
+// 있어야 하는데, PRD 어디에도 그 mm 값이 없습니다(이 부분은 §9.12 표와 FR-4 사이의
+// 명세 공백입니다). 그래서 이 값들은 임의로 정했습니다 — 칸 한 변이 50mm이므로, 그
+// 안에 여백을 넉넉히 두고 들어가면서도 로봇이 실제로 서는 자리임을 눈에 띄게 알려줄
+// 크기로 바깥지름 34mm(칸의 68%, 위아래 8mm씩 여백)를 골랐고, 안쪽 원은 과녁처럼
+// 뚜렷이 구분되도록 바깥지름의 약 2/3인 22mm로, 선굵기는 격자선(8mm)보다는 가늘지만
+// 축소 인쇄해도 끊겨 보이지 않을 3mm로 정했습니다.
+export const MARKER_OUTER_DIAMETER_MM = 34
+const MARKER_INNER_DIAMETER_MM = 22
+const MARKER_RING_WIDTH_MM = 3
+const MARKER_LABEL_SIZE_MM = 6
+const MARKER_COLOR = '#111'
+
+/** 마커 이름표(글자)를 원 바로 아래 중앙에 그립니다. 출발·도착이 이 부분만 공유합니다. */
+function drawMarkerCaption(
+  ctx: CanvasRenderingContext2D,
+  centerX: number,
+  centerY: number,
+  outerRadiusPx: number,
+  ringWidthPx: number,
+  labelSizePx: number,
+  text: string,
+): void {
+  ctx.save()
+  ctx.font = `${LABEL_FONT_WEIGHT} ${labelSizePx}px ${LABEL_FONT_FAMILY}`
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'hanging'
+  ctx.fillStyle = MARKER_COLOR
+  // 원의 테두리 바로 아래(반지름 + 선굵기 절반)에서 시작해 살짝 더 띄웁니다.
+  ctx.fillText(text, centerX, centerY + outerRadiusPx + ringWidthPx / 2 + 2)
+  ctx.restore()
+}
+
+/**
+ * ③-4 출발·도착 마커. §5 markers.start/goals를 그대로 읽어 그립니다. markers 데이터
+ * 자체는 doc.markers 하나뿐이라 배열 순회 없이 start 하나 + goals 배열만 처리합니다.
+ */
+export function drawMarkersLayer(ctx: CanvasRenderingContext2D, viewport: Viewport, doc: MapDoc): void {
+  const { pitch } = doc.board
+  const outerRadiusPx = viewport.mmToPx(MARKER_OUTER_DIAMETER_MM / 2)
+  const innerRadiusPx = viewport.mmToPx(MARKER_INNER_DIAMETER_MM / 2)
+  const ringWidthPx = viewport.mmToPx(MARKER_RING_WIDTH_MM)
+  const labelSizePx = viewport.mmToPx(MARKER_LABEL_SIZE_MM)
+
+  if (doc.markers.start) {
+    const { cell, heading } = doc.markers.start
+    const center = nodeCenterMm(cell[0], cell[1], pitch)
+    const p = viewport.mapToScreen(center.mx, center.my)
+
+    ctx.save()
+    ctx.strokeStyle = MARKER_COLOR
+    ctx.lineWidth = ringWidthPx
+    ctx.beginPath()
+    ctx.arc(p.x, p.y, outerRadiusPx, 0, Math.PI * 2)
+    ctx.stroke()
+
+    // heading 방향을 가리키는 채운 삼각형 화살표. 원 반지름의 90%를 길이로 삼아
+    // 테두리 안쪽에 살짝 여유를 두고 들어가게 했습니다(PRD 미규정 — 임의로 정함).
+    const [dx, dy] = DIR_VECTOR[heading]
+    const angle = Math.atan2(dy, dx)
+    const triTip = outerRadiusPx * 0.9
+    const triBack = -outerRadiusPx * 0.5
+    const triHalfWidth = outerRadiusPx * 0.45
+    ctx.save()
+    ctx.translate(p.x, p.y)
+    ctx.rotate(angle)
+    ctx.fillStyle = MARKER_COLOR
+    ctx.beginPath()
+    ctx.moveTo(triTip, 0)
+    ctx.lineTo(triBack, triHalfWidth)
+    ctx.lineTo(triBack, -triHalfWidth)
+    ctx.closePath()
+    ctx.fill()
+    ctx.restore()
+
+    drawMarkerCaption(ctx, p.x, p.y, outerRadiusPx, ringWidthPx, labelSizePx, '출발')
+    ctx.restore()
+  }
+
+  for (const goal of doc.markers.goals) {
+    const center = nodeCenterMm(goal.cell[0], goal.cell[1], pitch)
+    const p = viewport.mapToScreen(center.mx, center.my)
+
+    ctx.save()
+    ctx.strokeStyle = MARKER_COLOR
+    ctx.lineWidth = ringWidthPx
+    // 겹원(과녁) — 바깥 원과 안쪽 원을 각각 그립니다.
+    ctx.beginPath()
+    ctx.arc(p.x, p.y, outerRadiusPx, 0, Math.PI * 2)
+    ctx.stroke()
+    ctx.beginPath()
+    ctx.arc(p.x, p.y, innerRadiusPx, 0, Math.PI * 2)
+    ctx.stroke()
+
+    drawMarkerCaption(ctx, p.x, p.y, outerRadiusPx, ringWidthPx, labelSizePx, goal.name || '도착')
+    ctx.restore()
+  }
 }
 
 /** ③ 격자선 + 진입로(stub). 실제 인쇄되는 검정 선이라 mm 굵기를 배율만큼 그대로 곱해 그립니다

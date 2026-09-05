@@ -5,17 +5,29 @@
 //       (M1-4) 스택이 비어있으면 버튼이 자동으로 비활성화됩니다.
 // 우측: 저장 · 미리보기 · 정답 · 인쇄
 //
-// 이 단계에서는 실행취소/재실행·파일명 편집만 실제 기능에 연결합니다(그 외 버튼은
-// 토스트만 띄움). PRD §9.16: "실행취소 | 토스트 없음. 상단바 버튼 상태만 갱신" —
+// 이 단계에서는 실행취소/재실행·파일명 편집·뒤로가기만 실제 기능에 연결합니다(그 외
+// 버튼은 토스트만 띄움). PRD §9.16: "실행취소 | 토스트 없음. 상단바 버튼 상태만 갱신" —
 // 그래서 undo()/redo()는 토스트를 띄우지 않고 버튼 disabled 상태만 자연스럽게 바뀝니다.
+//
+// [뒤로가기(M1-5c)] 시작 화면 ↔ 편집기 전환은 editorStore에 상태를 두지 않고(다른
+// 작업자가 그 파일을 동시에 수정 중이라 손대지 않기로 했습니다) App.tsx의 로컬
+// useState로 관리합니다. 그래서 이 컴포넌트는 "어디로 돌아갈지"를 모르고, 그냥
+// App.tsx가 내려주는 onBack()만 부릅니다. 저장 안 된 변경이 있으면 곧장 나가지 않고
+// 먼저 Modal로 확인을 받습니다(작업 지시: window.confirm 대신 기존 Modal 컴포넌트 재사용).
 import { useEffect, useRef, useState } from 'react'
 import type { KeyboardEvent } from 'react'
 import { ChevronLeft, Save, Undo2, Redo2, Eye, Printer, ListChecks } from 'lucide-react'
-import { Button, StatusChip, Tooltip, useToast } from '@/components'
+import { Button, Modal, StatusChip, Tooltip, useToast } from '@/components'
 import { PAPER_SIZES } from '@/lib/model/constants'
 import type { MapDoc } from '@/lib/model/types'
 import { useEditorStore } from './editorStore'
 import styles from './TopBar.module.css'
+
+export interface TopBarProps {
+  /** 뒤로가기(좌측 ChevronLeft) 클릭이 최종적으로 승인됐을 때 호출됩니다.
+   *  저장 안 된 변경이 있으면 이 함수를 바로 부르지 않고 확인 모달을 먼저 띄웁니다. */
+  onBack: () => void
+}
 
 /** 지금 포커스가 글자 입력 요소에 있는지. Ctrl+Z로 텍스트 입력창의 되돌리기를 하는 중에
  *  맵 전체가 같이 되돌아가면 안 되므로, 입력창에 포커스가 있으면 단축키를 무시합니다. */
@@ -37,7 +49,7 @@ function formatSizeChip(doc: MapDoc): string {
   return `${sheetLabel} · ${doc.board.cols}×${doc.board.rows} · ${widthMm}×${heightMm}mm`
 }
 
-export default function TopBar() {
+export default function TopBar({ onBack }: TopBarProps) {
   const { show } = useToast()
   const doc = useEditorStore((s) => s.doc)
   const setDoc = useEditorStore((s) => s.setDoc)
@@ -69,6 +81,9 @@ export default function TopBar() {
   const [editingTitle, setEditingTitle] = useState(false)
   const [titleDraft, setTitleDraft] = useState('')
   const titleInputRef = useRef<HTMLInputElement>(null)
+  // 뒤로가기 확인 모달. saveState가 'unsaved'일 때만 이 모달을 거칩니다 — 저장된 상태라면
+  // 되돌릴 게 없으므로 바로 나갑니다(PRD U7: 확인 모달은 정말 필요할 때만).
+  const [confirmBackOpen, setConfirmBackOpen] = useState(false)
 
   useEffect(() => {
     if (editingTitle) titleInputRef.current?.focus()
@@ -77,6 +92,19 @@ export default function TopBar() {
   // 이번 단계에서 실제로 연결되지 않은 버튼들의 공통 동작.
   function notConnectedYet() {
     show({ message: '다음 단계에서 연결됩니다' })
+  }
+
+  function handleBackClick() {
+    if (saveState === 'unsaved') {
+      setConfirmBackOpen(true)
+      return
+    }
+    onBack()
+  }
+
+  function confirmLeaveWithoutSaving() {
+    setConfirmBackOpen(false)
+    onBack()
   }
 
   function startEditingTitle() {
@@ -111,7 +139,7 @@ export default function TopBar() {
             variant="icon"
             icon={<ChevronLeft size={18} />}
             aria-label="뒤로가기"
-            onClick={notConnectedYet}
+            onClick={handleBackClick}
           />
         </Tooltip>
 
@@ -179,6 +207,27 @@ export default function TopBar() {
           인쇄
         </Button>
       </div>
+
+      <Modal
+        open={confirmBackOpen}
+        onClose={() => setConfirmBackOpen(false)}
+        title="저장하지 않은 변경사항"
+        width={400}
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setConfirmBackOpen(false)}>
+              취소
+            </Button>
+            <Button variant="danger" onClick={confirmLeaveWithoutSaving}>
+              저장하지 않고 나가기
+            </Button>
+          </>
+        }
+      >
+        <p className="t-body">
+          지금 나가면 저장하지 않은 변경 내용이 사라집니다. 그래도 시작 화면으로 돌아갈까요?
+        </p>
+      </Modal>
     </header>
   )
 }

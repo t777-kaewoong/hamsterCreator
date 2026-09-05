@@ -15,13 +15,15 @@
 // 셀을 찍을 때마다 실행취소 스택에 쌓지 않고, pointerdown 시점의 문서를 깊은 복사해
 // gestureSnapshot으로만 들고 있다가, pointerup(제스처가 끝나는 순간) 실제로 문서가
 // 달라졌을 때만 그 스냅샷 하나를 스토어의 undoStack에 넣습니다.
-import type { Cell, MapDoc, NodeCoord, Prop } from '@/lib/model/types'
+import type { Cell, Direction, GoalMarker, Label, MapDoc, NodeCoord, Prop, StartMarker } from '@/lib/model/types'
 import { getTile, TILES_BY_THEME } from '@/lib/tiles/catalog'
 import { saveDraft } from '@/lib/storage/draft'
 import { useEditorStore } from '@/features/editor/editorStore'
+import type { Selection } from '@/features/editor/editorStore'
 import type { LayerName } from './renderer'
 import type { MapPoint, Viewport } from './viewport'
 import { nodeCenterMm } from './drawBoard'
+import { hitTest, measureLabelBoxMmCached } from './hitTest'
 import {
   areAdjacent,
   cellAtMm,
@@ -53,6 +55,16 @@ export interface OverlayState {
   linePreview: { fromMx: number; fromMy: number; toMx: number; toMy: number } | null
   /** 영역 채우기 드래그 중 사각 범위(R 도구) */
   fillRect: { c0: number; r0: number; c1: number; r1: number } | null
+  /** M(마커) 도구가 지금 가리키는 격자 노드와, 클릭하면 무엇이 찍힐지(mode). Alt 키
+   *  상태에 따라 실시간으로 바뀝니다(제스처로 고정하지 않음 — M 도구 자체가 드래그가
+   *  아니라 클릭 한 번으로 끝나는 즉시 동작이라, "지금 이 순간 Alt를 누르고 있는가"를
+   *  그대로 보여줘야 사용자가 헷갈리지 않습니다). */
+  markerGhost: { c: number; r: number; mode: 'start' | 'goal' } | null
+  /** V(선택) 도구가 고른 대상의 윤곽 표시용 사각형(mm 중심 좌표 기준). editorStore의
+   *  selection이 바뀔 때마다(도구 조작뿐 아니라 인스펙터 등 React 쪽에서 바뀌어도)
+   *  다시 계산해야 하므로, 포인터 이벤트가 아니라 별도의 public 메서드
+   *  (syncSelectionOverlay)로 갱신합니다. */
+  selectionBox: { mx: number; my: number; wMm: number; hMm: number; rot: number } | null
 }
 
 /** 클릭인지 드래그인지 구분하는 기준(화면 CSS px). L 도구의 "단순 클릭 = 엣지 토글" 대
@@ -60,7 +72,15 @@ export interface OverlayState {
 const CLICK_THRESHOLD_PX = 3
 
 function emptyOverlay(): OverlayState {
-  return { hoverCell: null, stampGhost: null, freePropGhost: null, linePreview: null, fillRect: null }
+  return {
+    hoverCell: null,
+    stampGhost: null,
+    freePropGhost: null,
+    linePreview: null,
+    fillRect: null,
+    markerGhost: null,
+    selectionBox: null,
+  }
 }
 
 /**
@@ -114,6 +134,10 @@ export class ToolController {
    *  중인 제스처의 동작 자체는 gestureShift로 고정되지만, 아직 누르지도 않은 상태에서
    *  "지금 Shift를 누르면 자유 배치로 바뀐다"는 호버 고스트 미리보기는 이 값을 봅니다. */
   private isShiftDown = false
+  /** 가장 최근에 알고 있는 Alt 키 상태. M(마커) 도구의 호버 미리보기가 "지금 Alt를
+   *  누르면 도착점 모드로 바뀐다"를 실시간으로 보여주기 위해 isShiftDown과 같은
+   *  방식으로 둡니다(gestureAlt와 달리 클릭 시점에 고정하지 않고 계속 갱신). */
+  private isAltDown = false
   /** 스탬프·지우개 드래그 중 "직전에 칠한 칸" 인덱스. 같은 칸을 다시 지나가도 중복으로
    *  기록하지 않기 위한 값입니다(같은 칸에 already 같은 타일을 또 써봤자 낭비이고,
    *  나중에 "지나간 칸 개수"를 셀 일이 생기면 이 값이 없으면 셀 수도 없습니다). */
@@ -138,6 +162,14 @@ export class ToolController {
     private readonly getDoc: () => MapDoc | null,
     private readonly markDirty: (...names: LayerName[]) => void,
     private readonly requestRender: () => void,
+    /** T(텍스트) 도구가 라벨을 새로 만들거나 기존 라벨을 편집 대상으로 잡았을 때 호출됩니다.
+     *  실제 글자 입력창(<input>)은 이 클래스가 DOM을 모르므로 만들 수 없어(React 바깥의
+     *  평범한 클래스라는 점은 이 파일 맨 위 주석 참고), CanvasViewport.tsx에 "지금 몇 번
+     *  라벨을 편집해야 한다"는 신호만 콜백으로 넘깁니다. isNew가 true이면 이 클릭으로
+     *  방금 새로 만든 빈 라벨이라는 뜻이고(Esc로 취소하면 그 라벨을 통째로 지워야 함),
+     *  false이면 기존 라벨을 다시 편집하는 것입니다(Esc는 그냥 편집만 취소).
+     */
+    private readonly onRequestLabelEdit?: (index: number, isNew: boolean) => void,
   ) {}
 
   // ── 포인터 입력 ──────────────────────────────────────────────────────
@@ -149,6 +181,7 @@ export class ToolController {
     const sy = e.clientY - rect.top
     this.lastScreen = { x: sx, y: sy }
     this.isShiftDown = e.shiftKey
+    this.isAltDown = e.altKey
     const mapPt = this.viewport.screenToMap(sx, sy)
 
     // 우클릭 재사용(FR-3.3) — 지금 고른 도구와 무관하게 항상 동작합니다.
@@ -214,10 +247,26 @@ export class ToolController {
         this.pickTile(doc, mapPt)
         break
 
-      case 'select':
-        // 이번 단계는 프롭·라벨 등 선택할 대상이 아직 없어 항상 비웁니다.
-        // (인스펙터 §9.13 "선택 항목" 섹션을 만들 때 실제 선택 로직이 들어갈 자리)
-        useEditorStore.getState().setSelection(null)
+      case 'select': {
+        // hitTest는 문서를 바꾸지 않고 "무엇이 찍혔는지"만 읽으므로 스포이드와 마찬가지로
+        // 제스처(실행취소 대상)로 취급하지 않습니다. 실제 이동·크기 조절은 이번 단계
+        // 범위 밖입니다(인스펙터의 수치 입력으로만 바꿈).
+        const hit = hitTest(doc, mapPt.mx, mapPt.my)
+        useEditorStore.getState().setSelection(hit)
+        break
+      }
+
+      case 'text':
+        // T 도구도 그 자리에서 바로 끝나는 즉시 동작이라(우클릭 재사용·M 도구와 같은
+        // 성격) activeGesture를 쓰지 않고 pointerdown 안에서 바로 처리합니다.
+        this.placeOrEditLabel(doc, mapPt)
+        break
+
+      case 'marker':
+        // gestureAlt는 이 switch 앞에서 이미 e.altKey로 고정해뒀습니다(위 참고). M
+        // 도구는 드래그 개념이 없는 즉시 동작이라 이 값을 그대로 "지금 이 클릭이 도착
+        // 지정인지"로 씁니다.
+        this.placeMarker(doc, nearestNode(mapPt.mx, mapPt.my, doc.board.cols, doc.board.rows, doc.board.pitch), this.gestureAlt)
         break
 
       default:
@@ -235,6 +284,7 @@ export class ToolController {
     const sy = e.clientY - rect.top
     this.lastScreen = { x: sx, y: sy }
     this.isShiftDown = e.shiftKey
+    this.isAltDown = e.altKey
     if (!doc) return
     const mapPt = this.viewport.screenToMap(sx, sy)
 
@@ -380,6 +430,7 @@ export class ToolController {
     this.overlay.hoverCell = null
     this.overlay.stampGhost = null
     this.overlay.freePropGhost = null
+    this.overlay.markerGhost = null
     this.markDirty('overlay')
     this.requestRender()
   }
@@ -401,6 +452,17 @@ export class ToolController {
 
   handleKeyDown(e: KeyboardEvent): void {
     const key = e.key.toLowerCase()
+
+    // Delete/Backspace = 선택 항목 삭제. 도구와 무관하게(선택은 V 도구로 잡았더라도
+    // 그 뒤 다른 도구로 바꿨을 수 있음) editorStore의 selection이 있으면 항상 동작합니다.
+    if (key === 'delete' || key === 'backspace') {
+      if (useEditorStore.getState().selection) {
+        e.preventDefault() // Backspace의 브라우저 기본 동작(뒤로 가기)을 막음
+        this.deleteSelection()
+      }
+      return
+    }
+
     if (key !== 'r' && key !== 'f') return
 
     const { activeTool, stampTileId } = useEditorStore.getState()
@@ -429,11 +491,21 @@ export class ToolController {
     this.overlay.hoverCell = null
     this.overlay.stampGhost = null
     this.overlay.freePropGhost = null
+    this.overlay.markerGhost = null
     const doc = this.getDoc()
     if (!doc || !this.lastScreen) return
 
     const { activeTool, stampTileId, stampRot, stampFlip } = useEditorStore.getState()
     const mapPt = this.viewport.screenToMap(this.lastScreen.x, this.lastScreen.y)
+
+    // M(마커) 도구: 지금 가장 가까운 노드에 무엇이 찍힐지 미리 보여줍니다. Alt를 누르고
+    // 있는지는 매 프레임 새로 확인합니다(this.isAltDown) — 마우스는 그대로 두고 Alt만
+    // 눌렀다 떼도 미리보기가 즉시 출발/도착 모드를 오갑니다.
+    if (activeTool === 'marker') {
+      const node = nearestNode(mapPt.mx, mapPt.my, doc.board.cols, doc.board.rows, doc.board.pitch)
+      this.overlay.markerGhost = { c: node[0], r: node[1], mode: this.isAltDown ? 'goal' : 'start' }
+      return
+    }
 
     // FR-3.8: 지금 Shift를 누르고 있으면(this.isShiftDown) 격자 스냅 대신 커서를 그대로
     // 따라다니는 자유 배치 고스트를 보여줍니다. 격자 범위 밖이어도 자유 배치는 상관없어
@@ -688,6 +760,153 @@ export class ToolController {
     }
     this.markDirty('overlay')
     this.requestRender()
+  }
+
+  // ── 내부: T(텍스트)·M(마커)·V(선택 삭제) ──────────────────────────────
+
+  /** T 도구 클릭 처리. 이미 있는 라벨 위를 클릭했으면 그 라벨을 편집 대상으로 잡고,
+   *  그렇지 않으면 그 자리에 빈 라벨을 새로 만듭니다. 어느 쪽이든 실제 글자 입력은
+   *  CanvasViewport.tsx의 인라인 `<input>`이 담당하므로, 여기서는 selection을 잡고
+   *  onRequestLabelEdit로 "이제 입력창을 띄워라"라고 알리기만 합니다. */
+  private placeOrEditLabel(doc: MapDoc, mapPt: MapPoint): void {
+    const hit = hitTest(doc, mapPt.mx, mapPt.my)
+    if (hit && hit.kind === 'label') {
+      useEditorStore.getState().setSelection(hit)
+      this.onRequestLabelEdit?.(hit.index, false)
+      return
+    }
+
+    // 새 라벨 생성. 기본값은 PRD FR-4.1에 구체적인 수치가 없어 작업 지시가 정해준 값을
+    // 그대로 씁니다: 크기 8mm, 회전 0도, 선 위 흰 글씨 모드는 꺼짐(onLine=false), 글자색은
+    // 본문 글자색과 비슷한 진회색(#111827) — 종이가 흰색이라 검정에 가까운 색이 가장
+    // 무난하게 읽힙니다.
+    const newLabel: Label = { text: '', x: mapPt.mx, y: mapPt.my, rot: 0, size: 8, color: '#111827', onLine: false }
+    const nextLabels = [...doc.labels, newLabel]
+    useEditorStore.getState().commitDoc({ ...doc, labels: nextLabels })
+    const newIndex = nextLabels.length - 1
+    useEditorStore.getState().setSelection({ kind: 'label', index: newIndex })
+    this.onRequestLabelEdit?.(newIndex, true)
+  }
+
+  /** M 도구 클릭 처리. isGoalMode가 false면 출발 지정(같은 자리를 다시 클릭하면 방향
+   *  회전), true면 Alt+클릭 = 도착 지정/해제 토글입니다.
+   *
+   *  [출발·도착이 같은 노드에 공존할 수 없는 이유] 이 둘은 로봇이 "어디서 시작해서
+   *  어디로 가야 하는가"를 정의하는 값입니다. 한 노드가 출발이면서 동시에 도착이면
+   *  "도착하자마자 다시 출발"이라는 의미가 되어 도달 판정(§검증)이 정의되지 않습니다.
+   *  그래서 한쪽을 새로 지정하는 순간 그 자리에 있던 반대쪽은 지웁니다. */
+  private placeMarker(doc: MapDoc, node: NodeCoord, isGoalMode: boolean): void {
+    if (!isGoalMode) {
+      const start = doc.markers.start
+      let nextStart: StartMarker
+      if (start && start.cell[0] === node[0] && start.cell[1] === node[1]) {
+        // 같은 자리를 다시 클릭 — 흔히 "방향이 삐딱하게 잡혔을 때 다시 눌러서 맞추는"
+        // 조작이라 N→E→S→W 순으로 한 칸 돌립니다.
+        const order: Direction[] = ['N', 'E', 'S', 'W']
+        nextStart = { cell: node, heading: order[(order.indexOf(start.heading) + 1) % order.length] }
+      } else {
+        // 새 자리에 출발 지정. 기본 방향은 PRD 미규정 — 로봇 그림이 흔히 위(북)를
+        // 바라보는 모습으로 그려지는 관례를 따라 'N'으로 임의로 정함.
+        nextStart = { cell: node, heading: 'N' }
+      }
+      const nextGoals = doc.markers.goals.filter((g) => !(g.cell[0] === node[0] && g.cell[1] === node[1]))
+      useEditorStore.getState().commitDoc({ ...doc, markers: { start: nextStart, goals: nextGoals } })
+      return
+    }
+
+    // Alt+클릭 = 도착점 토글.
+    const existingIndex = doc.markers.goals.findIndex((g) => g.cell[0] === node[0] && g.cell[1] === node[1])
+    let nextGoals: GoalMarker[]
+    if (existingIndex >= 0) {
+      nextGoals = doc.markers.goals.filter((_, i) => i !== existingIndex)
+    } else {
+      nextGoals = [...doc.markers.goals, { cell: node, name: '' }]
+    }
+    // 이름은 항상 자동으로 다시 매깁니다: 도착점이 1개면 "도착", 여러 개면 순서대로
+    // "도착1","도착2"... — 인스펙터에 이름을 직접 고치는 UI가 아직 없어(§9.13은 다음
+    // 단계) 지금은 매번 다시 매겨도 잃어버릴 사용자 입력이 없습니다. 나중에 수동 이름
+    // 편집이 생기면 "사용자가 고친 이름은 그대로 두고 새로 생긴 것만 번호를 매긴다"는
+    // 식으로 이 로직을 다시 설계해야 합니다(PRD 미규정 — 임의로 정한 임시 규칙).
+    nextGoals = nextGoals.map((g, i) => ({ ...g, name: nextGoals.length === 1 ? '도착' : `도착${i + 1}` }))
+
+    let nextStart = doc.markers.start
+    if (existingIndex < 0 && nextStart && nextStart.cell[0] === node[0] && nextStart.cell[1] === node[1]) {
+      // 새로 추가하는 경우에만 그 자리의 출발점을 지웁니다. 토글로 "지우는" 경우는 그
+      // 자리에 이미 도착점이 있었다는 뜻이라, 위 불변식에 의해 출발점은 애초에 없습니다.
+      nextStart = null
+    }
+    useEditorStore.getState().commitDoc({ ...doc, markers: { start: nextStart, goals: nextGoals } })
+  }
+
+  /** V 도구로 고른 항목을 Delete/Backspace로 지웁니다. cell은 배열 삭제가 아니라 그
+   *  자리를 null로 되돌리고, prop·label은 배열에서 실제로 잘라냅니다(splice). 어느
+   *  쪽이든 삭제 뒤에는 반드시 selection을 null로 되돌립니다 — editorStore.ts의
+   *  Selection 타입 주석에 적은 "인덱스가 밀리는" 문제를 이 함수 하나가 다 만들어낼 수
+   *  있기 때문입니다(특히 prop·label처럼 실제로 배열 길이가 줄어드는 경우). */
+  private deleteSelection(): void {
+    const doc = this.getDoc()
+    const { selection } = useEditorStore.getState()
+    if (!doc || !selection) return
+
+    let next: MapDoc
+    if (selection.kind === 'cell') {
+      const nextCells = doc.cells.slice()
+      nextCells[selection.index] = null
+      next = { ...doc, cells: nextCells }
+    } else if (selection.kind === 'prop') {
+      const nextProps = doc.props.slice()
+      nextProps.splice(selection.index, 1)
+      next = { ...doc, props: nextProps }
+    } else if (selection.kind === 'label') {
+      const nextLabels = doc.labels.slice()
+      nextLabels.splice(selection.index, 1)
+      next = { ...doc, labels: nextLabels }
+    } else {
+      return // stroke: 곡선 도구가 아직 없어 이 kind로 선택될 일이 없음
+    }
+
+    useEditorStore.getState().commitDoc(next)
+    useEditorStore.getState().setSelection(null)
+  }
+
+  /**
+   * editorStore의 selection을 읽어 overlay.selectionBox를 다시 계산합니다. V 도구의
+   * pointerdown뿐 아니라, 나중에 인스펙터에서 항목을 클릭해 selection이 바뀌는 경우처럼
+   * "포인터 이벤트가 아예 없는" 경로도 있을 수 있어 이 클래스 안의 사설(private) 로직이
+   * 아니라 CanvasViewport.tsx가 selection 값을 구독했다가 바뀔 때마다 불러주는 public
+   * 메서드로 뺐습니다.
+   */
+  syncSelectionOverlay(): void {
+    const doc = this.getDoc()
+    const { selection } = useEditorStore.getState()
+    this.overlay.selectionBox = doc && selection ? this.computeSelectionBoxFor(doc, selection) : null
+    this.markDirty('overlay')
+    this.requestRender()
+  }
+
+  private computeSelectionBoxFor(doc: MapDoc, selection: Selection): OverlayState['selectionBox'] {
+    if (!selection) return null
+    if (selection.kind === 'cell') {
+      const { cols, pitch } = doc.board
+      const c = selection.index % cols
+      const r = Math.floor(selection.index / cols)
+      const center = nodeCenterMm(c, r, pitch)
+      return { mx: center.mx, my: center.my, wMm: pitch, hMm: pitch, rot: 0 }
+    }
+    if (selection.kind === 'prop') {
+      const prop = doc.props[selection.index]
+      if (!prop) return null
+      return { mx: prop.x + prop.w / 2, my: prop.y + prop.h / 2, wMm: prop.w, hMm: prop.h, rot: prop.rot }
+    }
+    if (selection.kind === 'label') {
+      const label = doc.labels[selection.index]
+      if (!label) return null
+      // hitTest.ts와 반드시 같은 측정 함수를 씁니다 — 그래야 "클릭해서 잡히는 범위"와
+      // "화면에 그려지는 선택 사각형"이 어긋나지 않습니다.
+      const { wMm, hMm } = measureLabelBoxMmCached(label)
+      return { mx: label.x, my: label.y, wMm, hMm, rot: label.rot }
+    }
+    return null // stroke: 곡선 도구가 아직 없어 이 kind로 선택될 일이 없음
   }
 
   private resetGestureState(): void {

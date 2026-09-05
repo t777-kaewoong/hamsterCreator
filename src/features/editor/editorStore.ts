@@ -44,14 +44,26 @@ export type SaveState = 'saved' | 'saving' | 'unsaved'
  */
 export const MAX_UNDO_STACK = 50
 
-/** V(선택) 도구가 지금 고른 대상 하나를 가리킵니다. 이번 단계(M1-4)는 프롭·라벨·곡선을
- *  실제로 만드는 도구가 아직 없어서 selection은 항상 null이고, 이 타입은 나중에 인스펙터
- *  "선택 항목" 섹션(§9.13: 타일/프롭/라벨/곡선)을 만들 때 채워 넣을 자리만 미리 잡아둔
- *  것입니다(작업 지시: "이번 단계에서는 코드 구조만 잡아두세요"). */
+/** V(선택) 도구가 지금 고른 대상 하나를 가리킵니다(M1-5a: 인스펙터 "선택 항목" 섹션·
+ *  §9.13이 실제로 쓸 모델을 여기서 확정합니다).
+ *
+ *  [id가 아니라 index를 쓰는 이유] types.ts의 데이터 모델을 보면 Prop과 Label에는 원래
+ *  id 필드가 없습니다(PRD §5 스키마에 없음) — 둘 다 그냥 배열(doc.props, doc.labels)의
+ *  항목일 뿐입니다. 그래서 "몇 번째 항목인지"를 가리키는 배열 인덱스로 선택을 표현합니다.
+ *  반면 Stroke는 types.ts에 처음부터 고유 id 필드가 있어서(정점 편집·실행취소에서 어떤
+ *  곡선인지 구분해야 하므로) 그 id를 그대로 씁니다.
+ *
+ *  ⚠ 주의: 배열에서 항목을 지우면(splice) 그 뒤에 있던 항목들의 인덱스가 하나씩 앞으로
+ *  당겨집니다. 예를 들어 props[2]를 지우면 지우기 전의 props[3]이 이제 props[2]가 되어,
+ *  기존에 "prop; index=3"을 가리키던 selection은 삭제와 무관한 엉뚱한 항목을 가리키게
+ *  됩니다. 그래서 cell/prop/label 항목을 삭제하는 코드는 삭제 직후 반드시 selection을
+ *  null로 되돌려야 합니다(이 파일의 다른 곳에서 인덱스를 계속 들고 있다가 재사용하는
+ *  일이 없도록). cell은 배열 삭제가 아니라 그 자리를 null로 바꾸는 것뿐이라 인덱스가
+ *  안 밀리지만, 일관성을 위해 cell 선택도 삭제 후에는 마찬가지로 null로 되돌립니다. */
 export type Selection =
   | { kind: 'cell'; index: number }
-  | { kind: 'prop'; id: string }
-  | { kind: 'label'; id: string }
+  | { kind: 'prop'; index: number }
+  | { kind: 'label'; index: number }
   | { kind: 'stroke'; id: string }
   | null
 
@@ -101,6 +113,33 @@ interface EditorState {
   setTool: (id: ToolId) => void
   setDoc: (doc: MapDoc | null) => void
   setSaveState: (saveState: SaveState) => void
+  /**
+   * 인스펙터·T/M 도구처럼 "한 번의 편집을 실행취소 1단계로 만들고 싶은" 곳에서 쓰는
+   * 공용 통로입니다. 지금 doc을 깊은 복사해 실행취소 스택에 넣고 → doc을 next로 교체
+   * → 저장 상태를 '미저장'으로 → 초안 자동 저장까지 한 번에 처리합니다.
+   *
+   * [toolInteractions.ts의 commitDocChange와 다른 점] 그쪽은 "제스처"(드래그로 셀 여러
+   * 개를 칠하는 것처럼 여러 번의 작은 변경을 실행취소 1단계로 묶는 것) 전용이라 스냅샷을
+   * pointerdown에서 미리 떠두고 pointerup에서만 실행취소 스택에 넣습니다. 반면 이
+   * commitDoc은 라벨 하나 새로 만들기·마커 지정하기·인스펙터에서 값 하나 고치기처럼
+   * "그 자리에서 바로 끝나는 단발 편집"용이라, 호출 즉시 스냅샷을 넣고 doc을 바꿉니다.
+   * 제스처 방식과 섞어 쓰면 실행취소 단계가 꼬이므로 단발 편집에는 항상 이쪽을 쓰세요.
+   */
+  commitDoc: (next: MapDoc) => void
+
+  /**
+   * 방금 쌓은 실행취소 스냅샷 하나를 도로 버립니다.
+   *
+   * [언제 쓰는가] T 도구로 라벨을 만들면 그 순간 commitDoc이 실행취소 한 단계를
+   * 쌓습니다. 그런데 사용자가 글자를 하나도 안 치고 확정해 버리면 그 라벨은 지워지고,
+   * 결국 문서는 라벨을 만들기 전과 똑같아집니다. 이때 스냅샷을 그대로 두면 Ctrl+Z를
+   * 눌러도 아무 변화가 없는 "헛도는 실행취소" 한 칸이 남습니다. 그래서 되돌릴 것이
+   * 없어진 스냅샷은 이 함수로 걷어냅니다.
+   *
+   * ⚠ 남용 금지: "방금 내가 쌓은 스냅샷이 스택 맨 위에 그대로 있다"가 확실할 때만
+   * 부르세요. 그 사이에 다른 편집이 끼어들었다면 남의 실행취소를 지우게 됩니다.
+   */
+  dropLastUndoSnapshot: () => void
 
   /** 제스처 시작 시점의 스냅샷을 실행취소 스택에 넣습니다(MAX_UNDO_STACK 넘으면 가장
    *  오래된 것부터 버림). 재실행 스택은 항상 함께 비웁니다. toolInteractions.ts 전용 —
@@ -157,6 +196,20 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
   setTool: (id) => set({ activeTool: id }),
   setDoc: (doc) => set({ doc }),
   setSaveState: (saveState) => set({ saveState }),
+
+  commitDoc: (next) => {
+    const state = get()
+    if (!state.doc) return // 열린 맵이 없으면 커밋할 대상이 없음
+    const snapshot = structuredClone(state.doc)
+    set((s) => {
+      const stack = [...s.undoStack, snapshot]
+      if (stack.length > MAX_UNDO_STACK) stack.shift()
+      return { undoStack: stack, redoStack: [], doc: next, saveState: 'unsaved' }
+    })
+    saveDraft(next)
+  },
+
+  dropLastUndoSnapshot: () => set((state) => ({ undoStack: state.undoStack.slice(0, -1) })),
 
   pushUndoSnapshot: (snapshot) =>
     set((state) => {

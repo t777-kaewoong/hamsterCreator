@@ -18,10 +18,19 @@ import { Tooltip } from '@/components'
 import { useEditorStore } from '@/features/editor/editorStore'
 import type { ToolId } from '@/features/editor/editorStore'
 import type { MapDoc } from '@/lib/model/types'
+import { saveDraft } from '@/lib/storage/draft'
 import { REFERENCE_PX_PER_MM, Viewport, ZOOM_WHEEL_STEP } from './viewport'
 import { LayeredRenderer } from './renderer'
 import type { LayerName } from './renderer'
-import { drawArtLayer, drawGridLayer, drawPaperLayer, drawPropsLayer, mapSizeMm } from './drawBoard'
+import {
+  drawArtLayer,
+  drawGridLayer,
+  drawLabelsLayer,
+  drawMarkersLayer,
+  drawPaperLayer,
+  drawPropsLayer,
+  mapSizeMm,
+} from './drawBoard'
 import { drawOverlayLayer } from './drawOverlay'
 import { ToolController } from './toolInteractions'
 import { drawHorizontalRuler, drawVerticalRuler } from './ruler'
@@ -78,6 +87,7 @@ function sizeCanvasForDpr(canvas: HTMLCanvasElement, cssWidth: number, cssHeight
 export default function CanvasViewport() {
   const doc = useEditorStore((s) => s.doc)
   const activeTool = useEditorStore((s) => s.activeTool)
+  const selection = useEditorStore((s) => s.selection)
 
   const bodyWrapRef = useRef<HTMLDivElement>(null)
   const bodyCanvasRef = useRef<HTMLCanvasElement>(null)
@@ -107,6 +117,40 @@ export default function CanvasViewport() {
   const [zoomPercent, setZoomPercent] = useState(100)
   const [minimapVisible, setMinimapVisible] = useState(false)
   const [minimapSize, setMinimapSize] = useState<PixelSize>({ width: MINIMAP_WIDTH_PX, height: MINIMAP_WIDTH_PX })
+
+  // ── T(텍스트) 도구 인라인 라벨 편집 ─────────────────────────────────────
+  // isNew=true면 이 입력창이 방금 T 도구 클릭으로 새로 만든 빈 라벨을 채우는 중이라는
+  // 뜻입니다(Esc 취소 시 라벨 자체를 지워야 함). ToolController는 DOM을 모르는 평범한
+  // 클래스라 실제 <input>은 만들 수 없어서(파일 맨 위 주석 참고), onRequestLabelEdit
+  // 콜백으로 "몇 번 라벨을 편집해야 하는지"만 여기로 넘겨받습니다.
+  const [editingLabel, setEditingLabel] = useState<{ index: number; isNew: boolean } | null>(null)
+  const labelInputRef = useRef<HTMLInputElement>(null)
+  // Enter(확정)와 그로 인한 input unmount가 유발하는 blur(확정)가 거의 동시에 발생해
+  // commitLabelEdit이 두 번 불릴 수 있습니다(첫 호출로 setEditingLabel(null)을 걸어도
+  // 같은 렌더의 클로저가 이미 붙잡고 있는 값은 그대로라 두 번째 호출도 "아직 안 끝난
+  // 편집"으로 보입니다). 그래서 "이번 편집은 이미 처리했다"를 따로 표시해 두 번째
+  // 호출을 무시합니다 — 그렇지 않으면 같은 텍스트 변경이 실행취소 스택에 두 번 쌓입니다.
+  const labelEditHandledRef = useRef(false)
+  // 입력창이 떠 있는 동안 팬·줌을 하면 입력창이 라벨을 따라가야 합니다. 그런데 팬은
+  // React state를 전혀 건드리지 않아(위 zoomPercent 주석 참고) 리렌더가 안 일어나고,
+  // 입력창은 처음 계산된 화면 좌표에 그대로 붙박여 라벨과 어긋나 버립니다. 그래서
+  // "편집 중일 때만" 화면이 움직일 때마다 이 숫자를 1 올려 억지로 리렌더를 일으켜
+  // 입력창 위치를 다시 계산하게 합니다. 편집 중이 아닐 때는 전혀 오르지 않으므로
+  // 평소 팬 성능에는 영향이 없습니다.
+  const [labelInputTick, setLabelInputTick] = useState(0)
+  // scheduleAll(마운트 effect 안의 클로저)에서 editingLabel의 최신값을 봐야 하는데,
+  // state를 직접 읽으면 마운트 시점의 낡은 값(null)에 붙잡힙니다. ref로 거울을 둡니다.
+  const editingLabelRef = useRef<{ index: number; isNew: boolean } | null>(null)
+
+  // ── V(선택) 오버레이 동기화 ──────────────────────────────────────────
+  // selection은 지금 이 컴포넌트가 아니라 editorStore에 있고, V 도구의 포인터 클릭뿐
+  // 아니라 나중에 인스펙터(§9.13)처럼 캔버스 바깥의 React 쪽 조작으로도 바뀔 수
+  // 있습니다. 그래서 "누가 바꿨든" selection 값 자체를 구독했다가 바뀔 때마다
+  // ToolController에게 overlay.selectionBox를 다시 계산하라고 시킵니다.
+  useEffect(() => {
+    toolControllerRef.current?.syncSelectionOverlay()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selection])
 
   // doc은 React state라 값이 바뀔 때마다 다시 렌더되므로, 항상 최신 값을 docRef에 반영해두고
   // 격자·아트 레이어를 다시 그리게 합니다(문서가 아예 없다가 생기는 최초 순간 포함,
@@ -153,12 +197,17 @@ export default function CanvasViewport() {
       if (name === 'paper') drawPaperLayer(ctx, viewportRef.current, currentDoc, tokens)
       else if (name === 'art') drawArtLayer(ctx, viewportRef.current, currentDoc)
       else if (name === 'grid') drawGridLayer(ctx, viewportRef.current, currentDoc, tokens)
-      else if (name === 'props') drawPropsLayer(ctx, viewportRef.current, currentDoc)
-      else if (name === 'overlay') {
+      else if (name === 'props') {
+        // props → labels → markers를 한 레이어 안에서 순서대로 이어 그립니다(§5 고정
+        // 렌더 순서). 셋 다 "자유 배치 오브젝트"라는 성격이 같아 항상 같이 dirty해지므로
+        // 레이어를 늘려서 얻는 실익이 없습니다(drawBoard.ts의 drawLabelsLayer 주석 참고).
+        drawPropsLayer(ctx, viewportRef.current, currentDoc)
+        drawLabelsLayer(ctx, viewportRef.current, currentDoc, tokens)
+        drawMarkersLayer(ctx, viewportRef.current, currentDoc)
+      } else if (name === 'overlay') {
         const overlay = toolControllerRef.current?.overlay
         if (overlay) drawOverlayLayer(ctx, viewportRef.current, currentDoc, tokens, overlay)
       }
-      // 라벨은 이 단계에도 아직 놓는 도구가 없어 계속 빈 채로 둡니다.
     }
 
     // 도구 컨트롤러: 포인터/키보드 입력을 실제 도구 동작(타일 찍기, 격자선 긋기 등)으로
@@ -177,6 +226,10 @@ export default function CanvasViewport() {
       () => useEditorStore.getState().doc,
       (...names) => renderer.markDirty(...names),
       () => renderer.requestRender(drawMainLayer),
+      (index, isNew) => {
+        labelEditHandledRef.current = false
+        setEditingLabel({ index, isNew })
+      },
     )
     toolControllerRef.current = toolController
 
@@ -212,6 +265,9 @@ export default function CanvasViewport() {
     let rulerRafPending = false
     function scheduleAll() {
       renderer.requestRender(drawMainLayer)
+      // 라벨 인라인 입력창이 떠 있는 동안에만 리렌더를 걸어 입력창을 라벨 위에 다시
+      // 붙입니다(labelInputTick 선언부 주석 참고).
+      if (editingLabelRef.current !== null) setLabelInputTick((n) => n + 1)
       if (rulerRafPending) return
       rulerRafPending = true
       requestAnimationFrame(() => {
@@ -458,6 +514,96 @@ export default function CanvasViewport() {
     engineRef.current?.scheduleAll()
     toolControllerRef.current?.refreshOverlayForViewportChange()
   }
+  // ── T 도구 인라인 라벨 편집: 입력창이 뜨면 바로 포커스 + 전체 선택 ──────────────────
+  useEffect(() => {
+    editingLabelRef.current = editingLabel
+    if (editingLabel === null) return
+    const el = labelInputRef.current
+    if (!el) return
+    el.focus()
+    el.select()
+  }, [editingLabel])
+
+  /**
+   * 라벨 편집을 끝냅니다. cancel=false면 입력창의 값을 doc에 반영(확정)하고,
+   * cancel=true면 Esc로 취소한 것이라 값을 버립니다(새로 만든 빈 라벨이었다면 통째로 삭제).
+   *
+   * [스냅샷 없이 doc만 갱신하는 경우가 있는 이유] T 도구가 라벨을 처음 만들 때 이미
+   * commitDoc으로 실행취소 한 단계를 쌓아뒀습니다(ToolController.placeOrEditLabel).
+   * 그 위에서 "빈 텍스트 → 사용자가 친 텍스트"를 또 commitDoc으로 쌓으면, 사용자
+   * 입장에서는 라벨 하나를 만들었을 뿐인데 Ctrl+Z를 두 번 눌러야 사라지는 것처럼
+   * 느껴집니다. 그래서 "방금 만든 라벨의 첫 텍스트 채우기"만 setDoc으로 조용히
+   * 반영하고, 이미 있던 라벨을 다시 고치는 경우(isNew=false)에는 평소처럼 정상적으로
+   * commitDoc을 씁니다.
+   */
+  function commitLabelEdit(cancel: boolean) {
+    // Enter 확정이 입력창을 없애면서 유발하는 blur도 확정을 한 번 더 시도합니다.
+    // 같은 편집을 두 번 처리하면(특히 isNew=false일 때) 실행취소 스택에 똑같은 변경이
+    // 중복으로 쌓이므로, 이번 편집을 이미 처리했으면 두 번째 호출은 무시합니다.
+    if (labelEditHandledRef.current) return
+    labelEditHandledRef.current = true
+
+    const current = editingLabel
+    const inputEl = labelInputRef.current
+    setEditingLabel(null)
+    if (current === null) return
+    // toolInteractions.ts의 ToolController 생성자 주석과 같은 이유로 docRef가 아니라
+    // 항상 최신 값을 돌려주는 store.getState().doc을 읽습니다 — 이 함수는 키보드/blur
+    // 이벤트 핸들러라 React 리렌더 타이밍과 무관하게 "지금 이 순간의 진짜 doc"이 필요합니다.
+    const currentDoc = useEditorStore.getState().doc
+    if (!currentDoc) return
+    const label = currentDoc.labels[current.index]
+    if (!label) return
+
+    if (cancel) {
+      if (current.isNew) {
+        const nextLabels = currentDoc.labels.slice()
+        nextLabels.splice(current.index, 1)
+        useEditorStore.getState().setDoc({ ...currentDoc, labels: nextLabels })
+        useEditorStore.getState().setSelection(null)
+      }
+      // isNew가 아니면(기존 라벨을 고치던 중이었으면) 아무것도 안 바꾸고 그냥 편집만 닫습니다.
+      return
+    }
+
+    const nextText = (inputEl?.value ?? label.text).trim()
+    const nextLabels = currentDoc.labels.slice()
+
+    // [빈 글자로 확정하면 라벨을 지웁니다]
+    // 글자가 없는 라벨은 화면에도 인쇄물에도 아무것도 안 보입니다. 그런데 문서
+    // (.hsmap.json)에는 좌표만 가진 유령 항목으로 남아, 나중에 V 도구로 아무것도 없는
+    // 자리를 클릭했는데 뭔가 선택되는 등 사용자가 설명할 수 없는 일이 생깁니다.
+    // T 도구로 잘못 클릭하고 Esc 대신 그냥 다른 곳을 눌러 빠져나오는 건 아주 흔한
+    // 조작이므로, 그 경우를 취소와 똑같이 처리합니다.
+    if (nextText === '') {
+      nextLabels.splice(current.index, 1)
+      const cleaned: MapDoc = { ...currentDoc, labels: nextLabels }
+      useEditorStore.getState().setSelection(null)
+      if (current.isNew) {
+        // 방금 만든 라벨이 그대로 사라졌으니 문서는 만들기 전과 똑같습니다.
+        // 라벨을 만들 때 쌓아둔 실행취소 한 칸은 되돌릴 게 없는 빈 칸이라 걷어냅니다.
+        useEditorStore.getState().setDoc(cleaned)
+        useEditorStore.getState().dropLastUndoSnapshot()
+        saveDraft(cleaned)
+      } else {
+        // 원래 글자가 있던 라벨을 비운 것이므로 이건 진짜 삭제입니다 — 되돌릴 수 있어야 합니다.
+        useEditorStore.getState().commitDoc(cleaned)
+      }
+      return
+    }
+
+    nextLabels[current.index] = { ...label, text: nextText }
+    const next: MapDoc = { ...currentDoc, labels: nextLabels }
+
+    if (current.isNew) {
+      useEditorStore.getState().setDoc(next)
+      if (useEditorStore.getState().saveState !== 'unsaved') useEditorStore.getState().setSaveState('unsaved')
+      saveDraft(next)
+    } else {
+      useEditorStore.getState().commitDoc(next)
+    }
+  }
+
   function handleFit() {
     const currentDoc = docRef.current
     if (!currentDoc) return
@@ -478,6 +624,35 @@ export default function CanvasViewport() {
 
       <div ref={bodyWrapRef} className={styles.body}>
         <canvas ref={bodyCanvasRef} className={styles.bodyCanvas} />
+
+        {editingLabel && doc?.labels[editingLabel.index] && (
+          (() => {
+            const label = doc.labels[editingLabel.index]
+            const screenPos = viewportRef.current.mapToScreen(label.x, label.y)
+            return (
+              <input
+                key={editingLabel.index}
+                ref={labelInputRef}
+                className={styles.labelInput}
+                // labelInputTick 자체는 화면에 쓰이지 않지만, 이 값이 바뀌어야 위 style의
+                // 화면 좌표가 다시 계산됩니다(선언부 주석 참고). 속성으로 한 번 읽어 둡니다.
+                data-viewport-tick={labelInputTick}
+                style={{ left: screenPos.x, top: screenPos.y }}
+                defaultValue={label.text}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    commitLabelEdit(false)
+                  } else if (e.key === 'Escape') {
+                    e.preventDefault()
+                    commitLabelEdit(true)
+                  }
+                }}
+                onBlur={() => commitLabelEdit(false)}
+              />
+            )
+          })()
+        )}
 
         {minimapVisible && doc && (
           <div

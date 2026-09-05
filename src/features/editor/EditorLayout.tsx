@@ -7,6 +7,12 @@
 //
 // 팔레트·인스펙터는 이번 단계에서도 아직 내용이 없는 빈 자리라 안내만 표시합니다.
 // 캔버스 자리는 이번 단계(M1-2, §9.12)부터 CanvasViewport가 실제로 채웁니다.
+//
+// [onBack(M1-5c)] 시작 화면 ↔ 편집기 전환은 App.tsx의 로컬 useState가 관리합니다
+// (editorStore에는 손대지 않기로 했습니다 — 다른 작업자가 그 파일을 동시에 고치는 중).
+// 이 컴포넌트는 그 상태를 모르고, App.tsx가 내려준 onBack을 그대로 TopBar까지
+// 한 단계 전달만 합니다. 실제로 "저장 안 된 변경이 있으면 확인 모달부터" 로직은
+// TopBar.tsx가 담당합니다(뒤로가기 버튼이 있는 자리라 그쪽이 자연스럽습니다).
 import { useEffect, useState } from 'react'
 import { PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, TriangleAlert } from 'lucide-react'
 import { Button, Tooltip } from '@/components'
@@ -21,7 +27,12 @@ const AUTO_COLLAPSE_INSPECTOR_WIDTH = 1180
 /** 이 폭 미만이면 "화면이 좁습니다" 안내 배너를 띄웁니다. 기능은 막지 않습니다(PRD §9.2). */
 const MIN_SUPPORTED_WIDTH = 1024
 
-export default function EditorLayout() {
+export interface EditorLayoutProps {
+  /** 상단바 뒤로가기(ChevronLeft)가 최종 승인됐을 때 호출됩니다. App.tsx가 내려줍니다. */
+  onBack: () => void
+}
+
+export default function EditorLayout({ onBack }: EditorLayoutProps) {
   const [paletteCollapsed, setPaletteCollapsed] = useState(false)
   // 처음 그릴 때부터 좁은 창이면 바로 접힌 채로 시작합니다(뒤늦게 접히며 깜빡이지 않도록).
   const [inspectorCollapsed, setInspectorCollapsed] = useState(
@@ -55,7 +66,7 @@ export default function EditorLayout() {
 
       <div className={styles.layout}>
         <div className={styles.topbarArea}>
-          <TopBar />
+          <TopBar onBack={onBack} />
         </div>
 
         <div className={styles.railArea}>

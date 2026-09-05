@@ -1,0 +1,166 @@
+/*
+  StartScreen.module.css — PRD §9.8 시작 화면 규격.
+
+  치수는 전부 PRD가 px로 못 박아둔 값이라 임의로 바꾸지 마세요:
+  콘텐츠 최대 폭 960px · 상단 여백 64px · 프리셋 그리드 4열/간격16px/카드높이176px ·
+  썸네일 112px · 카드 하단 정보영역 64px · 드롭존 높이 96px · 드롭존 위 간격 24px.
+*/
+
+.root {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--c-bg);
+}
+
+/* ── 초안 복구 배너 (§9.16) ─────────────────────────────────────────── */
+.draftBanner {
+  flex-shrink: 0;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-6);
+  padding: 0 var(--sp-6);
+  background: var(--c-warn-soft);
+  border-bottom: 1px solid var(--c-border);
+}
+.draftActions {
+  display: flex;
+  gap: var(--sp-2);
+  flex-shrink: 0;
+}
+
+/* ── 콘텐츠 영역: 상단 중앙 정렬, 최대 폭 960px ─────────────────────── */
+.content {
+  width: 100%;
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 64px var(--sp-6) var(--sp-12);
+}
+
+.title {
+  text-align: center;
+  color: var(--c-text);
+}
+
+/* 부제는 body 크기 + 보조 글자색 한 줄. PRD: "두 줄을 넘기지 않습니다" — 그래서 설명
+   문단을 붙이지 않고 딱 한 문장만 씁니다(StartScreen.tsx). */
+.subtitle {
+  margin-top: var(--sp-2);
+  text-align: center;
+  color: var(--c-text-2);
+}
+
+/* ── 프리셋 카드 그리드 ─────────────────────────────────────────────── */
+.presetGrid {
+  margin-top: var(--sp-8);
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--sp-4);
+}
+
+.presetCard {
+  display: flex;
+  flex-direction: column;
+  height: 176px;
+  padding: 0;
+  overflow: hidden;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-lg);
+  cursor: pointer;
+  text-align: left;
+  transition:
+    border-color var(--t-fast),
+    transform var(--t-fast),
+    box-shadow var(--t-fast);
+}
+.presetCard:hover {
+  border-color: var(--c-primary);
+  transform: translateY(-2px);
+  box-shadow: var(--e2);
+}
+
+/* 썸네일 영역: 캔버스 배경색(종이보다 어둡게 해서 종이를 띄우는 것과 같은 원리,
+   tokens.css의 --c-canvas-bg 설명 참고) 위에 실제로 렌더한 맵 이미지를 contain으로. */
+.presetThumb {
+  flex-shrink: 0;
+  height: 112px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--c-canvas-bg);
+  padding: var(--sp-2);
+}
+
+.presetThumbImg {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  /* PRD: "아트보드에 --e1 그림자를 줍니다" — 이미지 자체가 아트보드(종이)를 그대로 담고
+     있으므로, 이미지 태그에 바로 그림자를 얹으면 종이 모양 그대로 그림자가 집니다. */
+  box-shadow: var(--e1);
+}
+
+.presetInfo {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--sp-1);
+  padding: 0 var(--sp-3);
+}
+
+.presetName {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  color: var(--c-text);
+}
+
+/* "A4 기본" 카드에만 붙는 ★기본 표시. 작은 알약 칩으로 — PRD가 정확한 모양을 정해주지
+   않아 다른 칩들과 통일감 있게 primary-soft 배경의 작은 칩으로 임의 결정했습니다. */
+.defaultBadge {
+  padding: 1px 6px;
+  border-radius: var(--r-pill);
+  background: var(--c-primary-soft);
+  color: var(--c-primary);
+  white-space: nowrap;
+}
+
+.presetSpec {
+  color: var(--c-text-3);
+}
+
+/* ── 파일 열기 드롭존 ───────────────────────────────────────────────── */
+.dropzone {
+  margin-top: var(--sp-6);
+  width: 100%;
+  height: 96px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  background: var(--c-surface-2);
+  border: 2px dashed var(--c-border-strong);
+  border-radius: var(--r-lg);
+  color: var(--c-text-2);
+  cursor: pointer;
+  transition:
+    border-color var(--t-fast),
+    background-color var(--t-fast);
+}
+.dropzone:hover {
+  border-color: var(--c-border-strong);
+  background: var(--c-surface-3);
+}
+.dropzoneActive {
+  border-color: var(--c-primary);
+  background: var(--c-primary-soft);
+}
+
+.hiddenFileInput {
+  display: none;
+}
