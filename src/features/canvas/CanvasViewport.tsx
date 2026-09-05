@@ -30,6 +30,7 @@ import {
   drawPaperLayer,
   drawPropsLayer,
   mapSizeMm,
+  nodeCenterMm,
 } from './drawBoard'
 import { drawOverlayLayer } from './drawOverlay'
 import { ToolController } from './toolInteractions'
@@ -44,6 +45,12 @@ import styles from './CanvasViewport.module.css'
 const RULER_THICKNESS_PX = 24
 /** 미니맵 고정 폭(px). 높이는 맵 종횡비에 맞춰 계산합니다(PRD §9.12: "폭 160px"). */
 const MINIMAP_WIDTH_PX = 160
+
+/** 검증 항목 클릭 강조(§9.13: "0.6초간 깜빡입니다")의 총 지속 시간과 켬/끔 간격.
+ *  600ms ÷ 100ms = 6단계(켬-끔-켬-끔-켬-끔)라 눈에 또렷하게 두세 번 반짝이는 정도로
+ *  보입니다. <canvas>에는 CSS 애니메이션을 못 써서 이렇게 고정 간격 타이머로 토글합니다. */
+const FOCUS_BLINK_TOTAL_MS = 600
+const FOCUS_BLINK_STEP_MS = 100
 
 /** 지금 포커스가 글자 입력 요소에 있는지. 이럴 때는 Space나 도구 단축키를 눌러도
  *  팬/도구 전환으로 새지 않아야 합니다(예: 파일명 입력 중 스페이스는 그냥 띄어쓰기). */
@@ -88,6 +95,7 @@ export default function CanvasViewport() {
   const doc = useEditorStore((s) => s.doc)
   const activeTool = useEditorStore((s) => s.activeTool)
   const selection = useEditorStore((s) => s.selection)
+  const focusRequest = useEditorStore((s) => s.focusRequest)
 
   const bodyWrapRef = useRef<HTMLDivElement>(null)
   const bodyCanvasRef = useRef<HTMLCanvasElement>(null)
@@ -151,6 +159,55 @@ export default function CanvasViewport() {
     toolControllerRef.current?.syncSelectionOverlay()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selection])
+
+  // ── 인스펙터 검증 섹션(§9.13) 클릭 → 캔버스 이동 + 0.6초 깜빡임 ─────────────────────
+  // editorStore.focusRequest가 바뀔 때마다(=requestFocus 호출) 실행됩니다. nonce 덕분에
+  // 같은 노드를 연달아 클릭해도 매번 새로 실행됩니다(editorStore.ts의 FocusRequest 타입
+  // 주석 참고). Issue.at이 없는 항목은 Inspector.tsx가 애초에 requestFocus를 호출하지
+  // 않으므로 이 effect에 도달할 일이 없습니다.
+  useEffect(() => {
+    if (!focusRequest) return
+    const currentDoc = useEditorStore.getState().doc
+    if (!currentDoc) return
+    const [c, r] = focusRequest.node
+    const center = nodeCenterMm(c, r, currentDoc.board.pitch)
+    const { width, height } = bodySizeRef.current
+
+    // 지금 배율은 그대로 두고 원점만 옮겨 그 노드가 화면 가운데로 오게 합니다.
+    viewportRef.current.centerOn(width, height, center.mx, center.my)
+    rendererRef.current?.markAllDirty()
+    engineRef.current?.syncUiState()
+    engineRef.current?.scheduleAll()
+    toolControllerRef.current?.refreshOverlayForViewportChange()
+
+    // 100ms마다 focusHighlight를 켰다 껐다 해서 눈에 보이는 깜빡임을 만듭니다. 홀수
+    // 번째 tick에서 켜고 짝수 번째에서 끄면 "켬-끔"이 반복되는 모양이 됩니다.
+    const controller = toolControllerRef.current
+    const totalTicks = Math.round(FOCUS_BLINK_TOTAL_MS / FOCUS_BLINK_STEP_MS)
+    let tick = 0
+    const intervalId = window.setInterval(() => {
+      tick += 1
+      if (controller) {
+        controller.overlay.focusHighlight = tick % 2 === 1 ? { c, r } : null
+        rendererRef.current?.markDirty('overlay')
+        engineRef.current?.scheduleAll()
+      }
+      if (tick >= totalTicks) window.clearInterval(intervalId)
+    }, FOCUS_BLINK_STEP_MS)
+
+    // 깜빡임 도중 다른 항목을 또 클릭하거나(effect 재실행) 컴포넌트가 사라지면 타이머를
+    // 반드시 정리하고, 강조 표시도 깨끗하게 꺼둡니다(안 그러면 새 위치와 옛 위치가
+    // 동시에 깜빡이거나, 꺼지지 않은 강조가 화면에 남을 수 있습니다).
+    return () => {
+      window.clearInterval(intervalId)
+      if (controller) {
+        controller.overlay.focusHighlight = null
+        rendererRef.current?.markDirty('overlay')
+        engineRef.current?.scheduleAll()
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusRequest])
 
   // doc은 React state라 값이 바뀔 때마다 다시 렌더되므로, 항상 최신 값을 docRef에 반영해두고
   // 격자·아트 레이어를 다시 그리게 합니다(문서가 아예 없다가 생기는 최초 순간 포함,
@@ -351,6 +408,25 @@ export default function CanvasViewport() {
 
     // ── 팬: Space+왼쪽 버튼 드래그, 또는 마우스 가운데 버튼 드래그 ──────────────────────────
     //    그 외의 왼쪽/오른쪽 버튼 입력은 지금 고른 도구(ToolController)에게 넘깁니다.
+    /**
+     * 포인터 캡처를 걸되, 실패해도 그냥 넘어갑니다.
+     *
+     * [왜 try/catch가 필요한가] setPointerCapture는 그 pointerId가 "지금 활성 상태"가
+     * 아니면 NotFoundError를 던집니다. 그런데 예전 코드는 이 호출을 도구 동작
+     * (handlePointerDown)보다 먼저 했기 때문에, 캡처가 한 번 실패하면 예외가 위로
+     * 튀면서 그 아래 도구 동작이 통째로 실행되지 않았습니다 — 사용자 눈에는 "클릭했는데
+     * 아무 일도 안 일어남"으로 보입니다. 캡처는 어디까지나 "드래그가 캔버스 밖으로
+     * 나가도 이어지게 해주는 편의 기능"일 뿐, 클릭 한 번을 처리하는 데 반드시 필요한
+     * 것이 아닙니다. 그러니 실패하면 캡처만 포기하고 도구 동작은 정상 진행합니다.
+     */
+    function tryCapturePointer(pointerId: number) {
+      try {
+        bodyWrap!.setPointerCapture(pointerId)
+      } catch {
+        // 캡처 실패 = 드래그가 캔버스 밖으로 나가면 끊길 수 있다는 뜻일 뿐입니다.
+      }
+    }
+
     function handlePointerDown(e: PointerEvent) {
       const isMiddleButton = e.button === 1
       const isSpaceDrag = e.button === 0 && isSpaceDownRef.current
@@ -358,14 +434,14 @@ export default function CanvasViewport() {
         e.preventDefault()
         isPanningRef.current = true
         lastPointerRef.current = { x: e.clientX, y: e.clientY }
-        bodyWrap!.setPointerCapture(e.pointerId)
+        tryCapturePointer(e.pointerId)
         bodyWrap!.style.cursor = 'grabbing'
         return
       }
       if (e.button !== 0 && e.button !== 2) return
       // 포인터 캡처: 드래그 도중 커서가 캔버스 밖으로 나가도(빠르게 훑거나 가장자리
       // 근처에서 영역을 채울 때) pointermove/pointerup이 계속 이 요소로 들어오게 합니다.
-      bodyWrap!.setPointerCapture(e.pointerId)
+      tryCapturePointer(e.pointerId)
       const rect = bodyWrap!.getBoundingClientRect()
       toolControllerRef.current?.handlePointerDown(e, rect)
     }

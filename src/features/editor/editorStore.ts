@@ -9,7 +9,7 @@
 // 실제로 스택에 스냅샷을 쌓는 로직은 src/features/canvas/toolInteractions.ts가
 // 제스처(드래그 등) 단위로 호출합니다 — 이 파일은 "스택을 어떻게 조작하는지"만 압니다.
 import { create } from 'zustand'
-import type { MapDoc, UserAsset } from '@/lib/model/types'
+import type { MapDoc, NodeCoord, UserAsset } from '@/lib/model/types'
 import { createMapStore } from '@/lib/storage'
 import type { StoreKind } from '@/lib/storage'
 import { saveDraft } from '@/lib/storage/draft'
@@ -67,6 +67,23 @@ export type Selection =
   | { kind: 'stroke'; id: string }
   | null
 
+/** 인스펙터 "검증" 섹션(§9.13)의 항목을 클릭했을 때 "캔버스를 이 노드로 옮기고 0.6초간
+ *  깜빡여라"고 알리는 신호입니다. CanvasViewport.tsx가 이 값을 구독해 뷰포트를 옮기고
+ *  오버레이에 깜빡임을 그렸다가 지웁니다. */
+export interface FocusRequest {
+  /** 이동·강조할 격자 노드 */
+  node: NodeCoord
+  /** [왜 node만으로는 부족한가] 검증 목록에서 같은 항목을 두 번 연달아 클릭해도(예:
+   *  캔버스를 다른 곳으로 스크롤해 보고 다시 확인하려는 경우) 매번 새로 깜빡여야
+   *  합니다. 그런데 focusRequest에 node만 담으면 두 번째 클릭이 만드는 객체도 필드
+   *  값이 첫 번째와 완전히 같아서(같은 노드니까), 구독하는 쪽이 "이전과 다른 요청"인지
+   *  판단할 수 있는 근거가 없습니다(참조가 다르더라도 effect의 관심사는 "내용이 바뀌었는가"
+   *  이지 객체 정체성이 아닙니다 — 실제로 이 필드가 없으면 두 번째 클릭 때 아무 일도
+   *  안 일어나는 버그가 생깁니다). nonce를 클릭마다 새 값으로 발급해 "이건 확실히
+   *  새로운 요청"이라는 표시를 함께 보냅니다. */
+  nonce: number
+}
+
 interface EditorState {
   /** 현재 편집 중인 맵. 아직 아무 파일도 없으면 null */
   doc: MapDoc | null
@@ -99,6 +116,12 @@ interface EditorState {
 
   /** V(선택) 도구가 고른 대상. 구조만 미리 마련한 상태라 이번 단계는 항상 null입니다. */
   selection: Selection
+
+  /** 인스펙터 검증 섹션 클릭이 남긴 "여기로 이동해서 깜빡여라" 요청. 평소엔 null이고,
+   *  requestFocus가 호출된 직후 한 번만 값이 생겼다가 CanvasViewport가 처리하고 나면
+   *  다시 null로 되돌리지 않습니다(같은 값이 남아있어도 nonce가 다시 바뀌기 전까지는
+   *  effect가 재실행되지 않으므로 무해합니다). */
+  focusRequest: FocusRequest | null
 
   // ── 팔레트 패널(§9.11)이 쓰는 상태 ──────────────────────────────────
   /** 팔레트에서 지금 열려 있는 테마 탭. 'dungeon'~'dino' 6종 + 'icon' · 'track' · 'myImages' */
@@ -156,6 +179,8 @@ interface EditorState {
   /** 스포이드(I)가 집어온 타일의 방향을 그대로 스탬프 방향에 반영할 때 씁니다. */
   setStampOrientation: (rot: 0 | 90 | 180 | 270, flip: boolean) => void
   setSelection: (selection: Selection) => void
+  /** 인스펙터 검증 섹션의 항목(Issue.at이 있는 것만)을 클릭했을 때 부릅니다. */
+  requestFocus: (node: NodeCoord) => void
 
   setActiveTheme: (theme: string) => void
   setPaletteQuery: (query: string) => void
@@ -178,6 +203,12 @@ interface EditorState {
 // 스토어 초기화 시점에 딱 한 번만 확인하면 충분합니다.
 const probe = createMapStore()
 
+/** requestFocus가 nonce를 발급할 때 쓰는 전역 카운터. Date.now()는 같은 밀리초 안에
+ *  두 번 클릭하면(빠른 더블클릭) 값이 겹칠 수 있어, 항상 1씩 늘어나는 정수 카운터를
+ *  대신 씁니다 — 어떤 상황에서도 이전 요청과 절대 같은 값이 나오지 않는다는 확실한
+ *  보장이 필요하기 때문입니다. */
+let focusRequestNonce = 0
+
 export const useEditorStore = create<EditorState>()((set, get) => ({
   doc: null,
   activeTool: 'select',
@@ -192,6 +223,7 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
   stampRot: 0,
   stampFlip: false,
   selection: null,
+  focusRequest: null,
 
   setTool: (id) => set({ activeTool: id }),
   setDoc: (doc) => set({ doc }),
@@ -250,6 +282,7 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
   flipStamp: () => set((state) => ({ stampFlip: !state.stampFlip })),
   setStampOrientation: (rot, flip) => set({ stampRot: rot, stampFlip: flip }),
   setSelection: (selection) => set({ selection }),
+  requestFocus: (node) => set({ focusRequest: { node, nonce: ++focusRequestNonce } }),
 
   setActiveTheme: (theme) => set({ activeTheme: theme }),
   setPaletteQuery: (query) => set({ paletteQuery: query }),

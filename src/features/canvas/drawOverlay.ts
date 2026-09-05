@@ -238,4 +238,20 @@ export function drawOverlayLayer(
     }
     ctx.restore()
   }
+
+  // ⑦ 검증 경고 위치 강조(§9.12 표 "검증 경고 위치" 행을 그대로 구현) — 인스펙터 검증
+  //    섹션(§9.13)에서 항목을 클릭하면 CanvasViewport.tsx가 이 필드를 짧은 간격으로
+  //    채웠다 비웠다 해서(타이머) 0.6초짜리 깜빡임을 만듭니다. 그래서 이 블록은 매 프레임
+  //    "지금 켜져 있으면 그린다"만 담당하고, 언제 켜고 끌지는 전혀 모릅니다.
+  if (overlay.focusHighlight) {
+    const { c, r } = overlay.focusHighlight
+    const topLeft = viewport.mapToScreen(c * pitch, r * pitch)
+    ctx.save()
+    ctx.fillStyle = tokens['--c-warn-zone']
+    ctx.fillRect(topLeft.x, topLeft.y, sizePx, sizePx)
+    ctx.strokeStyle = tokens['--c-warn']
+    ctx.lineWidth = 2
+    ctx.strokeRect(topLeft.x, topLeft.y, sizePx, sizePx)
+    ctx.restore()
+  }
 }

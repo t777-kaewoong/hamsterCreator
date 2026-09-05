@@ -1,0 +1,241 @@
+/*
+  Inspector.module.css — PRD §9.13 인스펙터 규격.
+
+  치수는 절대 임의로 바꾸지 마세요:
+  패널 폭 300px(EditorLayout.module.css의 --ed-inspector-w가 실제 폭을 정함),
+  좌우 여백 16px(--sp-4), 섹션 간 간격 24px(--sp-6), 섹션 제목(h2) 하단 여백 8px(--sp-2).
+
+  섹션 "안" 필드끼리의 간격(12px)은 PRD가 정하지 않아 이 파일에서 임의로 정했습니다
+  (섹션 간격 24px의 절반 — 큰 구획과 작은 구획을 시각적으로 구분하기 위함).
+*/
+
+.panel {
+  height: 100%;
+  overflow-y: auto;
+  padding: var(--sp-4); /* 좌우 16px(PRD 명시) + 상하 16px(PRD 미명시 — 좌우와 통일) */
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-6); /* 섹션 간 간격 24px, PRD 명시 */
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  /* gap을 여기 두지 않는 이유: 제목(h2) 바로 아래는 8px, 그 아래 필드끼리는 12px로
+     서로 다른 간격이 필요합니다. flex의 gap은 모든 형제 사이에 똑같이 적용되므로,
+     제목과 나머지 내용(.sectionBody)을 별도 요소로 나눠 각자 다른 간격을 줍니다. */
+}
+
+.sectionTitle {
+  margin: 0 0 var(--sp-2) 0; /* PRD 명시: "섹션 제목은 h2 + 하단 8px 여백" */
+}
+
+.sectionBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3); /* 12px — PRD 미지정, 임의 결정(위 파일 설명 참고) */
+}
+
+/* 선택된 타일/프롭/곡선의 이름을 보여주는 한 줄(PRD에 없는 보조 정보 — 임의 추가).
+   무엇을 고쳤는지 다시 확인할 수 있게 이름을 먼저 보여줍니다. */
+.itemName {
+  color: var(--c-text-2);
+}
+
+/* 라벨 한 줄 + 오른쪽 정렬 컨트롤(세그먼트·토글·드롭다운)을 나란히 놓는 기본 행. */
+.field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+}
+
+/* 프롭 X·Y·너비·높이, 맵 설정 열·행처럼 "숫자 입력 2개를 2열로" 배치할 때(PRD §9.13). */
+.grid2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sp-2) var(--sp-3);
+}
+
+/* ── 삭제 버튼: ghost + danger 톤(PRD §9.13) ──────────────────────────
+   Button.module.css의 .ghost는 기본 회색 글자를 쓰므로, 여기서 글자색만 danger로
+   덮어씁니다. Inspector.module.css는 컴포넌트 트리에서 Button.module.css보다
+   나중에 로드되어(PalettePanel.module.css의 .footerButton과 같은 방식) 같은
+   명시도의 규칙끼리는 이 파일이 이깁니다. */
+.deleteButton {
+  color: var(--c-danger);
+  align-self: flex-start;
+}
+.deleteButton:not(:disabled):hover {
+  background: var(--c-danger-soft);
+  color: var(--c-danger);
+}
+
+/* ── 켬/끔 스위치(ToggleRow) ──────────────────────────────────────── */
+.toggle {
+  position: relative;
+  flex-shrink: 0;
+  width: 36px;
+  height: 20px;
+  padding: 2px;
+  border: 1px solid var(--c-border-strong);
+  border-radius: var(--r-pill);
+  background: var(--c-surface-3);
+  cursor: pointer;
+  transition:
+    background-color var(--t-fast),
+    border-color var(--t-fast);
+}
+.toggleOn {
+  background: var(--c-primary);
+  border-color: var(--c-primary);
+}
+.toggleThumb {
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--c-surface);
+  transition: transform var(--t-fast);
+}
+.toggleOn .toggleThumb {
+  transform: translateX(16px);
+}
+
+/* ── 라벨 색 스와치 6종 + 사용자 지정(PRD §9.13) ────────────────────── */
+.swatchRow {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+}
+.swatch {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid var(--c-border);
+  cursor: pointer;
+}
+.swatchSelected {
+  border: 2px solid var(--c-primary);
+  box-shadow: 0 0 0 1px var(--c-surface); /* 진한 스와치 색 위에서도 테두리가 또렷이 보이도록 */
+}
+/* 네이티브 <input type="color">를 위 원형 스와치와 같은 크기로 맞춥니다. 브라우저마다
+   기본 여백·테두리가 달라(특히 Chrome은 네모난 색 미리보기에 여백을 둠) 최대한 지운
+   뒤 같은 원형 틀 안에 보이게 합니다. */
+.customSwatch {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid var(--c-border);
+  border-radius: 50%;
+  cursor: pointer;
+  background: none;
+}
+.customSwatch::-webkit-color-swatch-wrapper {
+  padding: 0;
+  border-radius: 50%;
+}
+.customSwatch::-webkit-color-swatch {
+  border: none;
+  border-radius: 50%;
+}
+
+/* ── 맵 설정: 기본값(피치 50mm·선폭 8mm) 이탈 경고(PRD D6) ───────────── */
+.warnCaption {
+  display: block;
+  margin-top: var(--sp-1);
+  color: var(--c-warn);
+}
+
+/* ── 용지 드롭다운: Input과 비슷한 높이·테두리로 맞춘 네이티브 select ── */
+.select {
+  height: 36px;
+  padding: 0 var(--sp-3);
+  border: 1px solid var(--c-border-strong);
+  border-radius: var(--r-md);
+  background: var(--c-surface);
+  color: var(--c-text);
+  cursor: pointer;
+}
+.select:focus-visible {
+  border-color: var(--c-primary);
+}
+
+.summaryLine {
+  color: var(--c-text-2);
+}
+
+/* ── 검증 섹션 ────────────────────────────────────────────────────── */
+
+/* 문제 0건일 때 "제목 옆"에 CircleCheck + 문제 없음을 붙이는 자리(PRD §9.13).
+   섹션 제목의 8px 하단 여백을 이 행이 대신 짊어집니다(제목이 단독 h2가 아니라
+   이 div 전체이므로). */
+.validationHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--sp-2);
+}
+.okBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  color: var(--c-ok);
+}
+
+.issueList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin: 0;
+  padding: 0;
+}
+
+/* 문제 항목 한 줄. 높이 최소 44px, 좌측 색 막대 3px(PRD §9.13). */
+.issueRow {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  min-height: 44px;
+  padding: var(--sp-2) var(--sp-2) var(--sp-2) var(--sp-3);
+  border-left: 3px solid transparent;
+  border-radius: var(--r-sm);
+  background: var(--c-surface-2);
+}
+.issueError {
+  border-left-color: var(--c-danger);
+}
+.issueWarn {
+  border-left-color: var(--c-warn);
+}
+/* Issue.at이 있는 항목만 클릭 가능 — 커서도 이때만 포인터로 바뀝니다(작업 지시 명시). */
+.issueClickable {
+  cursor: pointer;
+}
+.issueClickable:hover {
+  background: var(--c-surface-3);
+}
+
+.issueIcon {
+  flex-shrink: 0;
+  margin-top: 1px; /* 아이콘이 첫 줄 글자와 세로로 나란히 보이도록 미세 조정 */
+}
+.issueError .issueIcon {
+  color: var(--c-danger);
+}
+.issueWarn .issueIcon {
+  color: var(--c-warn);
+}
+
+/* 본문 caption 2줄까지, 넘치면 말줄임(PRD §9.13). */
+.issueMessage {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  color: var(--c-text-2);
+}

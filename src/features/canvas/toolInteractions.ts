@@ -65,6 +65,13 @@ export interface OverlayState {
    *  다시 계산해야 하므로, 포인터 이벤트가 아니라 별도의 public 메서드
    *  (syncSelectionOverlay)로 갱신합니다. */
   selectionBox: { mx: number; my: number; wMm: number; hMm: number; rot: number } | null
+  /** 인스펙터 검증 섹션(§9.13) 항목을 클릭해 "여기로 이동해서 0.6초간 깜빡여라"라고
+   *  요청받은 칸. §9.12 오버레이 표의 "검증 경고 위치" 행(--c-warn-zone 채움 + 2px
+   *  실선 --c-warn 윤곽)을 이 용도로 그대로 씁니다. CanvasViewport.tsx가 editorStore의
+   *  focusRequest를 구독했다가, 이 필드를 짧은 간격으로 채웠다 비웠다 해서(setInterval)
+   *  실제로 눈에 보이는 깜빡임을 만듭니다 — 다른 오버레이와 달리 포인터 이벤트가 아니라
+   *  타이머로 갱신되는 유일한 필드입니다. */
+  focusHighlight: { c: number; r: number } | null
 }
 
 /** 클릭인지 드래그인지 구분하는 기준(화면 CSS px). L 도구의 "단순 클릭 = 엣지 토글" 대
@@ -80,6 +87,7 @@ function emptyOverlay(): OverlayState {
     fillRect: null,
     markerGhost: null,
     selectionBox: null,
+    focusHighlight: null,
   }
 }
 

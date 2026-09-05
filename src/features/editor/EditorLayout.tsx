@@ -5,8 +5,10 @@
 // --ed-* 변수에 몰아뒀으니, 치수를 바꾸고 싶으면 이 컴포넌트가 아니라 그 CSS 파일만
 // 고치면 됩니다.
 //
-// 팔레트·인스펙터는 이번 단계에서도 아직 내용이 없는 빈 자리라 안내만 표시합니다.
-// 캔버스 자리는 이번 단계(M1-2, §9.12)부터 CanvasViewport가 실제로 채웁니다.
+// 팔레트(PalettePanel, §9.11)·캔버스(CanvasViewport, §9.12)·인스펙터(Inspector, §9.13)는
+// 전부 이 파일이 아니라 각자의 컴포넌트가 실제 내용을 채웁니다. 이 파일은 그 5개 영역을
+// CSS Grid 칸에 배치하고, 팔레트·인스펙터 접기 버튼처럼 "레이아웃 자체"에 속하는 것만
+// 직접 다룹니다.
 //
 // [onBack(M1-5c)] 시작 화면 ↔ 편집기 전환은 App.tsx의 로컬 useState가 관리합니다
 // (editorStore에는 손대지 않기로 했습니다 — 다른 작업자가 그 파일을 동시에 고치는 중).
@@ -18,6 +20,8 @@ import { PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Triangl
 import { Button, Tooltip } from '@/components'
 import TopBar from './TopBar'
 import ToolRail from './ToolRail'
+import Inspector from './Inspector'
+import { useMapIssues } from './useMapIssues'
 import CanvasViewport from '@/features/canvas/CanvasViewport'
 import PalettePanel from '@/features/palette/PalettePanel'
 import styles from './EditorLayout.module.css'
@@ -39,6 +43,17 @@ export default function EditorLayout({ onBack }: EditorLayoutProps) {
     () => window.innerWidth < AUTO_COLLAPSE_INSPECTOR_WIDTH,
   )
   const [viewportTooNarrow, setViewportTooNarrow] = useState(() => window.innerWidth < MIN_SUPPORTED_WIDTH)
+
+  // 인스펙터 접기 버튼의 경고 배지(PRD §9.13: "접힌 상태에서 경고가 새로 생기면 접기
+  // 버튼에 --c-warn 색 6px 점 배지를 띄우세요")에 쓸 경고 건수입니다. Inspector.tsx의
+  // 검증 섹션과 똑같은 validateMap 결과를 봐야 하는데, 여기서 또 validateMap(doc)을
+  // 직접 부르면 같은 계산이 두 곳(이 컴포넌트 + Inspector)에서 완전히 따로 돌게 됩니다.
+  // useMapIssues 훅으로 계산 자체를 공용화해서, 적어도 "언제 다시 계산할지"(doc이
+  // 바뀔 때만) 로직만큼은 한 군데(useMapIssues.ts)에서 관리합니다 — 그 훅의 주석에
+  // "그래도 두 컴포넌트가 각자 부르면 계산 자체는 두 번 일어난다"는 트레이드오프를
+  // 적어뒀습니다.
+  const issues = useMapIssues()
+  const warnCount = issues.filter((issue) => issue.severity === 'warn').length
 
   useEffect(() => {
     function handleResize() {
@@ -107,6 +122,12 @@ export default function EditorLayout({ onBack }: EditorLayoutProps) {
                 aria-label={inspectorCollapsed ? '인스펙터 펼치기' : '인스펙터 접기'}
                 onClick={() => setInspectorCollapsed((v) => !v)}
               />
+              {/* 접힌 상태에서만 의미가 있는 배지입니다 — 펼쳐져 있으면 검증 섹션이 이미
+                  화면에 보이므로 굳이 버튼에 또 표시할 필요가 없습니다(PRD §9.13). Tooltip이
+                  이미 position:relative인 감싸는 span을 만들어주므로(EditorLayout.tsx 파일
+                  맨 위 주석 참고), 그 span 안에 Button과 나란히 두면 이 배지의 절대 위치
+                  기준점이 자동으로 맞춰집니다. */}
+              {inspectorCollapsed && warnCount > 0 && <span className={styles.inspectorWarnBadge} aria-hidden="true" />}
             </Tooltip>
           </div>
 
@@ -117,18 +138,9 @@ export default function EditorLayout({ onBack }: EditorLayoutProps) {
         </div>
 
         <div className={`${styles.inspectorArea} ${inspectorCollapsed ? styles.collapsed : ''}`}>
-          <Placeholder label="여기는 인스펙터입니다 (다음 단계에서 채워집니다)" />
+          <Inspector />
         </div>
       </div>
-    </div>
-  )
-}
-
-/** 아직 내용이 없는 영역에 표시하는 안내 문구. 팔레트·캔버스·인스펙터 자리에서 공통으로 씁니다. */
-function Placeholder({ label }: { label: string }) {
-  return (
-    <div className={styles.placeholder}>
-      <span className="t-body">{label}</span>
     </div>
   )
 }

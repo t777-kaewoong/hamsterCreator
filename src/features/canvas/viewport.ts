@@ -131,6 +131,23 @@ export class Viewport {
     this.zoomAt(cx, cy, targetPxPerMm / this.pxPerMm)
   }
 
+  /**
+   * 지정한 mm 좌표가 뷰포트 정중앙에 오도록 원점만 옮깁니다(배율 pxPerMm은 그대로
+   * 유지 — "확대 정도"까지 바꾸면 사용자가 보던 크기가 갑자기 달라져 놀랄 수 있으므로,
+   * 이 메서드는 "같은 배율로 그 자리를 가운데에 보여달라"만 처리합니다).
+   *
+   * [계산 근거] mapToScreen(mx, my) = originPx + (mx,my)×pxPerMm 식을 "그 결과가
+   * 정확히 뷰포트 중앙(viewW/2, viewH/2)이 되도록" originPx에 대해 풀면 이 식이 나옵니다.
+   * zoomAt의 originPx 역산과 같은 방식입니다.
+   *
+   * 인스펙터 검증 섹션(§9.13)에서 문제 위치를 클릭했을 때처럼, "이 mm 좌표를 화면
+   * 가운데로 보여달라"는 요청에 씁니다.
+   */
+  centerOn(viewW: number, viewH: number, mx: number, my: number): void {
+    this.originPx.x = viewW / 2 - mx * this.pxPerMm
+    this.originPx.y = viewH / 2 - my * this.pxPerMm
+  }
+
   /** 드래그로 화면을 미는(팬) 동작. 그냥 원점을 델타만큼 옮기면 됩니다 —
    *  같은 원점에서 같은 배율로 다시 그리되, 시작점만 이동한 것과 같기 때문입니다. */
   pan(dx: number, dy: number): void {

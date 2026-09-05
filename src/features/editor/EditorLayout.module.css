@@ -101,17 +101,6 @@
   border-left-width: 0;
 }
 
-.placeholder {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  padding: var(--sp-4);
-  color: var(--c-text-3);
-}
-
 /* 캔버스 위에 띄우는 패널 접기 버튼 2개. 패널 안에 두면 접혔을 때(폭 0) 버튼도
    같이 사라져 다시 펼 수 없으므로 캔버스 쪽에 절대 위치로 둡니다. */
 .floatLeft,
@@ -125,6 +114,21 @@
 }
 .floatRight {
   right: var(--sp-3);
+}
+
+/* 인스펙터가 접혀 있을 때만 뜨는 경고 배지(PRD §9.13). 지름 6px 점을 접기 버튼
+   우상단에 살짝 겹쳐 띄웁니다. Tooltip이 만들어주는 감싸는 span이 이미
+   position:relative라서(위 floatLeft/floatRight 주석 참고), 이 배지는 그 span
+   기준으로 절대 위치를 잡으면 됩니다. */
+.inspectorWarnBadge {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--c-warn);
+  pointer-events: none;
 }
 
 /* 개발용 카탈로그 링크. 일부러 눈에 잘 안 띄게 흐린 글자로 구석에 둡니다. */

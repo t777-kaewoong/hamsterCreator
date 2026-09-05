@@ -28,6 +28,8 @@ const TOKEN_NAMES = [
   '--c-primary-soft',
   '--c-hover-cell',
   '--c-ghost',
+  '--c-warn',
+  '--c-warn-zone',
   '--c-print-black',
   '--e1',
   '--e2',
