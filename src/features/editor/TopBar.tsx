@@ -1,11 +1,13 @@
 // 편집기 상단바 (PRD §9.9).
 //
 // 좌측: 뒤로가기 · 파일명(클릭하면 그 자리에서 편집) · 규격 칩 · 저장 상태 칩
-// 중앙: 실행취소 / 다시 실행 (실행취소 스택은 다음 단계에서 만들 예정이라 지금은 항상 비활성)
+// 중앙: 실행취소 / 다시 실행 — editorStore의 undoStack/redoStack과 직접 연결됩니다.
+//       (M1-4) 스택이 비어있으면 버튼이 자동으로 비활성화됩니다.
 // 우측: 저장 · 미리보기 · 정답 · 인쇄
 //
-// 이 단계에서는 버튼 동작을 실제 기능에 연결하지 않습니다. 파일명 편집만 예외로,
-// editorStore의 doc.meta.title을 실제로 바꾸는 진짜 동작입니다(그 외 버튼은 토스트만 띄움).
+// 이 단계에서는 실행취소/재실행·파일명 편집만 실제 기능에 연결합니다(그 외 버튼은
+// 토스트만 띄움). PRD §9.16: "실행취소 | 토스트 없음. 상단바 버튼 상태만 갱신" —
+// 그래서 undo()/redo()는 토스트를 띄우지 않고 버튼 disabled 상태만 자연스럽게 바뀝니다.
 import { useEffect, useRef, useState } from 'react'
 import type { KeyboardEvent } from 'react'
 import { ChevronLeft, Save, Undo2, Redo2, Eye, Printer, ListChecks } from 'lucide-react'
@@ -14,6 +16,15 @@ import { PAPER_SIZES } from '@/lib/model/constants'
 import type { MapDoc } from '@/lib/model/types'
 import { useEditorStore } from './editorStore'
 import styles from './TopBar.module.css'
+
+/** 지금 포커스가 글자 입력 요소에 있는지. Ctrl+Z로 텍스트 입력창의 되돌리기를 하는 중에
+ *  맵 전체가 같이 되돌아가면 안 되므로, 입력창에 포커스가 있으면 단축키를 무시합니다. */
+function isTypingTarget(el: Element | null): boolean {
+  if (!el) return false
+  const tag = el.tagName
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true
+  return el.hasAttribute('contenteditable')
+}
 
 /** 좌측 규격 칩에 보여줄 문구를 만듭니다. 예: "A4 · 5×4 · 250×200mm"
  *  PRD §9.9의 예시는 "A4 · 5×4"만 보여주지만, 이 프로젝트의 요구사항대로 격자 수와
@@ -33,6 +44,27 @@ export default function TopBar() {
   const canOverwrite = useEditorStore((s) => s.canOverwrite)
   const saveState = useEditorStore((s) => s.saveState)
   const setSaveState = useEditorStore((s) => s.setSaveState)
+  const undoStack = useEditorStore((s) => s.undoStack)
+  const redoStack = useEditorStore((s) => s.redoStack)
+  const undo = useEditorStore((s) => s.undo)
+  const redo = useEditorStore((s) => s.redo)
+
+  // Ctrl+Z / Ctrl+Shift+Z (맥에서는 Cmd). 도구 레일 단축키(ToolRail.tsx)와 마찬가지로
+  // 입력창에 포커스가 있으면 무시합니다.
+  useEffect(() => {
+    // 이 파일은 위에서 React의 KeyboardEvent<T>를 이미 import했으므로(파일명 입력창용),
+    // 여기서는 window가 실제로 주는 DOM 이벤트 타입임을 globalThis로 명시합니다.
+    function handleKeyDown(e: globalThis.KeyboardEvent) {
+      if (!(e.ctrlKey || e.metaKey)) return
+      if (e.key.toLowerCase() !== 'z') return
+      if (isTypingTarget(document.activeElement)) return
+      e.preventDefault()
+      if (e.shiftKey) redo()
+      else undo()
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [undo, redo])
 
   const [editingTitle, setEditingTitle] = useState(false)
   const [titleDraft, setTitleDraft] = useState('')
@@ -109,12 +141,23 @@ export default function TopBar() {
       </div>
 
       <div className={styles.centerGroup}>
-        {/* 실행취소 스택은 다음 단계에서 만듭니다. 그동안은 되돌릴 것이 없으니 비활성 상태입니다. */}
         <Tooltip content="실행취소" shortcut="Ctrl+Z" placement="bottom">
-          <Button variant="icon" icon={<Undo2 size={18} />} aria-label="실행취소" disabled />
+          <Button
+            variant="icon"
+            icon={<Undo2 size={18} />}
+            aria-label="실행취소"
+            disabled={undoStack.length === 0}
+            onClick={undo}
+          />
         </Tooltip>
         <Tooltip content="다시 실행" shortcut="Ctrl+Shift+Z" placement="bottom">
-          <Button variant="icon" icon={<Redo2 size={18} />} aria-label="다시 실행" disabled />
+          <Button
+            variant="icon"
+            icon={<Redo2 size={18} />}
+            aria-label="다시 실행"
+            disabled={redoStack.length === 0}
+            onClick={redo}
+          />
         </Tooltip>
       </div>
 

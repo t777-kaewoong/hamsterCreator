@@ -5,12 +5,14 @@
 // 내려주면 중간 컴포넌트들이 쓰지도 않는 값을 계속 넘겨야 해서 코드가 지저분해지므로,
 // 이 스토어 하나에 모아두고 필요한 컴포넌트가 바로 꺼내 씁니다.
 //
-// 지금 단계(M1-1, 레이아웃 골격)에서는 아래 값만 다룹니다.
-// 실행취소(undo/redo) 스택은 다음 단계에서 별도로 추가합니다.
+// M1-4(도구 동작)에서 실행취소·재실행 스택과 스탬프 방향(회전·반전) 상태가 추가됐습니다.
+// 실제로 스택에 스냅샷을 쌓는 로직은 src/features/canvas/toolInteractions.ts가
+// 제스처(드래그 등) 단위로 호출합니다 — 이 파일은 "스택을 어떻게 조작하는지"만 압니다.
 import { create } from 'zustand'
 import type { MapDoc, UserAsset } from '@/lib/model/types'
 import { createMapStore } from '@/lib/storage'
 import type { StoreKind } from '@/lib/storage'
+import { saveDraft } from '@/lib/storage/draft'
 
 /** 도구 레일에 나열되는 도구 id (PRD §9.6 도구 레일 매핑 표의 단축키 순서 그대로).
  *  select~marker 는 격자 도구, pen~shape 는 자유곡선 도구 그룹입니다.
@@ -31,6 +33,28 @@ export type ToolId =
 /** 상단바 저장 상태 칩과 그대로 연결되는 값(components/StatusChip.tsx의 StatusChipStatus와 동일). */
 export type SaveState = 'saved' | 'saving' | 'unsaved'
 
+/**
+ * 실행취소 스택 최대 길이(FR-3.12: "최소 50단계").
+ *
+ * [메모리 근거] 스냅샷 방식이라 스택 한 칸마다 MapDoc 전체를 깊은 복사해 담습니다. 이
+ * 앱이 다루는 맵 문서는 보통 25KB 안팎(A4 5×4칸부터 A0 23×16칸 규모까지 다뤄도 텍스트
+ * JSON이라 크게 늘지 않음)이라, 50칸을 전부 채워도 25KB × 50 ≈ 1~2MB입니다. 브라우저
+ * 탭 하나가 이미지 몇 장만 열어도 쓰는 메모리에 비하면 무시할 만한 크기라, 셀 단위
+ * diff처럼 더 복잡한 구조를 만들 필요 없이 "그냥 통째로 복사해 쌓기"로 충분합니다.
+ */
+export const MAX_UNDO_STACK = 50
+
+/** V(선택) 도구가 지금 고른 대상 하나를 가리킵니다. 이번 단계(M1-4)는 프롭·라벨·곡선을
+ *  실제로 만드는 도구가 아직 없어서 selection은 항상 null이고, 이 타입은 나중에 인스펙터
+ *  "선택 항목" 섹션(§9.13: 타일/프롭/라벨/곡선)을 만들 때 채워 넣을 자리만 미리 잡아둔
+ *  것입니다(작업 지시: "이번 단계에서는 코드 구조만 잡아두세요"). */
+export type Selection =
+  | { kind: 'cell'; index: number }
+  | { kind: 'prop'; id: string }
+  | { kind: 'label'; id: string }
+  | { kind: 'stroke'; id: string }
+  | null
+
 interface EditorState {
   /** 현재 편집 중인 맵. 아직 아무 파일도 없으면 null */
   doc: MapDoc | null
@@ -42,6 +66,27 @@ interface EditorState {
   canOverwrite: boolean
   /** 저장 상태 칩에 표시할 상태 */
   saveState: SaveState
+
+  // ── 실행취소·재실행(FR-3.12) ────────────────────────────────────────
+  /** 실행취소 스택. 배열 끝(마지막 항목)이 "가장 최근에 저장된, 되돌아갈 이전 상태"입니다.
+   *  toolInteractions.ts가 제스처 하나가 끝날 때(그리고 실제로 문서가 바뀌었을 때만)
+   *  그 제스처 시작 시점의 스냅샷을 여기에 넣습니다. */
+  undoStack: MapDoc[]
+  /** 재실행 스택. undo()가 지금 문서를 여기로 옮기고, redo()가 다시 꺼내 씁니다.
+   *  pushUndoSnapshot(=새 편집)이 일어나면 통째로 비웁니다("되돌린 걸 다시 편집하면
+   *  그 이후의 재실행은 더 이상 의미가 없다"는 일반적인 실행취소 규칙). */
+  redoStack: MapDoc[]
+
+  // ── 스탬프 방향(FR-3.4) ──────────────────────────────────────────────
+  /** 지금 스탬프의 회전(도). 팔레트에서 고른 타일 id 자체가 아니라 "그 타일을 어느
+   *  방향으로 찍을지"를 따로 들고 있어서, 타일 배치(B)·영역 채우기(R) 두 도구가 같은
+   *  방향 상태를 공유합니다. */
+  stampRot: 0 | 90 | 180 | 270
+  /** 지금 스탬프의 좌우 반전 여부. */
+  stampFlip: boolean
+
+  /** V(선택) 도구가 고른 대상. 구조만 미리 마련한 상태라 이번 단계는 항상 null입니다. */
+  selection: Selection
 
   // ── 팔레트 패널(§9.11)이 쓰는 상태 ──────────────────────────────────
   /** 팔레트에서 지금 열려 있는 테마 탭. 'dungeon'~'dino' 6종 + 'icon' · 'track' · 'myImages' */
@@ -56,6 +101,22 @@ interface EditorState {
   setTool: (id: ToolId) => void
   setDoc: (doc: MapDoc | null) => void
   setSaveState: (saveState: SaveState) => void
+
+  /** 제스처 시작 시점의 스냅샷을 실행취소 스택에 넣습니다(MAX_UNDO_STACK 넘으면 가장
+   *  오래된 것부터 버림). 재실행 스택은 항상 함께 비웁니다. toolInteractions.ts 전용 —
+   *  "정말 바뀐 게 있을 때만" 불러야 하는 판단은 호출부 책임입니다. */
+  pushUndoSnapshot: (snapshot: MapDoc) => void
+  /** 상단바 Undo2 버튼·Ctrl+Z. 스택이 비어 있으면 아무 일도 하지 않습니다. */
+  undo: () => void
+  /** 상단바 Redo2 버튼·Ctrl+Shift+Z. */
+  redo: () => void
+  /** 스탬프를 시계방향 90도 돌립니다(R 키, FR-3.4). 360도에서 다시 0도로 순환합니다. */
+  rotateStamp: () => void
+  /** 스탬프 좌우 반전을 토글합니다(F 키, FR-3.4). */
+  flipStamp: () => void
+  /** 스포이드(I)가 집어온 타일의 방향을 그대로 스탬프 방향에 반영할 때 씁니다. */
+  setStampOrientation: (rot: 0 | 90 | 180 | 270, flip: boolean) => void
+  setSelection: (selection: Selection) => void
 
   setActiveTheme: (theme: string) => void
   setPaletteQuery: (query: string) => void
@@ -87,14 +148,61 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
   activeTheme: 'dungeon',
   paletteQuery: '',
   stampTileId: null,
+  undoStack: [],
+  redoStack: [],
+  stampRot: 0,
+  stampFlip: false,
+  selection: null,
 
   setTool: (id) => set({ activeTool: id }),
   setDoc: (doc) => set({ doc }),
   setSaveState: (saveState) => set({ saveState }),
 
+  pushUndoSnapshot: (snapshot) =>
+    set((state) => {
+      const next = [...state.undoStack, snapshot]
+      if (next.length > MAX_UNDO_STACK) next.shift() // 50개 넘으면 가장 오래된 것부터 버림
+      return { undoStack: next, redoStack: [] } // 새 편집이 일어났으니 재실행 스택은 비움
+    }),
+
+  undo: () => {
+    const state = get()
+    if (state.undoStack.length === 0 || !state.doc) return
+    const prev = state.undoStack[state.undoStack.length - 1]
+    const current = state.doc
+    set({
+      doc: prev,
+      undoStack: state.undoStack.slice(0, -1),
+      redoStack: [...state.redoStack, current],
+      saveState: 'unsaved',
+    })
+    saveDraft(prev)
+  },
+
+  redo: () => {
+    const state = get()
+    if (state.redoStack.length === 0 || !state.doc) return
+    const next = state.redoStack[state.redoStack.length - 1]
+    const current = state.doc
+    set({
+      doc: next,
+      redoStack: state.redoStack.slice(0, -1),
+      undoStack: [...state.undoStack, current],
+      saveState: 'unsaved',
+    })
+    saveDraft(next)
+  },
+
+  rotateStamp: () => set((state) => ({ stampRot: (((state.stampRot + 90) % 360) as 0 | 90 | 180 | 270) })),
+  flipStamp: () => set((state) => ({ stampFlip: !state.stampFlip })),
+  setStampOrientation: (rot, flip) => set({ stampRot: rot, stampFlip: flip }),
+  setSelection: (selection) => set({ selection }),
+
   setActiveTheme: (theme) => set({ activeTheme: theme }),
   setPaletteQuery: (query) => set({ paletteQuery: query }),
-  setStampTile: (id) => set({ stampTileId: id, activeTool: 'stamp' }),
+  // 새 타일을 고르면 방향도 기본값(0도·반전 없음)으로 되돌립니다 — 직전 타일의 회전
+  // 상태가 다음 타일에도 그대로 남아있으면 "왜 삐딱하게 찍히지?"로 헷갈리기 쉽습니다.
+  setStampTile: (id) => set({ stampTileId: id, activeTool: 'stamp', stampRot: 0, stampFlip: false }),
 
   addUserAsset: (asset) => {
     const doc = get().doc

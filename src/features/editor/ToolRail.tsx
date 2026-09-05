@@ -77,6 +77,17 @@ export default function ToolRail() {
       const tool = ALL_TOOLS.find((t) => t.key === key)
       if (!tool) return
 
+      // [PRD 충돌] §9.6 도구 레일 표는 R을 "영역 채우기 도구로 전환"에 씁니다. 그런데
+      // FR-3.4는 같은 R을 "타일 배치 중 90도 회전"에 씁니다. 스탬프(B)로 무언가를 찍으려는
+      // 중에 R을 누르면 회전이어야 자연스러우므로, 그 상황에서는 여기서 도구를 바꾸지
+      // 않고 캔버스 쪽 키보드 핸들러(toolInteractions.ts의 handleKeyDown)에게 맡깁니다.
+      //
+      // activeTool은 useEditorStore.getState()로 그 자리에서 바로 읽습니다 — 이 컴포넌트가
+      // 구독 중인 activeTool(위 destructure)은 React가 리렌더를 끝내야 갱신되는 값이라,
+      // 팔레트 클릭(도구를 'stamp'로 바꿈) 직후 아주 짧은 순간에는 아직 이전 값을 가리킬
+      // 수 있습니다. 키 하나로 즉시 판단해야 하는 이 분기에서는 그 틈이 있으면 안 됩니다.
+      if (tool.id === 'fill' && useEditorStore.getState().activeTool === 'stamp') return
+
       e.preventDefault()
       setTool(tool.id)
     }
