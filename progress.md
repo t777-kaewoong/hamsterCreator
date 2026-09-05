@@ -1,5 +1,5 @@
 # Progress: 햄스터S 말판 제작 웹앱 (hamsterCreator)
-Last updated: 2026-09-05 04:05
+Last updated: 2026-09-05 05:20
 
 ## Goal
 - 햄스터S 말판·라인트레이서 트랙을 화면에서 배치하고, 원하는 용지로 나눠 인쇄할 수 있는 정확한 축척의 PDF와 정답 코드를 뽑아주는 교사용 웹 도구
@@ -7,8 +7,8 @@ Last updated: 2026-09-05 04:05
 
 ## Current Status
 - Status: In progress
-- Current focus: **M0 — 스캐폴딩 + GitHub Actions 배포 + 디자인 토큰 + 기본 컴포넌트**
-- Repo: `https://github.com/t777-kaewoong/hamsterCreator` (로컬 git 초기화 완료, 원격 미연결)
+- Current focus: **M0 완료. 다음은 M1 격자 편집기 코어(§9.18 3~7단계)**
+- Repo: `https://github.com/t777-kaewoong/hamsterCreator` (Public, 원격 연결·푸시 완료)
 - 배포 URL(예정): `https://t777-kaewoong.github.io/hamsterCreator/`
 
 ## Decisions
@@ -61,12 +61,28 @@ Last updated: 2026-09-05 04:05
   - `docs/03_prd.md` §9.3에도 동일 토큰 반영해 명세와 코드를 일치시킴
   - 커밋 `35c30e7`
 
+- [x] **M0-4 맵 문서 타입 + 파일 저장소 어댑터** (2026-09-05) — **M0 완료**
+  - `src/lib/model/` — `types.ts`(PRD §5 스키마, Stroke는 kind 판별 유니온) `constants.ts`(50mm·8mm·용지 8종) `factory.ts`(기본 A4 5×4) `serialize.ts`(예외 대신 결과 객체 반환)
+  - `src/lib/storage/` — `FsaStore`(파일 핸들 유지 → 진짜 덮어쓰기) `DownloadStore`(폴백) `draft.ts`(초안 5개·디바운스 500ms·userAssets 제외) `index.ts`(`createMapStore()` 자동 선택)
+  - `App.tsx`에 저장소 확인 섹션 추가 (기존 토큰·컴포넌트 섹션 유지)
+  - 번들: JS 174.84kB(gzip 56.41kB), CSS 14.24kB(gzip 3.85kB), 대피로 1.26MB
+  - 커밋 `22315b1`
+  - **Opus 추가 검증**(에이전트가 파일 대화상자 때문에 못 한 부분을 모의 핸들로 대체해 실측):
+    `saveAs` → 대화상자 1회 호출·2040바이트 기록·writable close 확인 /
+    `save` → **대화상자 재호출 없이 같은 핸들에 덮어쓰기 확인**(핸들 유지가 실제로 동작) /
+    `open` 왕복 결과가 원본과 완전 동일 /
+    취소(DOMException AbortError) → `UserCancelledError` 변환 확인, 진짜 오류(TypeError)는 취소로 오인하지 않음 /
+    초안 왕복 + `userAssets`가 실제로 제외됨 확인
+  - **남은 미검증**: OS 네이티브 파일 대화상자를 실제로 열어 디스크에 쓰는 경로(자동화 불가, 사람이 한 번 눌러봐야 함)
+
 ## In Progress
-- [ ] M0-4 저장소 어댑터(`FsaStore`/`DownloadStore`)
+- [ ] M1 격자 편집기 코어 — 레이아웃 골격 + 도구 레일 (§9.18 3단계)
 
 ## Next Steps
-1. M0-4 저장소 어댑터(`FsaStore`/`DownloadStore`) + 시작 화면(PRD §9.8)
-2. M1 격자 편집기 코어 (PRD §9.18의 3~7단계)
+1. §9.18 3단계 레이아웃 골격 + 도구 레일 (§9.2, §9.10)
+2. §9.18 4단계 캔버스 뷰포트 — 좌표 변환·렌더 레이어·눈금자 (§9.12)
+3. §9.18 5단계 팔레트 패널 (§9.11) — **아트 타일 36종 추출이 선행 필요**
+4. §9.18 6단계 인스펙터 (§9.13), 7단계 시작 화면 (§9.8)
 
 ## Changed Files
 - `package.json`, `vite.config.ts`, `tsconfig*.json`, `index.html`: 빌드 설정
@@ -85,6 +101,9 @@ git init && git commit → 09b8bd0
 ```
 
 ## Risks / Open Questions
+- 초안 id를 "브라우저 세션 1회 = 초안 1슬롯"으로 발급함. 맵 문서에 안정적인 id 필드가 없어서 내린 절충인데, 한 세션에서 맵 A→B로 갈아타면 A의 초안이 덮어써짐. M1에서 맵 전환이 실제로 생기면 `meta.createdAt` 기반 키로 바꿀지 재검토
+- 아트 타일 36종을 `말판/custom_objects.pdf`에서 아직 추출하지 않음 — 팔레트(§9.18 5단계) 전에 필요
+- GitHub Pages는 저장소 Settings → Pages → Source를 "GitHub Actions"로 지정해야 배포가 시작됨 (수동 1회)
 - SP-6: 자유곡선을 곡선과 겹치지 않게 시트 분할하는 알고리즘의 실용성 — M1.5에서 확인. 실패 시 사용자가 이음매 위치를 직접 지정
 - SP-7: Pretendard 서브셋 + `pdf-lib` 폰트 임베드에서 한글이 정상 출력되는지 — M2 착수 시 최소 예제로 확인
 - 햄스터S 바닥 센서 2개의 좌우 간격(mm) 미확인 — FR-10.9의 40mm 기준을 정밀화할 때 필요 (M6)
