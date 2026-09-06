@@ -216,7 +216,9 @@ export default function CanvasViewport() {
   useEffect(() => {
     docRef.current = doc
     if (doc) {
-      rendererRef.current?.markDirty('paper', 'art', 'grid', 'props')
+      // overlay에는 문서 기반 빈 상태 문구도 있으므로 doc이 바뀌면 함께 갱신해야 첫 타일
+      // 배치 직후 문구가 같은 프레임에 사라집니다(§9.15).
+      rendererRef.current?.markDirty('paper', 'art', 'grid', 'props', 'overlay')
       engineRef.current?.maybeFitOnce()
       engineRef.current?.syncUiState()
       engineRef.current?.scheduleAll()

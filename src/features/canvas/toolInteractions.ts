@@ -542,11 +542,14 @@ export class ToolController {
   /** 문서를 실제로 바꿀 때 항상 이 메서드를 거칩니다. 스토어에 반영 + "미저장" 표시 +
    *  초안 자동 저장까지 한 곳에서 처리해서(작업 지시 4번), 도구마다 이 세 줄을
    *  반복해서 적지 않게 했습니다. */
-  private commitDocChange(next: MapDoc): void {
+  private commitDocChange(next: MapDoc, isTilePlacement = false): void {
     const store = useEditorStore.getState()
     store.setDoc(next)
     if (store.saveState !== 'unsaved') store.setSaveState('unsaved')
     saveDraft(next)
+    // 문서 변경 전체를 보고 코치 마크를 숨기면 선·라벨만 편집해도 "첫 타일 배치"로
+    // 오인합니다. 실제 배치 경로가 명시적으로 알려줄 때만 신호를 보냅니다(§9.15).
+    if (isTilePlacement) store.notifyTilePlaced()
   }
 
   private paintStampAt(mapPt: MapPoint): void {
@@ -564,7 +567,7 @@ export class ToolController {
     const cellValue: Cell = { art: stampTileId, rot: stampRot, flip: stampFlip }
     const nextCells = doc.cells.slice()
     nextCells[index] = cellValue
-    this.commitDocChange({ ...doc, cells: nextCells })
+    this.commitDocChange({ ...doc, cells: nextCells }, true)
   }
 
   /** FR-3.8 Shift 자유 배치. cellAtMm처럼 격자 인덱스로 중복을 거르는 대신, "직전에 놓은
@@ -580,7 +583,7 @@ export class ToolController {
     }
     this.lastFreePropCenter = { mx: mapPt.mx, my: mapPt.my }
     const prop = buildFreeProp(stampTileId, mapPt.mx, mapPt.my, doc.board.pitch, stampRot, stampFlip)
-    this.commitDocChange({ ...doc, props: [...doc.props, prop] })
+    this.commitDocChange({ ...doc, props: [...doc.props, prop] }, true)
   }
 
   private eraseCellAt(mapPt: MapPoint): void {
@@ -661,7 +664,7 @@ export class ToolController {
         nextCells[index] = { art, rot: stampRot, flip: stampFlip }
       }
     }
-    this.commitDocChange({ ...doc, cells: nextCells })
+    this.commitDocChange({ ...doc, cells: nextCells }, true)
   }
 
   private pickTile(doc: MapDoc, mapPt: MapPoint): void {
@@ -690,7 +693,7 @@ export class ToolController {
     nextCells[index] = { art: stampTileId, rot: stampRot, flip: stampFlip }
     const next: MapDoc = { ...doc, cells: nextCells }
     if (docsEqual(before, next)) return // 이미 같은 타일이 그 자리에 있음 — 변경 없음
-    this.commitDocChange(next)
+    this.commitDocChange(next, true)
     useEditorStore.getState().pushUndoSnapshot(before)
   }
 
@@ -762,7 +765,7 @@ export class ToolController {
       }
 
       if (next && !docsEqual(before, next)) {
-        this.commitDocChange(next)
+        this.commitDocChange(next, true)
         useEditorStore.getState().pushUndoSnapshot(before)
       }
     }

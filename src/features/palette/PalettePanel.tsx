@@ -7,7 +7,7 @@
 // 검색 입력 → 테마 탭 → 타일 그리드 → (내 이미지 탭일 때만) 이미지 추가 버튼, 순서로
 // 위에서 아래로 쌓습니다. 타일/아이콘/내 이미지는 전부 같은 모양(id·name·url)으로 맞춰서
 // 하나의 PaletteTile 컴포넌트로 그립니다 — 그리드 코드가 세 벌로 갈라지지 않게 하기 위함입니다.
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { DragEvent } from 'react'
 import { Search, Upload, Check } from 'lucide-react'
 import { Button, Input, TabPills, Tooltip, useToast } from '@/components'
@@ -37,11 +37,33 @@ const THEME_TABS: TabPillOption[] = [
   { value: 'myImages', label: '내 이미지' },
 ]
 
+/** 코치 마크는 앱을 다시 열어도 되풀이하지 않습니다(§9.15). 초안 저장 키와 분리해,
+ *  초안을 지우거나 새 맵을 만들어도 이미 배운 안내가 다시 나타나지 않게 합니다. */
+const COACH_MARK_STORAGE_KEY = 'hamsterS.coach.tilePlaced.v1'
+
+function shouldShowCoachMark(): boolean {
+  try {
+    return window.localStorage.getItem(COACH_MARK_STORAGE_KEY) !== '1'
+  } catch {
+    // file:// 대피로처럼 localStorage가 막힌 환경에서는 현재 화면에서라도 한 번 안내합니다.
+    return true
+  }
+}
+
+function rememberCoachMarkCompleted(): void {
+  try {
+    window.localStorage.setItem(COACH_MARK_STORAGE_KEY, '1')
+  } catch {
+    // 저장할 수 없어도 배치 직후 React 상태로 현재 코치 마크는 즉시 숨깁니다.
+  }
+}
+
 export default function PalettePanel() {
   const doc = useEditorStore((s) => s.doc)
   const activeTheme = useEditorStore((s) => s.activeTheme)
   const paletteQuery = useEditorStore((s) => s.paletteQuery)
   const stampTileId = useEditorStore((s) => s.stampTileId)
+  const tilePlacementNonce = useEditorStore((s) => s.tilePlacementNonce)
   const setActiveTheme = useEditorStore((s) => s.setActiveTheme)
   const setPaletteQuery = useEditorStore((s) => s.setPaletteQuery)
   const setStampTile = useEditorStore((s) => s.setStampTile)
@@ -53,6 +75,13 @@ export default function PalettePanel() {
   // dragstart 때마다 src만 바꿔 dataTransfer.setDragImage()에 넘깁니다(PRD §9.11).
   const dragPreviewRef = useRef<HTMLImageElement>(null)
   const [uploading, setUploading] = useState(false)
+  const [coachMarkVisible, setCoachMarkVisible] = useState(shouldShowCoachMark)
+
+  useEffect(() => {
+    if (!coachMarkVisible || tilePlacementNonce === 0) return
+    setCoachMarkVisible(false)
+    rememberCoachMarkCompleted()
+  }, [coachMarkVisible, tilePlacementNonce])
 
   const query = paletteQuery.trim().toLowerCase()
   const isSearching = query.length > 0
@@ -180,13 +209,14 @@ export default function PalettePanel() {
       }
       return (
         <div className={styles.grid}>
-          {searchResults.map((item) => (
+          {searchResults.map((item, index) => (
             <PaletteTile
               key={item.id}
               item={item}
               selected={stampTileId === item.id}
               onSelect={handleSelect}
               onDragStart={handleDragStart}
+              showCoachMark={coachMarkVisible && index === 0}
             />
           ))}
         </div>
@@ -196,13 +226,14 @@ export default function PalettePanel() {
     if (activeTheme === 'icon') {
       return (
         <div className={styles.grid}>
-          {ICONS.map((icon) => (
+          {ICONS.map((icon, index) => (
             <PaletteTile
               key={icon.id}
               item={{ id: icon.id, name: icon.name, url: icon.url }}
               selected={stampTileId === icon.id}
               onSelect={handleSelect}
               onDragStart={handleDragStart}
+              showCoachMark={coachMarkVisible && index === 0}
             />
           ))}
         </div>
@@ -229,7 +260,7 @@ export default function PalettePanel() {
       }
       return (
         <div className={styles.grid}>
-          {entries.map(([key, asset]) => {
+          {entries.map(([key, asset], index) => {
             const id = `asset:${key}`
             return (
               <PaletteTile
@@ -238,6 +269,7 @@ export default function PalettePanel() {
                 selected={stampTileId === id}
                 onSelect={handleSelect}
                 onDragStart={handleDragStart}
+                showCoachMark={coachMarkVisible && index === 0}
               />
             )
           })}
@@ -250,13 +282,14 @@ export default function PalettePanel() {
     const tiles = group?.tiles ?? []
     return (
       <div className={styles.grid}>
-        {tiles.map((tile) => (
+        {tiles.map((tile, index) => (
           <PaletteTile
             key={tile.id}
             item={{ id: tile.id, name: tile.name, url: tile.url }}
             selected={stampTileId === tile.id}
             onSelect={handleSelect}
             onDragStart={handleDragStart}
+            showCoachMark={coachMarkVisible && index === 0}
           />
         ))}
       </div>
@@ -272,31 +305,40 @@ function PaletteTile({
   selected,
   onSelect,
   onDragStart,
+  showCoachMark = false,
 }: {
   item: PaletteItem
   selected: boolean
   onSelect: (item: PaletteItem) => void
   onDragStart: (e: DragEvent<HTMLButtonElement>, item: PaletteItem) => void
+  showCoachMark?: boolean
 }) {
   return (
-    <Tooltip content={item.name}>
-      <button
-        type="button"
-        className={`${styles.tile} ${selected ? styles.tileSelected : ''}`}
-        draggable
-        onDragStart={(e) => onDragStart(e, item)}
-        onClick={() => onSelect(item)}
-        aria-label={item.name}
-        aria-pressed={selected}
-      >
-        <img src={item.url} alt="" className={styles.tileImg} draggable={false} />
-        {selected && (
-          <span className={styles.badge} aria-hidden="true">
-            <Check size={8} strokeWidth={3} />
-          </span>
-        )}
-      </button>
-    </Tooltip>
+    <div className={styles.tileSlot}>
+      <Tooltip content={item.name}>
+        <button
+          type="button"
+          className={`${styles.tile} ${selected ? styles.tileSelected : ''}`}
+          draggable
+          onDragStart={(e) => onDragStart(e, item)}
+          onClick={() => onSelect(item)}
+          aria-label={item.name}
+          aria-pressed={selected}
+        >
+          <img src={item.url} alt="" className={styles.tileImg} draggable={false} />
+          {selected && (
+            <span className={styles.badge} aria-hidden="true">
+              <Check size={8} strokeWidth={3} />
+            </span>
+          )}
+        </button>
+      </Tooltip>
+      {showCoachMark && (
+        <span className={`${styles.coachMark} t-caption`} role="status">
+          타일을 고르고 칸을 클릭하세요
+        </span>
+      )}
+    </div>
   )
 }
 

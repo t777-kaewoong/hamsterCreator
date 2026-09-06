@@ -42,6 +42,12 @@
 }
 
 /* ── 타일 한 칸 ──────────────────────────────────────────── */
+.tileSlot {
+  position: relative;
+  width: 77px;
+  height: 77px;
+}
+
 .tile {
   position: relative;
   width: 77px;
@@ -56,6 +62,34 @@
     border-color var(--t-fast),
     transform var(--t-fast),
     box-shadow var(--t-fast);
+}
+
+/* 최초 진입 코치 마크(§9.15). 첫 타일 오른쪽에 겹쳐 띄워 그림 그리드의 자리를 밀지
+   않습니다. 문구가 한 줄이어야 하므로 nowrap을 쓰되 280px 패널 안에는 들어갑니다. */
+.coachMark {
+  position: absolute;
+  z-index: 20;
+  top: 50%;
+  left: calc(100% + 10px);
+  transform: translateY(-50%);
+  padding: 6px 10px;
+  border-radius: var(--r-md);
+  background: var(--c-text);
+  box-shadow: var(--e2);
+  color: var(--c-text-inverse);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.coachMark::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  right: 100%;
+  transform: translateY(-50%);
+  border-top: 6px solid transparent;
+  border-right: 6px solid var(--c-text);
+  border-bottom: 6px solid transparent;
 }
 
 .tile:hover {

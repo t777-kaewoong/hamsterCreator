@@ -132,6 +132,10 @@ interface EditorState {
    *  내장 타일·아이콘은 원래 id 그대로, 사용자 이미지는 "asset:u1"처럼 userAssets 키에
    *  "asset:" 접두어를 붙인 값입니다(types.ts의 Cell.art/Prop.asset 참조 규칙과 동일). */
   stampTileId: string | null
+  /** 실제 타일 배치가 성공할 때마다 1씩 늘어나는 화면 안내용 신호입니다. 문서 데이터가
+   *  아니라서 저장 파일에는 들어가지 않으며, PalettePanel의 최초 코치 마크를 정확히
+   *  "첫 배치 순간"에 숨기는 데만 씁니다. */
+  tilePlacementNonce: number
 
   setTool: (id: ToolId) => void
   setDoc: (doc: MapDoc | null) => void
@@ -193,6 +197,7 @@ interface EditorState {
    * 따로 B를 누르게 하지 않고 여기서 activeTool을 함께 바꿔줍니다.
    */
   setStampTile: (id: string | null) => void
+  notifyTilePlaced: () => void
   /** 업로드한 이미지를 doc.userAssets에 추가하고, 생성된 키("u1" 등)를 돌려줍니다.
    *  아직 열린 맵이 없으면(doc이 null) 아무 것도 하지 않고 null을 돌려줍니다. */
   addUserAsset: (asset: UserAsset) => string | null
@@ -218,6 +223,7 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
   activeTheme: 'dungeon',
   paletteQuery: '',
   stampTileId: null,
+  tilePlacementNonce: 0,
   undoStack: [],
   redoStack: [],
   stampRot: 0,
@@ -289,6 +295,7 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
   // 새 타일을 고르면 방향도 기본값(0도·반전 없음)으로 되돌립니다 — 직전 타일의 회전
   // 상태가 다음 타일에도 그대로 남아있으면 "왜 삐딱하게 찍히지?"로 헷갈리기 쉽습니다.
   setStampTile: (id) => set({ stampTileId: id, activeTool: 'stamp', stampRot: 0, stampFlip: false }),
+  notifyTilePlaced: () => set((state) => ({ tilePlacementNonce: state.tilePlacementNonce + 1 })),
 
   addUserAsset: (asset) => {
     const doc = get().doc

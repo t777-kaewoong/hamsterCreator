@@ -21,6 +21,8 @@ type Tokens = Record<TokenName, string>
  *  11px, weight 600) + 같은 폴백 스택입니다. 캔버스는 CSS 클래스를 못 써서 폰트 문자열을
  *  직접 적어야 합니다. */
 const CHIP_FONT = '600 11px Pretendard, -apple-system, "Segoe UI", "Malgun Gothic", sans-serif'
+/** 캔버스 빈 상태는 UI의 body 타이포(14px/400)를 캔버스 문자열로 옮긴 값입니다. */
+const EMPTY_STATE_FONT = '400 14px Pretendard, -apple-system, "Segoe UI", "Malgun Gothic", sans-serif'
 /** 선 긋기 드래그 미리보기 선의 불투명도(PRD §9.12: "불투명도 0.6"). 이 숫자는 색이
  *  아니라 순수한 비율값이라 토큰화 대상이 아닙니다(§9.3의 색 토큰들과 달리 tokens.css에
  *  이 값 전용 변수가 없음). */
@@ -46,6 +48,20 @@ export function drawOverlayLayer(
 ): void {
   const { pitch } = doc.board
   const sizePx = viewport.mmToPx(pitch)
+
+  // §9.15 캔버스 빈 상태. 실제 문서 요소가 아니라 화면 전용 overlay에만 그려서 저장 파일·
+  // 미리보기·PDF에는 절대 포함되지 않습니다. Shift 자유 배치도 "첫 배치"이므로 cells뿐
+  // 아니라 props까지 비었을 때만 표시합니다. 라벨·선·마커는 타일 아트가 아니어서 제외합니다.
+  if (doc.cells.every((cell) => cell === null) && doc.props.length === 0) {
+    const center = viewport.mapToScreen((doc.board.cols * pitch) / 2, (doc.board.rows * pitch) / 2)
+    ctx.save()
+    ctx.font = EMPTY_STATE_FONT
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillStyle = tokens['--c-text-3']
+    ctx.fillText('왼쪽에서 타일을 골라 칠해 보세요', center.x, center.y)
+    ctx.restore()
+  }
 
   // ① 셀 호버 — 타일·지우개 도구에서 지금 가리키고 있는 칸을 옅게 채웁니다.
   if (overlay.hoverCell) {
