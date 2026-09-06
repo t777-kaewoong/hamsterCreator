@@ -1,21 +1,98 @@
 # Progress: 햄스터S 말판 제작 웹앱 (hamsterCreator)
-Last updated: 2026-09-05 11:40
+Last updated: 2026-09-06
+
+---
+
+# 🔴 인수인계 — 이어받는 사람이 먼저 읽을 것
+
+> 이전 담당(Claude Opus)이 토큰 한도로 중단하며 남깁니다.
+> **아래 "작업 규칙"은 사용자가 직접 정한 것입니다. 협상 대상이 아니니 그대로 지키세요.**
+
+## 0. 사용자가 누구인가
+- **20년차 중학교 정보 교사.** 중1~3 「정보」·「프로그래밍과 인공지능 로봇」 수업에서 햄스터S 로봇을 씁니다. 교과서는 재구성해서 사용
+- 이 앱은 **수업 자료(말판) 제작용**이며 사용자는 교사 한 명뿐입니다. 학생 모드 없음
+- 코드를 직접 열어 고칠 사람입니다. 그래서 **주석이 곧 사용설명서**입니다
+
+## 1. 작업 규칙 (반드시 지킬 것)
+| # | 규칙 | 이유 |
+|---|---|---|
+| R1 | **분석 → 설계 → PRD → 검토 → 구현** 순서. 코드부터 쓰지 말 것 | 사용자가 첫 지시에서 명시 |
+| R2 | **코딩은 Sonnet 서브에이전트에 위임.** 모호하거나 추상적인 판단만 Opus가 직접 | 사용자가 중간에 "설마 계속 오푸스로 코딩중이니?"라고 확인함 |
+| R3 | **한 단계 끝날 때마다 progress.md에 기록 + 한 줄 보고** | |
+| R4 | **주석은 한글로 구체적으로.** "왜 이렇게 했는가"를 적을 것 | 사용자가 직접 수정할 예정 |
+| R5 | **UI는 시각 우선.** 텍스트 범벅 금지, 10초 안에 이해되어야 함. 명세는 ASCII 그림 말고 **수치**로 | 사용자: "아무리 기능이 좋아도 텍스트범벅이면 사용자는 이해하지 못함" |
+| R6 | **말판 제작 소요시간을 묻거나 표시하지 말 것** | 사용자: "의미없음". 성공기준 S5는 이미 삭제됨 |
+| R7 | **배포·푸시는 모든 작업이 끝난 뒤에** | 사용자 지시. 지금 로컬 커밋이 원격보다 앞서 있음 |
+| R8 | 사용량 한도가 10% 남으면 중단하고 progress.md에 기록 | |
+
+## 2. 지금 상태 한눈에
+- **완료**: M0 전체(스캐폴딩·토큰·컴포넌트·문서모델·저장소) / M1-0~M1-5(아트 타일 35종 추출, 편집기 레이아웃, 캔버스, 팔레트, 도구 8종, 실행취소, 텍스트·마커, 시작 화면, 인스펙터, 검증)
+- **미완**: 자유곡선 트랙(M1.5) / PDF(M2) / 출력 계획기·타일링(M3) / 정답 생성(M4) / 첫 사용 안내(§9.15)
+- 마지막 커밋 `ad42fab`. **`4cfc78b` 이후는 전부 로컬 전용 — 원격에 없음**
+- `rules.md.txt`(0바이트, 추적 안 됨)는 사용자가 만든 빈 파일. 건드리지 마세요
+
+## 3. 문서 읽는 순서
+1. `docs/03_prd.md` — **이게 통제 문서입니다.** 수치가 명시된 곳은 그대로 구현. §9.18에 UI 구현 순서 9단계
+2. `docs/01_problem-analysis.md` — 왜 이 앱이 필요한지, 공식 자료 실측 결과
+3. `docs/02_design-direction.md` — 노드/엣지 그래프 모델의 근거
+- **코드와 PRD가 어긋나면 둘 다 고치세요.** 실제로 §9.3(역상 토큰), §9.6(아이콘 8종), §9.12(마커 규격), FR-8.1(타일 35종)을 코드에 맞춰 정정한 이력이 있습니다
+
+## 4. 절대 바꾸면 안 되는 불변량
+공식 로보메이션 PDF 23종을 벡터 좌표까지 뜯어 실측한 값입니다. 반올림하거나 "더 예뻐 보이게" 조정하지 마세요.
+- **칸 피치 50mm**, **격자선 폭 8mm**
+- **격자선은 칸의 중심을 지나갑니다.** 즉 셀 (c,r)의 중심 = 그래프 노드 = `(c·50+25, r·50+25)`mm
+- 용지별 칸 수(A4 5×4=20 / A3 8×5=40 / A2 11×8=88)는 공식 자료와 정확히 일치하는 값
+- 이음매는 반드시 **칸 경계**(선 중심에서 25mm)에 둘 것 — 종이 단차가 바닥 센서가 읽는 선 밑에 오면 안 됨
+
+## 5. 이미 피 흘린 함정들 (같은 실수 반복 금지)
+| 함정 | 무슨 일이 있었나 |
+|---|---|
+| **자산 파일 이름** | `adv-*.png`가 광고 차단기에 막혀(`ERR_BLOCKED_BY_CLIENT`) **앱 전체가 흰 화면**이 됐음. `import.meta.glob({eager:true})`이라 png가 모듈로 로드되기 때문. 이름에 `ad/ads/adv/advert/banner/popup/promo/sponsor/analytics/track` 금지. `src/lib/tiles/catalog.ts` 상단 주석 참고 |
+| **개발 서버** | `host` 미지정 시 윈도우에서 IPv6(`::1`)에만 바인딩돼 크롬이 접속 못 함. 지금은 `host: true`·`port 5173`·`strictPort`. dev의 `base`는 `'/'`, 배포 빌드만 `/hamsterCreator/` |
+| **폰트** | Pretendard **동적 서브셋**을 쓰면 폰트 파일 1,647개·단일 HTML 31MB가 됨. 고정 서브셋 3종(400/500/600)만 쓸 것 |
+| **격자선 끝 처리** | `lineCap:'round'`면 선이 끝점보다 4mm 길어져 인쇄 실측이 어긋남. `'butt'` + 차수≥2인 노드에만 8×8mm 사각형으로 교차점 메우기 |
+| **cells 배열** | row-major(`인덱스 = r*cols + c`). **cols가 바뀌면 인덱스 공식 자체가 달라짐.** 크기 변경 시 반드시 (열,행) 좌표 기준으로 재배치. `slice`하면 타일이 전부 밀림 |
+| **Selection** | Prop·Label은 id가 없어 **배열 인덱스**로 가리킴. 삭제하면 뒤 인덱스가 밀리므로 **삭제 직후 반드시 `setSelection(null)`** |
+| **실행취소** | 드래그 같은 "제스처"는 `toolInteractions.ts`가 pointerdown 스냅샷을 pointerup에 한 번만 쌓음. 인스펙터·단발 편집은 `editorStore.commitDoc()`. **둘을 섞으면 실행취소 단계가 꼬임** |
+| **포인터 캡처** | `setPointerCapture`를 도구 동작보다 먼저 부르면 예외 시 클릭이 통째로 씹힘. 지금은 try/catch로 감쌈 |
+| **PDF** | `window.print()` **절대 금지**. 브라우저가 몰래 축소해서 실측이 어긋남. `pdf-lib`으로 mm를 직접 지정할 것 |
+
+## 6. 검증 방법 (브라우저 자동화가 불안정함)
+창 배율이 호출마다 바뀌어 **좌표 기반 클릭이 어긋납니다.** 다음 두 가지가 훨씬 확실합니다.
+- **localStorage `hamsterS.drafts.v1` 읽기** — 실제 문서로 결과를 대조. 화면을 눈으로 보는 것보다 정확
+- **`.hsmap.json`을 창에 떨어뜨려 알려진 문서 주입** — 원하는 상태를 정확히 만들 수 있고 파일 열기 경로(FR-1.3)도 같이 검증됨
+- React 입력은 네이티브 setter + `input` 이벤트로 값을 넣고, **`focusout`** 을 디스패치해야 커밋됨(`blur()`는 패널에 포커스가 없으면 안 먹음)
+
+## 7. 다음에 할 일 (우선순위 순)
+1. **[사용자가 발견한 버그] 장애물 타일 위로 검은 격자선이 덮임.** 렌더 순서가 `아트 → 엣지`인데(PRD §5), 바닥 타일은 이게 맞지만 낱개 물건(`object`)은 틀림. `TileKind`이 이미 `floor`/`block`/`object`로 나뉘어 있으니 `object`만 격자선 위로 올릴 것. **PRD §5의 렌더 순서 문장도 함께 고쳐야 하는 명세 수정임**
+2. §9.15 첫 사용 안내(코치 마크 1개 + 캔버스 빈 상태)
+3. M1.5 자유곡선 트랙(FR-10) — 최소 곡률 반경 50mm, 평행 간격 40mm 검증 포함
+4. M2 단일장 PDF — 착수 전 **SP-7**(pdf-lib + fontkit으로 한글이 제대로 임베드되는지) 최소 예제로 먼저 확인
+5. M3 출력 계획기(§9.14) + 타일링, M4 정답 생성(BFS → `board_forward()`)
+
+## 8. 미해결 결정사항
+- **배포**: 저장소는 Public이라 GitHub Pages 가능. 다만 사용자가 "작업 다 끝나고" 하자고 했으므로 임의로 푸시하지 말 것
+- **도착점 이름 자동 재부여**가 수동 편집을 덮어씀 — "사용자가 직접 지은 이름은 건드리지 않는다" 규칙 필요
+- `createFullGridMap`이 경계 진입로(stub)를 안 만들어 기본 맵이 종이 가장자리까지 닿지 않음. FR-2.4 구현 시 재검토
+- 초안 id가 브라우저 세션당 1슬롯이라 한 세션에서 맵을 갈아타면 이전 초안이 덮어써짐
+
+---
 
 ## Goal
 - 햄스터S 말판·라인트레이서 트랙을 화면에서 배치하고, 원하는 용지로 나눠 인쇄할 수 있는 정확한 축척의 PDF와 정답 코드를 뽑아주는 교사용 웹 도구
 - v1 완료 기준: PRD §1.2의 S1~S4, S6, S7 전부 통과
 
 ## Current Status
-- Status: **일시중단 (사용자 요청, 2026-09-05 11:40)**
-- Current focus: **M1 격자 편집기 코어 진행 중. 다음 착수 지점 = M1-5 (텍스트·마커 도구 + 인스펙터 + 시작 화면)**
-- 작업 트리 깨끗함, 마지막 커밋 `5b337d7`. **원격 푸시는 안 된 상태** (사용자 지시로 배포·푸시는 전체 작업 완료 후)
+- Status: **진행 중**
+- Current focus: **M1 격자 편집기 코어 거의 완료(§9.18 1~7단계). 다음 착수 지점 = 장애물/격자선 레이어 버그 수정**
+- 작업 트리 깨끗함, 마지막 커밋 `ad42fab`. **원격 푸시는 안 된 상태** (사용자 지시로 배포·푸시는 전체 작업 완료 후)
 
 ### 재개할 때 이것부터
-1. `npm install` (필요 시) → `npm run dev` → `http://localhost:5273/hamsterCreator/`
-2. 지금까지 만든 것: 편집기 레이아웃 + 캔버스(팬·줌·눈금자) + 팔레트(타일 35종·아이콘 8종) + 도구 6종(B/L/R/I/E/V) + 실행취소
-3. **아직 없는 것**: 텍스트·마커 도구, 인스펙터 내용, 시작 화면, 자유곡선 트랙, PDF 출력, 타일링, 정답 생성
+1. `npm install` (필요 시) → `npm run dev` → **`http://localhost:5173`** (개발 서버는 루트에서 열립니다. 하위 경로 불필요)
+2. 지금까지 만든 것: 시작 화면(프리셋 5종·파일 열기·초안 복구) → 편집기 레이아웃 + 캔버스(팬·줌·눈금자·미니맵) + 팔레트(타일 35종·아이콘 8종) + 도구 8종(V/L/B/R/I/E/T/M) + 실행취소 + 인스펙터 4섹션 + 검증
+3. **아직 없는 것**: 자유곡선 트랙(FR-10), PDF 출력, 출력 계획기·타일링, 정답 생성, 첫 사용 안내(§9.15)
 4. 다음 작업은 아래 `Next Steps`의 1번부터
-- Repo: `https://github.com/t777-kaewoong/hamsterCreator` (**Private로 전환됨**, 원격 연결됨. 배포는 모든 작업 완료 후로 미룸)
+- Repo: `https://github.com/t777-kaewoong/hamsterCreator` (Public. 원격 연결됨. 배포는 모든 작업 완료 후로 미룸)
 - 배포 URL(예정): `https://t777-kaewoong.github.io/hamsterCreator/`
 
 ## Decisions
@@ -202,20 +279,38 @@ Last updated: 2026-09-05 11:40
 5. M3 출력 계획기(§9.14) + 타일링 / M4 정답 생성
 
 ## Changed Files
-- `package.json`, `vite.config.ts`, `tsconfig*.json`, `index.html`: 빌드 설정
+- `package.json`, `vite.config.ts`, `tsconfig*.json`, `index.html`, `.claude/launch.json`: 빌드·개발 서버 설정
 - `src/main.tsx`: `ToastProvider`로 앱 전체를 감쌈 (M0-3)
-- `src/App.tsx`, `src/App.module.css`: 토큰 확인 화면 + 컴포넌트 카탈로그
+- `src/App.tsx`: 시작 화면 ↔ 편집기 전환(로컬 useState), `?catalog` 개발용 라우트
+- `src/styles/`: 토큰·리셋·타이포그래피 (Pretendard 서브셋 3종)
 - `src/components/`: 기본 컴포넌트 8종 (`Button` `Input` `Segmented` `TabPills` `Tooltip` `StatusChip` `Toast` `Modal`) + `index.ts`
+- `src/features/start/`: 시작 화면 — `StartScreen` `presets`(5종) `thumbnail`(실제 맵 렌더)
+- `src/features/editor/`: `EditorLayout` `TopBar` `ToolRail` `Inspector` `useMapIssues` `editorStore`
+- `src/features/palette/`: `PalettePanel` (테마 탭 6 + 아이콘/트랙/내 이미지)
+- `src/features/canvas/`: `CanvasViewport` `viewport` `renderer`(5레이어) `drawBoard` `drawOverlay` `gridMath` `hitTest` `toolInteractions` `ruler` `minimap` `tileBitmaps` `cssTokens`
+- `src/lib/model/`: `types` `constants` `factory` `serialize`
+- `src/lib/storage/`: `FsaStore` `DownloadStore` `draft` (File System Access API + 내려받기 대피로)
+- `src/lib/geometry/validate.ts`: FR-9 검증 + 격자 그래프 BFS
+- `src/lib/tiles/catalog.ts`, `src/assets/tiles/`: 내장 아트 타일 35종 + manifest
+- `src/lib/icons/catalog.ts`, `src/assets/icons/`: 인쇄용 아이콘 8종
 - `.github/workflows/deploy.yml`: Pages 자동 배포
 - `.gitignore`
 
 ## Commands Run
 ```text
 npm install            → 성공
-npm run build          → 성공, dist/ 생성 (140.86kB / gzip 45.90kB)
-npm run build:single   → 성공, dist-single/index.html 141.25kB
-git init && git commit → 09b8bd0
+npm run build          → 성공 (2026-09-06 기준 js 274.56kB / gzip 93.86kB, css 24.62kB)
+npm run build:single   → 성공, dist-single/index.html (M0-2a 폰트 교체 후 1.23MB)
+npm run dev            → http://localhost:5173 (포트 고정, IPv4·IPv6 양쪽 바인딩)
 ```
+
+### 검증 방법 메모
+브라우저 자동화 환경이 불안정해서(창 배율이 호출마다 바뀌어 좌표 클릭이 어긋남),
+다음 두 가지로 확인했습니다. 앞으로도 같은 방법을 쓰면 됩니다.
+- **localStorage 초안 읽기** — `hamsterS.drafts.v1` 에 저장된 실제 문서로 결과를 대조.
+  캔버스에 뭘 그렸는지 눈으로 보는 것보다 훨씬 확실합니다
+- **`.hsmap.json` 파일을 창에 떨어뜨려 알려진 문서를 주입** — 원하는 상태를 정확히
+  만들 수 있고, 덤으로 파일 열기 경로(FR-1.3)까지 같이 검증됩니다
 
 ## Risks / Open Questions
 - **자산 파일 이름에 광고 차단기가 싫어하는 낱말을 넣지 말 것**: `ad` `ads` `adv` `advert` `banner` `popup` `promo` `sponsor` `analytics` `track`. 개발 서버에서는 타일 png가 모듈로 로드되므로 하나만 차단돼도 앱이 통째로 안 뜸. 배포 빌드에서는 해당 그림만 깨지지만 그것도 수업에서 곤란함. `src/lib/tiles/catalog.ts` 상단 주석 참고
