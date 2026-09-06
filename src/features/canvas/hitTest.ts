@@ -8,8 +8,10 @@
 // 바로 지정/토글하는 방식이라 "먼저 선택한 뒤 조작"하는 흐름 자체가 필요 없습니다.
 import type { Label, MapDoc } from '@/lib/model/types'
 import type { Selection } from '@/features/editor/editorStore'
+import { getTile } from '@/lib/tiles/catalog'
 import { cellAtMm } from './gridMath'
 import { measureLabelBoxMm } from './drawBoard'
+import { distanceToStroke } from './strokeGeometry'
 
 // 라벨 폭을 재려면(measureLabelBoxMm) CanvasRenderingContext2D가 있어야 하는데, hitTest는
 // "mm 좌표만 주면 무엇이 찍혔는지 알려준다"는 순수 계산 함수로 두고 싶어서 호출부에
@@ -83,9 +85,24 @@ export function hitTest(doc: MapDoc, mx: number, my: number): Selection {
     }
   }
 
-  // ③ 셀 — 그 칸에 아트 타일이 실제로 있을 때만 선택으로 칩니다. 빈 칸 클릭은 "아무것도
-  // 없으니 선택 해제"로 느껴지는 편이 자연스럽습니다(작업 지시 명시).
+  // ③ 격자선 위에 그려지는 object 셀(사용자 이미지 포함). 곡선보다 화면 앞쪽이라 먼저 잡습니다.
   const cell = cellAtMm(mx, my, doc.board.cols, doc.board.rows, doc.board.pitch)
+  if (cell) {
+    const index = cell.r * doc.board.cols + cell.c
+    const placed = doc.cells[index]
+    if (placed && (placed.art.startsWith('asset:') || getTile(placed.art)?.kind === 'object')) {
+      return { kind: 'cell', index }
+    }
+  }
+
+  // ④ 자유곡선 — 화면에서 위에 놓인 마지막 곡선부터, 선폭 절반 + 2mm 선택 여유로 검사합니다.
+  // 선 중심만 정확히 눌러야 하면 축소 배율에서 사실상 선택이 불가능해져 작은 여유가 필요합니다.
+  for (let i = doc.strokes.length - 1; i >= 0; i--) {
+    const stroke = doc.strokes[i]
+    if (distanceToStroke(stroke, [mx, my]) <= stroke.width / 2 + 2) return { kind: 'stroke', id: stroke.id }
+  }
+
+  // ⑤ 곡선 아래에 그려지는 floor/block 셀. 빈 칸 클릭은 선택 해제로 처리합니다.
   if (cell) {
     const index = cell.r * doc.board.cols + cell.c
     if (doc.cells[index] !== null) return { kind: 'cell', index }

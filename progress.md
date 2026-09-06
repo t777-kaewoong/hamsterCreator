@@ -51,7 +51,7 @@ Last updated: 2026-09-06
 
 ## 가장 먼저 할 일
 
-M1.5 자유곡선 트랙(FR-10)의 데이터 모델·도구 동작·선택/편집 범위를 먼저 분석하고 사용자에게 보고한 뒤 구현하십시오. §9.15 빈 상태와 §9.17 팔레트 반응형은 완료됐습니다.
+M1.5의 다음 하위 단계인 도형 O(직선·원·타원·라운드 사각)와 트랙 프리셋(FR-10.3·10.7)을 분석한 뒤 구현하십시오. P/D 곡선 생성·스무딩·선택은 완료됐습니다.
 
 ---
 
@@ -60,8 +60,8 @@ M1.5 자유곡선 트랙(FR-10)의 데이터 모델·도구 동작·선택/편�
 - v1 완료 기준: PRD §1.2의 S1~S4, S6, S7 전부 통과
 
 ## Current Status
-- Status: **진행 중**
-- Current focus: **M1 격자 편집기 코어 §9.18 1~7·9단계 완료. 다음 착수 지점 = M1.5 자유곡선 트랙(FR-10)** (8단계 출력 계획기는 M3에서 진행)
+- Status: **사용자 요청으로 일시정지**
+- Current focus: **M1.5 자유곡선 트랙 중 P/D 생성 완료. 다음 착수 지점 = O 도형·트랙 프리셋(FR-10.3·10.7)**
 - 작업 단위별 로컬 커밋을 유지하며 원격보다 앞서 있음. **원격 푸시는 안 된 상태** (사용자 지시로 배포·푸시는 전체 작업 완료 후)
 
 ### 재개할 때 이것부터
@@ -268,13 +268,24 @@ M1.5 자유곡선 트랙(FR-10)의 데이터 모델·도구 동작·선택/편�
   - 브라우저 실측: 1079px에서 팔레트 240px·타일 65×65px, 1080px에서 팔레트 280px, 1024px에서 드롭존 높이 72px·인스펙터 자동 접힘. 1024px 코치 마크 전체가 팔레트 안에 들어옴
   - `npm run build`, `npm run build:single` 성공. 단일 HTML 1,971.24kB(gzip 1,331.42kB)
 
+- [x] **M1.5a 자유곡선 P/D 생성·렌더·선택** (2026-09-06)
+  - P 곡선 펜: 클릭으로 정점을 쌓고 `Enter` 또는 더블클릭으로 한 번에 확정. `Esc` 취소, `Backspace` 마지막 정점 제거. 확정 전에는 primary 색 경로와 7px 정점으로 미리보기
+  - D 자유 그리기: 드래그 궤적을 0.5mm 간격으로 수집한 뒤 Douglas-Peucker(허용오차 2mm)로 단순화해 spline으로 저장
+  - 공용 `strokeGeometry.ts`: Catmull-Rom 샘플링, 화면 경로 렌더, 선까지의 거리, 경계, Douglas-Peucker를 한곳에 두어 향후 PDF·검증과 같은 기하를 재사용 가능
+  - 실제 mm 선폭(기본 8mm), 검정, round 끝·이음으로 `strokes → edges` 순서 렌더. 기존 MapDoc 스키마 변경 없음
+  - V 선택 히트테스트에 곡선 추가: object 셀 → 곡선 → floor/block 셀 순서로 렌더 역순을 반영. 선택 시 경로와 7px 정점 표시, Delete/Backspace 삭제 지원
+  - 곡선 생성·삭제는 각각 실행취소 1단계. 실행취소로 선택 대상이 사라질 때 유령 선택 오버레이가 남던 문제를 검증 중 발견해 문서 변경 시 선택 유효성 재동기화
+  - 브라우저 검증: P 3정점 곡선 생성(153mm 표시), D 드래그가 2정점으로 단순화, V 재선택, 삭제·실행취소, 유령 선택 제거, 오류/경고 로그 0건
+  - `npm run build`, `npm run build:single` 성공. 단일 HTML 1,977.64kB(gzip 1,333.20kB)
+
 ## In Progress
-- [ ] M1.5 자유곡선 트랙(FR-10) — 구현 전 분석 필요
+- [ ] **일시정지** — M1.5b O 도형·트랙 프리셋(FR-10.3·10.7)
 
 ## Next Steps
-1. M1.5 자유곡선 트랙 (FR-10)
-2. M2 단일장 PDF (SP-7 한글 폰트 임베드 확인 포함)
-3. M3 출력 계획기(§9.14) + 타일링 / M4 정답 생성
+1. M1.5b O 도형·트랙 프리셋 (FR-10.3·10.7)
+2. M1.5c 정점 편집·곡률/평행 간격 검증 (FR-10.4·10.8·10.9)
+3. M2 단일장 PDF (SP-7 한글 폰트 임베드 확인 포함)
+4. M3 출력 계획기(§9.14) + 타일링 / M4 정답 생성
 
 ## Changed Files
 - `package.json`, `vite.config.ts`, `tsconfig*.json`, `index.html`, `.claude/launch.json`: 빌드·개발 서버 설정
@@ -297,8 +308,8 @@ M1.5 자유곡선 트랙(FR-10)의 데이터 모델·도구 동작·선택/편�
 ## Commands Run
 ```text
 npm install            → 성공
-npm run build          → 성공 (2026-09-06 M1-5j 기준 js 294.60kB / gzip 99.30kB, css 29.39kB)
-npm run build:single   → 성공, dist-single/index.html 1,971.24kB / gzip 1,331.42kB (M1-5j 기준)
+npm run build          → 성공 (2026-09-06 M1.5a 기준 js 301.00kB / gzip 101.07kB, css 29.39kB)
+npm run build:single   → 성공, dist-single/index.html 1,977.64kB / gzip 1,333.20kB (M1.5a 기준)
 npm run dev            → http://localhost:5173 (포트 고정, IPv4·IPv6 양쪽 바인딩)
 ```
 

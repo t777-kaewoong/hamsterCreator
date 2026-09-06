@@ -15,7 +15,8 @@
 // 셀을 찍을 때마다 실행취소 스택에 쌓지 않고, pointerdown 시점의 문서를 깊은 복사해
 // gestureSnapshot으로만 들고 있다가, pointerup(제스처가 끝나는 순간) 실제로 문서가
 // 달라졌을 때만 그 스냅샷 하나를 스토어의 undoStack에 넣습니다.
-import type { Cell, Direction, GoalMarker, Label, MapDoc, NodeCoord, Prop, StartMarker } from '@/lib/model/types'
+import type { Cell, Direction, GoalMarker, Label, MapDoc, NodeCoord, Point, Prop, StartMarker, Stroke } from '@/lib/model/types'
+import { LINE_WIDTH_MM } from '@/lib/model/constants'
 import { getTile, TILES_BY_THEME } from '@/lib/tiles/catalog'
 import { saveDraft } from '@/lib/storage/draft'
 import { useEditorStore } from '@/features/editor/editorStore'
@@ -24,6 +25,7 @@ import type { LayerName } from './renderer'
 import type { MapPoint, Viewport } from './viewport'
 import { nodeCenterMm } from './drawBoard'
 import { hitTest, measureLabelBoxMmCached } from './hitTest'
+import { simplifyDouglasPeucker } from './strokeGeometry'
 import {
   areAdjacent,
   cellAtMm,
@@ -39,7 +41,7 @@ import {
 
 /** 지금 진행 중인 제스처의 종류. 스포이드(I)·선택(V)은 문서를 바꾸지 않아 제스처로
  *  치지 않습니다(null로 둠 — 실행취소 대상이 아님). */
-type GestureKind = 'stamp' | 'eraser' | 'lineDraw' | 'fill' | null
+type GestureKind = 'stamp' | 'eraser' | 'lineDraw' | 'fill' | 'freeDraw' | null
 
 /** overlay 레이어(drawOverlay.ts)가 그대로 읽어서 그리는 "지금 상호작용 중인 상태".
  *  전부 화면 표시용 데이터일 뿐, MapDoc에는 전혀 반영되지 않습니다. */
@@ -65,6 +67,10 @@ export interface OverlayState {
    *  다시 계산해야 하므로, 포인터 이벤트가 아니라 별도의 public 메서드
    *  (syncSelectionOverlay)로 갱신합니다. */
   selectionBox: { mx: number; my: number; wMm: number; hMm: number; rot: number } | null
+  /** P/D 도구의 아직 확정되지 않은 경로. 문서에 넣기 전에도 결과 모양을 볼 수 있게 합니다. */
+  curveDraft: { points: Point[]; hoverPoint: Point | null; mode: 'pen' | 'freeDraw'; width: number } | null
+  /** 선택한 곡선 본체와 정점을 강조하기 위한 화면 전용 참조. */
+  strokeSelection: Stroke | null
   /** 인스펙터 검증 섹션(§9.13) 항목을 클릭해 "여기로 이동해서 0.6초간 깜빡여라"라고
    *  요청받은 칸. §9.12 오버레이 표의 "검증 경고 위치" 행(--c-warn-zone 채움 + 2px
    *  실선 --c-warn 윤곽)을 이 용도로 그대로 씁니다. CanvasViewport.tsx가 editorStore의
@@ -87,6 +93,8 @@ function emptyOverlay(): OverlayState {
     fillRect: null,
     markerGhost: null,
     selectionBox: null,
+    curveDraft: null,
+    strokeSelection: null,
     focusHighlight: null,
   }
 }
@@ -115,6 +123,16 @@ function buildFreeProp(assetId: string, centerMx: number, centerMy: number, pitc
  *  비교하는 코드를 유지하지 않아도 되어 훨씬 단순합니다. */
 function docsEqual(a: MapDoc, b: MapDoc): boolean {
   return JSON.stringify(a) === JSON.stringify(b)
+}
+
+let strokeIdSequence = 0
+function createStrokeId(doc: MapDoc): string {
+  let id: string
+  do {
+    strokeIdSequence += 1
+    id = `s_${Date.now().toString(36)}_${strokeIdSequence.toString(36)}`
+  } while (doc.strokes.some((stroke) => stroke.id === id))
+  return id
 }
 
 export class ToolController {
@@ -164,6 +182,10 @@ export class ToolController {
   private lastFreePropCenter: MapPoint | null = null
   /** 영역 채우기 드래그 시작 칸. */
   private fillStartCell: CellCoord | null = null
+  /** P 도구는 여러 번의 클릭이 하나의 곡선이므로 pointerup을 넘어 정점 목록을 유지합니다. */
+  private penDraftPoints: Point[] = []
+  /** D 도구가 pointerdown~up 사이에 모은 원시 궤적. 종료 시 Douglas-Peucker로 단순화합니다. */
+  private freeDrawPoints: Point[] = []
 
   constructor(
     private readonly viewport: Viewport,
@@ -203,6 +225,9 @@ export class ToolController {
     if (e.button !== 0) return
 
     const { activeTool } = useEditorStore.getState()
+    // P 도구의 미완성 정점은 다른 도구로 넘어가면 문서에 남기지 않습니다. 도구 전환을
+    // "완료"로 해석하면 실수로 찍은 한 점짜리 경로까지 저장되기 때문입니다.
+    if (activeTool !== 'pen' && this.penDraftPoints.length > 0) this.cancelPenDraft()
     this.dragMoved = false
     this.downScreen = { x: sx, y: sy }
     this.gestureAlt = e.altKey
@@ -275,6 +300,24 @@ export class ToolController {
         // 도구는 드래그 개념이 없는 즉시 동작이라 이 값을 그대로 "지금 이 클릭이 도착
         // 지정인지"로 씁니다.
         this.placeMarker(doc, nearestNode(mapPt.mx, mapPt.my, doc.board.cols, doc.board.rows, doc.board.pitch), this.gestureAlt)
+        break
+
+      case 'pen':
+        // 더블클릭의 두 번째 pointerdown에서는 새 점을 하나 더 중복 추가하지 않고, 첫 번째
+        // 클릭에서 들어간 끝점을 그대로 사용해 확정합니다. Enter도 같은 finish 경로를 씁니다.
+        if (e.detail >= 2) this.finishPenDraft()
+        else this.addPenPoint(mapPt)
+        break
+
+      case 'freeDraw':
+        this.activeGesture = 'freeDraw'
+        this.freeDrawPoints = [[mapPt.mx, mapPt.my]]
+        this.overlay.curveDraft = {
+          points: this.freeDrawPoints.slice(),
+          hoverPoint: null,
+          mode: 'freeDraw',
+          width: LINE_WIDTH_MM,
+        }
         break
 
       default:
@@ -377,6 +420,22 @@ export class ToolController {
         }
         break
 
+      case 'freeDraw': {
+        const last = this.freeDrawPoints[this.freeDrawPoints.length - 1]
+        // 화면 이벤트가 지나치게 촘촘해도 같은 자리에 수천 점이 쌓이지 않도록 0.5mm 이상
+        // 움직였을 때만 원시 궤적에 추가합니다. 최종 단순화는 pointerup에서 별도로 합니다.
+        if (!last || Math.hypot(mapPt.mx - last[0], mapPt.my - last[1]) >= 0.5) {
+          this.freeDrawPoints.push([mapPt.mx, mapPt.my])
+          this.overlay.curveDraft = {
+            points: this.freeDrawPoints.slice(),
+            hoverPoint: null,
+            mode: 'freeDraw',
+            width: LINE_WIDTH_MM,
+          }
+        }
+        break
+      }
+
       default:
         break
     }
@@ -413,6 +472,14 @@ export class ToolController {
         const endCell = clampCellAtMm(mapPt.mx, mapPt.my, doc.board.cols, doc.board.rows, doc.board.pitch)
         this.commitFill(this.fillStartCell, endCell, this.gestureAlt)
       }
+
+      if (gestureKind === 'freeDraw') {
+        const last = this.freeDrawPoints[this.freeDrawPoints.length - 1]
+        if (!last || Math.hypot(mapPt.mx - last[0], mapPt.my - last[1]) >= 0.5) {
+          this.freeDrawPoints.push([mapPt.mx, mapPt.my])
+        }
+        this.finishFreeDrawDraft()
+      }
     }
 
     // 제스처 시작~끝 사이에 실제로 문서가 달라졌을 때만 실행취소 스택에 하나 쌓습니다.
@@ -439,6 +506,14 @@ export class ToolController {
     this.overlay.stampGhost = null
     this.overlay.freePropGhost = null
     this.overlay.markerGhost = null
+    if (this.penDraftPoints.length > 0) {
+      this.overlay.curveDraft = {
+        points: this.penDraftPoints.slice(),
+        hoverPoint: null,
+        mode: 'pen',
+        width: LINE_WIDTH_MM,
+      }
+    }
     this.markDirty('overlay')
     this.requestRender()
   }
@@ -461,6 +536,29 @@ export class ToolController {
   handleKeyDown(e: KeyboardEvent): void {
     const key = e.key.toLowerCase()
 
+    const { activeTool } = useEditorStore.getState()
+    if (activeTool === 'pen' && this.penDraftPoints.length > 0) {
+      if (key === 'enter') {
+        e.preventDefault()
+        this.finishPenDraft()
+        return
+      }
+      if (key === 'escape') {
+        e.preventDefault()
+        this.cancelPenDraft()
+        return
+      }
+      if (key === 'backspace') {
+        e.preventDefault()
+        this.penDraftPoints.pop()
+        if (this.penDraftPoints.length === 0) this.cancelPenDraft()
+        else this.updateHoverAndGhost()
+        this.markDirty('overlay')
+        this.requestRender()
+        return
+      }
+    }
+
     // Delete/Backspace = 선택 항목 삭제. 도구와 무관하게(선택은 V 도구로 잡았더라도
     // 그 뒤 다른 도구로 바꿨을 수 있음) editorStore의 selection이 있으면 항상 동작합니다.
     if (key === 'delete' || key === 'backspace') {
@@ -473,7 +571,7 @@ export class ToolController {
 
     if (key !== 'r' && key !== 'f') return
 
-    const { activeTool, stampTileId } = useEditorStore.getState()
+    const { stampTileId } = useEditorStore.getState()
     // 회전/반전은 "지금 찍으려는 타일의 방향"을 바꾸는 동작이라 타일 배치(B)·영역
     // 채우기(R) 두 도구에서만 의미가 있습니다. 스탬프가 비어있으면(고를 타일이 없으면)
     // 아무 것도 하지 않습니다.
@@ -505,6 +603,17 @@ export class ToolController {
 
     const { activeTool, stampTileId, stampRot, stampFlip } = useEditorStore.getState()
     const mapPt = this.viewport.screenToMap(this.lastScreen.x, this.lastScreen.y)
+
+    if (activeTool === 'pen' && this.penDraftPoints.length > 0) {
+      this.overlay.curveDraft = {
+        points: this.penDraftPoints.slice(),
+        hoverPoint: [mapPt.mx, mapPt.my],
+        mode: 'pen',
+        width: LINE_WIDTH_MM,
+      }
+    } else if (activeTool !== 'freeDraw') {
+      this.overlay.curveDraft = null
+    }
 
     // M(마커) 도구: 지금 가장 가까운 노드에 무엇이 찍힐지 미리 보여줍니다. Alt를 누르고
     // 있는지는 매 프레임 새로 확인합니다(this.isAltDown) — 마우스는 그대로 두고 Alt만
@@ -550,6 +659,57 @@ export class ToolController {
     // 문서 변경 전체를 보고 코치 마크를 숨기면 선·라벨만 편집해도 "첫 타일 배치"로
     // 오인합니다. 실제 배치 경로가 명시적으로 알려줄 때만 신호를 보냅니다(§9.15).
     if (isTilePlacement) store.notifyTilePlaced()
+  }
+
+  private addPenPoint(mapPt: MapPoint): void {
+    const point: Point = [mapPt.mx, mapPt.my]
+    const last = this.penDraftPoints[this.penDraftPoints.length - 1]
+    if (!last || Math.hypot(point[0] - last[0], point[1] - last[1]) >= 0.5) this.penDraftPoints.push(point)
+    this.overlay.curveDraft = {
+      points: this.penDraftPoints.slice(),
+      hoverPoint: null,
+      mode: 'pen',
+      width: LINE_WIDTH_MM,
+    }
+  }
+
+  private finishPenDraft(): void {
+    if (this.penDraftPoints.length >= 2) this.commitSpline(this.penDraftPoints)
+    this.penDraftPoints = []
+    this.overlay.curveDraft = null
+    this.markDirty('overlay')
+    this.requestRender()
+  }
+
+  private cancelPenDraft(): void {
+    this.penDraftPoints = []
+    this.overlay.curveDraft = null
+  }
+
+  private finishFreeDrawDraft(): void {
+    // 8mm 선의 1/4인 2mm 허용오차면 손 떨림은 제거하면서 트랙 중심선의 형태는 보존됩니다.
+    const simplified = simplifyDouglasPeucker(this.freeDrawPoints, LINE_WIDTH_MM / 4)
+    const totalLength = simplified.slice(1).reduce((sum, point, index) => {
+      const prev = simplified[index]
+      return sum + Math.hypot(point[0] - prev[0], point[1] - prev[1])
+    }, 0)
+    if (simplified.length >= 2 && totalLength >= 1) this.commitSpline(simplified)
+    this.freeDrawPoints = []
+    this.overlay.curveDraft = null
+  }
+
+  private commitSpline(points: Point[]): void {
+    const doc = this.getDoc()
+    if (!doc) return
+    const stroke: Stroke = {
+      id: createStrokeId(doc),
+      kind: 'spline',
+      points: points.map(([x, y]) => [x, y]),
+      width: LINE_WIDTH_MM,
+      closed: false,
+    }
+    useEditorStore.getState().commitDoc({ ...doc, strokes: [...doc.strokes, stroke] })
+    useEditorStore.getState().setSelection({ kind: 'stroke', id: stroke.id })
   }
 
   private paintStampAt(mapPt: MapPoint): void {
@@ -873,7 +1033,7 @@ export class ToolController {
       nextLabels.splice(selection.index, 1)
       next = { ...doc, labels: nextLabels }
     } else {
-      return // stroke: 곡선 도구가 아직 없어 이 kind로 선택될 일이 없음
+      next = { ...doc, strokes: doc.strokes.filter((stroke) => stroke.id !== selection.id) }
     }
 
     useEditorStore.getState().commitDoc(next)
@@ -889,8 +1049,28 @@ export class ToolController {
    */
   syncSelectionOverlay(): void {
     const doc = this.getDoc()
-    const { selection } = useEditorStore.getState()
+    let { selection } = useEditorStore.getState()
+    // 실행취소·격자 리사이즈처럼 문서가 통째로 바뀌면 방금 선택한 배열 항목이나 stroke id가
+    // 더 이상 존재하지 않을 수 있습니다. 그 상태를 유지하면 화면에는 유령 윤곽이 남고
+    // Delete도 없는 대상을 가리키므로, 동기화 시점에 선택 자체를 함께 정리합니다.
+    if (doc && selection) {
+      let exists = false
+      if (selection.kind === 'cell') exists = doc.cells[selection.index] !== null && doc.cells[selection.index] !== undefined
+      else if (selection.kind === 'prop') exists = doc.props[selection.index] !== undefined
+      else if (selection.kind === 'label') exists = doc.labels[selection.index] !== undefined
+      else {
+        const strokeId = selection.id
+        exists = doc.strokes.some((stroke) => stroke.id === strokeId)
+      }
+      if (!exists) {
+        useEditorStore.getState().setSelection(null)
+        selection = null
+      }
+    }
     this.overlay.selectionBox = doc && selection ? this.computeSelectionBoxFor(doc, selection) : null
+    const selectedStrokeId = selection?.kind === 'stroke' ? selection.id : null
+    this.overlay.strokeSelection =
+      doc && selectedStrokeId ? (doc.strokes.find((stroke) => stroke.id === selectedStrokeId) ?? null) : null
     this.markDirty('overlay')
     this.requestRender()
   }
@@ -917,7 +1097,7 @@ export class ToolController {
       const { wMm, hMm } = measureLabelBoxMmCached(label)
       return { mx: label.x, my: label.y, wMm, hMm, rot: label.rot }
     }
-    return null // stroke: 곡선 도구가 아직 없어 이 kind로 선택될 일이 없음
+    return null // stroke는 사각형 대신 strokeSelection의 경로·정점 오버레이로 표시합니다.
   }
 
   private resetGestureState(): void {
@@ -934,5 +1114,9 @@ export class ToolController {
     this.fillStartCell = null
     this.overlay.linePreview = null
     this.overlay.fillRect = null
+    if (this.freeDrawPoints.length > 0) {
+      this.freeDrawPoints = []
+      this.overlay.curveDraft = null
+    }
   }
 }

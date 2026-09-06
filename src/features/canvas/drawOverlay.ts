@@ -14,6 +14,7 @@ import type { TokenName } from './cssTokens'
 import { tileBitmapCache } from './tileBitmaps'
 import { MARKER_OUTER_DIAMETER_MM, nodeCenterMm } from './drawBoard'
 import type { OverlayState } from './toolInteractions'
+import { drawStrokePath } from './strokeGeometry'
 
 type Tokens = Record<TokenName, string>
 
@@ -215,6 +216,66 @@ export function drawOverlayLayer(
     ctx.fillStyle = tokens['--c-text-inverse']
     ctx.fillText(chipText, p.x, chipCenterY + 1)
     ctx.restore()
+  }
+
+  // P/D 경로는 확정 전까지 문서에 넣지 않고 primary 색 미리보기로만 보여줍니다.
+  if (overlay.curveDraft) {
+    const { points, hoverPoint, mode, width } = overlay.curveDraft
+    const previewPoints = hoverPoint ? [...points, hoverPoint] : points
+    if (previewPoints.length >= 2) {
+      ctx.save()
+      ctx.globalAlpha = LINE_PREVIEW_ALPHA
+      ctx.strokeStyle = tokens['--c-primary']
+      ctx.lineWidth = viewport.mmToPx(width)
+      ctx.lineCap = 'round'
+      ctx.lineJoin = 'round'
+      drawStrokePath(ctx, viewport, { id: '__draft__', kind: 'spline', points: previewPoints, width, closed: false })
+      ctx.restore()
+    }
+
+    // P는 클릭한 정점을 명시적으로 보여주고, D는 손 궤적 자체가 충분한 피드백이라 생략합니다.
+    if (mode === 'pen') {
+      ctx.save()
+      ctx.fillStyle = tokens['--c-surface']
+      ctx.strokeStyle = tokens['--c-primary']
+      ctx.lineWidth = 2
+      for (const [mx, my] of points) {
+        const p = viewport.mapToScreen(mx, my)
+        ctx.beginPath()
+        ctx.arc(p.x, p.y, 3.5, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.stroke()
+      }
+      ctx.restore()
+    }
+  }
+
+  // 선택한 곡선은 본체 윤곽과 7px 정점 원으로 표시합니다(§9.12 곡선 편집 오버레이).
+  if (overlay.strokeSelection) {
+    const stroke = overlay.strokeSelection
+    ctx.save()
+    ctx.globalAlpha = 0.8
+    ctx.strokeStyle = tokens['--c-primary']
+    ctx.lineWidth = 2
+    ctx.lineCap = 'round'
+    ctx.lineJoin = 'round'
+    drawStrokePath(ctx, viewport, stroke)
+    ctx.restore()
+
+    if (stroke.kind === 'spline' || stroke.kind === 'line') {
+      ctx.save()
+      ctx.fillStyle = tokens['--c-surface']
+      ctx.strokeStyle = tokens['--c-primary']
+      ctx.lineWidth = 2
+      for (const [mx, my] of stroke.points) {
+        const p = viewport.mapToScreen(mx, my)
+        ctx.beginPath()
+        ctx.arc(p.x, p.y, 3.5, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.stroke()
+      }
+      ctx.restore()
+    }
   }
 
   // ⑥ V(선택) 도구 윤곽 — 2px 실선 사각형 + 8px 모서리 정사각 핸들(PRD §9.12 "객체

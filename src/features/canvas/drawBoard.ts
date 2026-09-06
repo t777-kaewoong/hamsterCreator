@@ -7,14 +7,14 @@
 //
 // 그리는 것: 종이(아트보드) · 셀 경계 안내선 · 격자 노드 점 · 격자선(+진입로) ·
 // 칸에 놓인 아트 타일 · 자유 배치 오브젝트(props) · 텍스트 라벨(labels, FR-4.1/4.2) ·
-// 출발·도착 마커(markers, FR-4.3/4.4). 자유곡선(strokes)은 곡선 도구가 생기는 다음
-// 단계 이후에 이 파일에 추가됩니다.
+// 출발·도착 마커(markers, FR-4.3/4.4) · 자유곡선(strokes, FR-10).
 import type { Direction, Label, MapDoc } from '@/lib/model/types'
 import { getTile } from '@/lib/tiles/catalog'
 import type { MapPoint, Viewport } from './viewport'
 import type { TokenName } from './cssTokens'
 import { parseShadowToken } from './cssTokens'
 import { tileBitmapCache } from './tileBitmaps'
+import { drawStrokePath } from './strokeGeometry'
 
 /** 이 배율 미만이면 셀 경계 안내선을 숨깁니다(PRD §9.12 표). 너무 축소하면 안내선이
  *  다닥다닥 붙어 화면이 지저분해지기 때문입니다. */
@@ -386,11 +386,26 @@ export function drawMarkersLayer(ctx: CanvasRenderingContext2D, viewport: Viewpo
   }
 }
 
-/** ③ 격자선 + 진입로(stub). 실제 인쇄되는 검정 선이라 mm 굵기를 배율만큼 그대로 곱해 그립니다
- *  (확대하면 같이 굵어짐). 자유곡선(strokes)은 곡선 도구가 생기는 다음 단계 이후에 이 레이어에
- *  추가됩니다. */
+/** ③ 자유곡선 → 격자선 + 진입로(stub). 같은 오프스크린 레이어 안에서도 PRD §5의
+ *  순서를 지켜 곡선을 먼저 그리고, 그 위에 격자선을 그립니다. 둘 다 실제 인쇄되는
+ *  검정 선이라 mm 굵기를 배율만큼 그대로 곱합니다. */
 export function drawGridLayer(ctx: CanvasRenderingContext2D, viewport: Viewport, doc: MapDoc, tokens: Tokens): void {
   const { pitch, lineWidth } = doc.board
+
+  // 자유곡선은 격자와 달리 끝·이음이 round입니다(FR-10.5). 곡선마다 width를 가질 수
+  // 있으므로 한 번에 묶지 않고 각 경로 직전에 실제 mm 선폭을 적용합니다.
+  ctx.save()
+  ctx.strokeStyle = tokens['--c-print-black']
+  ctx.lineCap = 'round'
+  ctx.lineJoin = 'round'
+  for (const stroke of doc.strokes) {
+    const strokeWidthPx = viewport.mmToPx(stroke.width)
+    if (strokeWidthPx <= 0) continue
+    ctx.lineWidth = strokeWidthPx
+    drawStrokePath(ctx, viewport, stroke)
+  }
+  ctx.restore()
+
   const widthPx = viewport.mmToPx(lineWidth)
   if (widthPx <= 0) return
 
