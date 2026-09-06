@@ -25,7 +25,7 @@ import type { LayerName } from './renderer'
 import type { MapPoint, Viewport } from './viewport'
 import { nodeCenterMm } from './drawBoard'
 import { hitTest, measureLabelBoxMmCached } from './hitTest'
-import { simplifyDouglasPeucker } from './strokeGeometry'
+import { closestEditableSegment, simplifyDouglasPeucker, splineControlHandles } from './strokeGeometry'
 import {
   areAdjacent,
   cellAtMm,
@@ -41,7 +41,13 @@ import {
 
 /** 지금 진행 중인 제스처의 종류. 스포이드(I)·선택(V)은 문서를 바꾸지 않아 제스처로
  *  치지 않습니다(null로 둠 — 실행취소 대상이 아님). */
-type GestureKind = 'stamp' | 'eraser' | 'lineDraw' | 'fill' | 'freeDraw' | 'shape' | null
+type GestureKind = 'stamp' | 'eraser' | 'lineDraw' | 'fill' | 'freeDraw' | 'shape' | 'strokeEdit' | null
+
+type StrokeEditTarget = {
+  strokeId: string
+  vertexIndex: number
+  part: 'vertex' | 'handle-in' | 'handle-out'
+}
 
 /** overlay 레이어(drawOverlay.ts)가 그대로 읽어서 그리는 "지금 상호작용 중인 상태".
  *  전부 화면 표시용 데이터일 뿐, MapDoc에는 전혀 반영되지 않습니다. */
@@ -73,6 +79,8 @@ export interface OverlayState {
   shapeDraft: Stroke | null
   /** 선택한 곡선 본체와 정점을 강조하기 위한 화면 전용 참조. */
   strokeSelection: Stroke | null
+  /** 현재 활성 정점. spline이면 이 정점의 입·출력 베지어 핸들도 함께 표시합니다. */
+  activeStrokeVertex: { strokeId: string; vertexIndex: number } | null
   /** 인스펙터 검증 섹션(§9.13) 항목을 클릭해 "여기로 이동해서 0.6초간 깜빡여라"라고
    *  요청받은 칸. §9.12 오버레이 표의 "검증 경고 위치" 행(--c-warn-zone 채움 + 2px
    *  실선 --c-warn 윤곽)을 이 용도로 그대로 씁니다. CanvasViewport.tsx가 editorStore의
@@ -98,6 +106,7 @@ function emptyOverlay(): OverlayState {
     curveDraft: null,
     shapeDraft: null,
     strokeSelection: null,
+    activeStrokeVertex: null,
     focusHighlight: null,
   }
 }
@@ -224,6 +233,8 @@ export class ToolController {
   private freeDrawPoints: Point[] = []
   /** O 도형 드래그의 시작점(mm). */
   private shapeStart: MapPoint | null = null
+  /** V 도구로 끌고 있는 정점 또는 베지어 핸들. pointerup까지 하나의 실행취소로 묶습니다. */
+  private strokeEditTarget: StrokeEditTarget | null = null
 
   constructor(
     private readonly viewport: Viewport,
@@ -319,11 +330,40 @@ export class ToolController {
         break
 
       case 'select': {
-        // hitTest는 문서를 바꾸지 않고 "무엇이 찍혔는지"만 읽으므로 스포이드와 마찬가지로
-        // 제스처(실행취소 대상)로 취급하지 않습니다. 실제 이동·크기 조절은 이번 단계
-        // 범위 밖입니다(인스펙터의 수치 입력으로만 바꿈).
+        const selectedStroke = this.getSelectedEditableStroke(doc)
+        const editTarget = selectedStroke ? this.hitStrokeEditTarget(selectedStroke, sx, sy) : null
+
+        if (editTarget) {
+          this.overlay.activeStrokeVertex = {
+            strokeId: editTarget.strokeId,
+            vertexIndex: editTarget.vertexIndex,
+          }
+          // Alt+정점은 즉시 제거합니다. 핸들에는 Alt 삭제를 적용하지 않아, 핸들 근처에서
+          // Alt 키를 잘못 누른 것만으로 정점 자체가 사라지는 일을 막습니다.
+          if (e.altKey && editTarget.part === 'vertex') {
+            this.deleteStrokeVertex(editTarget.strokeId, editTarget.vertexIndex)
+          } else {
+            this.activeGesture = 'strokeEdit'
+            this.gestureSnapshot = structuredClone(doc)
+            this.strokeEditTarget = editTarget
+          }
+          break
+        }
+
+        // 선택된 경로를 더블클릭하면 가장 가까운 실제 곡선 위에 정점을 삽입합니다.
+        if (e.detail >= 2 && selectedStroke) {
+          const nearest = closestEditableSegment(selectedStroke, [mapPt.mx, mapPt.my])
+          if (nearest && nearest.distance <= selectedStroke.width / 2 + 2) {
+            this.insertStrokeVertex(selectedStroke, nearest.insertIndex, nearest.point)
+            break
+          }
+        }
+
+        // 핸들/정점/추가 동작이 아니면 일반 선택으로 처리합니다. 같은 곡선을 다시 눌러도
+        // 활성 정점만 해제되어 전체 경로 선택은 유지됩니다.
         const hit = hitTest(doc, mapPt.mx, mapPt.my)
         useEditorStore.getState().setSelection(hit)
+        this.overlay.activeStrokeVertex = null
         break
       }
 
@@ -497,6 +537,10 @@ export class ToolController {
         }
         break
 
+      case 'strokeEdit':
+        if (this.dragMoved) this.updateStrokeEdit(mapPt)
+        break
+
       default:
         break
     }
@@ -541,6 +585,8 @@ export class ToolController {
         }
         this.finishFreeDrawDraft()
       }
+
+      if (gestureKind === 'strokeEdit' && this.dragMoved) this.updateStrokeEdit(mapPt)
 
 
       if (gestureKind === 'shape' && this.shapeStart) {
@@ -641,9 +687,14 @@ export class ToolController {
     // Delete/Backspace = 선택 항목 삭제. 도구와 무관하게(선택은 V 도구로 잡았더라도
     // 그 뒤 다른 도구로 바꿨을 수 있음) editorStore의 selection이 있으면 항상 동작합니다.
     if (key === 'delete' || key === 'backspace') {
-      if (useEditorStore.getState().selection) {
+      const { selection } = useEditorStore.getState()
+      if (selection) {
         e.preventDefault() // Backspace의 브라우저 기본 동작(뒤로 가기)을 막음
-        this.deleteSelection()
+        const activeVertex = this.overlay.activeStrokeVertex
+        if (activeVertex && selection.kind === 'stroke' && selection.id === activeVertex.strokeId) {
+          this.deleteStrokeVertex(activeVertex.strokeId, activeVertex.vertexIndex)
+        }
+        else this.deleteSelection()
       }
       return
     }
@@ -1119,6 +1170,131 @@ export class ToolController {
     useEditorStore.getState().setSelection(null)
   }
 
+  /** 선택된 stroke가 정점 편집 가능한 spline/line인지 좁혀 돌려줍니다. */
+  private getSelectedEditableStroke(doc: MapDoc): Extract<Stroke, { kind: 'spline' | 'line' }> | null {
+    const selection = useEditorStore.getState().selection
+    if (selection?.kind !== 'stroke') return null
+    const stroke = doc.strokes.find((candidate) => candidate.id === selection.id)
+    return stroke && (stroke.kind === 'spline' || stroke.kind === 'line') ? stroke : null
+  }
+
+  /** 화면 px로 판정해 줌 배율과 무관하게 7px 정점·작은 핸들을 잡을 수 있게 합니다. */
+  private hitStrokeEditTarget(
+    stroke: Extract<Stroke, { kind: 'spline' | 'line' }>,
+    sx: number,
+    sy: number,
+  ): StrokeEditTarget | null {
+    for (let index = stroke.points.length - 1; index >= 0; index--) {
+      const point = stroke.points[index]
+      const screen = this.viewport.mapToScreen(point[0], point[1])
+      if (Math.hypot(sx - screen.x, sy - screen.y) <= 7) {
+        return { strokeId: stroke.id, vertexIndex: index, part: 'vertex' }
+      }
+    }
+
+    const active = this.overlay.activeStrokeVertex
+    if (stroke.kind === 'spline' && active?.strokeId === stroke.id) {
+      const index = active.vertexIndex
+      if (index >= 0 && index < stroke.points.length) {
+        const handles = splineControlHandles(stroke, index)
+        for (const [part, point] of [
+          ['handle-in', handles.in],
+          ['handle-out', handles.out],
+        ] as const) {
+          const screen = this.viewport.mapToScreen(point[0], point[1])
+          if (Math.hypot(sx - screen.x, sy - screen.y) <= 6) {
+            return { strokeId: stroke.id, vertexIndex: index, part }
+          }
+        }
+      }
+    }
+
+    return null
+  }
+
+  private updateStrokeEdit(mapPt: MapPoint): void {
+    const doc = this.getDoc()
+    const target = this.strokeEditTarget
+    if (!doc || !target) return
+    const index = doc.strokes.findIndex((stroke) => stroke.id === target.strokeId)
+    const stroke = doc.strokes[index]
+    if (!stroke || (stroke.kind !== 'spline' && stroke.kind !== 'line')) return
+
+    let nextStroke: typeof stroke
+    if (target.part === 'vertex') {
+      const points = stroke.points.map(([x, y]) => [x, y] as Point)
+      points[target.vertexIndex] = [mapPt.mx, mapPt.my]
+      nextStroke = { ...stroke, points }
+    } else if (stroke.kind === 'spline') {
+      const anchor = stroke.points[target.vertexIndex]
+      const vector: Point = [mapPt.mx - anchor[0], mapPt.my - anchor[1]]
+      const handles = Array.from({ length: stroke.points.length }, (_, i) => ({ ...(stroke.handles?.[i] ?? {}) }))
+      // 한쪽 핸들을 끌면 반대쪽을 같은 길이로 대칭 이동해 접선을 매끄럽게 유지합니다.
+      // 사용자가 뾰족한 모서리를 만드는 별도 모드는 PRD에 없으므로 smooth가 안전한 기본입니다.
+      if (target.part === 'handle-in') handles[target.vertexIndex] = { in: vector, out: [-vector[0], -vector[1]] }
+      else handles[target.vertexIndex] = { in: [-vector[0], -vector[1]], out: vector }
+      nextStroke = { ...stroke, handles }
+    } else {
+      return
+    }
+
+    if (JSON.stringify(nextStroke) === JSON.stringify(stroke)) return
+
+    const strokes = doc.strokes.slice()
+    strokes[index] = nextStroke
+    this.commitDocChange({ ...doc, strokes })
+    this.overlay.strokeSelection = nextStroke
+  }
+
+  private insertStrokeVertex(
+    stroke: Extract<Stroke, { kind: 'spline' | 'line' }>,
+    insertIndex: number,
+    point: Point,
+  ): void {
+    const doc = this.getDoc()
+    if (!doc) return
+    const strokeIndex = doc.strokes.findIndex((candidate) => candidate.id === stroke.id)
+    if (strokeIndex < 0) return
+    const points = stroke.points.map(([x, y]) => [x, y] as Point)
+    points.splice(insertIndex, 0, [point[0], point[1]])
+    let nextStroke: typeof stroke
+    if (stroke.kind === 'spline' && stroke.handles) {
+      const handles = stroke.handles.map((handle) => ({ ...handle }))
+      handles.splice(insertIndex, 0, {})
+      nextStroke = { ...stroke, points, handles }
+    } else {
+      nextStroke = { ...stroke, points }
+    }
+    const strokes = doc.strokes.slice()
+    strokes[strokeIndex] = nextStroke
+    useEditorStore.getState().commitDoc({ ...doc, strokes })
+    this.overlay.activeStrokeVertex = { strokeId: stroke.id, vertexIndex: insertIndex }
+    this.overlay.strokeSelection = nextStroke
+  }
+
+  private deleteStrokeVertex(strokeId: string, vertexIndex: number): void {
+    const doc = this.getDoc()
+    if (!doc) return
+    const strokeIndex = doc.strokes.findIndex((candidate) => candidate.id === strokeId)
+    const stroke = doc.strokes[strokeIndex]
+    if (!stroke || (stroke.kind !== 'spline' && stroke.kind !== 'line') || stroke.points.length <= 2) return
+    const points = stroke.points.map(([x, y]) => [x, y] as Point)
+    points.splice(vertexIndex, 1)
+    let nextStroke: typeof stroke
+    if (stroke.kind === 'spline' && stroke.handles) {
+      const handles = stroke.handles.map((handle) => ({ ...handle }))
+      handles.splice(vertexIndex, 1)
+      nextStroke = { ...stroke, points, handles }
+    } else {
+      nextStroke = { ...stroke, points }
+    }
+    const strokes = doc.strokes.slice()
+    strokes[strokeIndex] = nextStroke
+    useEditorStore.getState().commitDoc({ ...doc, strokes })
+    this.overlay.activeStrokeVertex = null
+    this.overlay.strokeSelection = nextStroke
+  }
+
   /**
    * editorStore의 selection을 읽어 overlay.selectionBox를 다시 계산합니다. V 도구의
    * pointerdown뿐 아니라, 나중에 인스펙터에서 항목을 클릭해 selection이 바뀌는 경우처럼
@@ -1150,6 +1326,15 @@ export class ToolController {
     const selectedStrokeId = selection?.kind === 'stroke' ? selection.id : null
     this.overlay.strokeSelection =
       doc && selectedStrokeId ? (doc.strokes.find((stroke) => stroke.id === selectedStrokeId) ?? null) : null
+    if (this.overlay.activeStrokeVertex?.strokeId !== selectedStrokeId) this.overlay.activeStrokeVertex = null
+    if (
+      this.overlay.activeStrokeVertex &&
+      this.overlay.strokeSelection &&
+      (this.overlay.strokeSelection.kind !== 'spline' && this.overlay.strokeSelection.kind !== 'line' ||
+        this.overlay.activeStrokeVertex.vertexIndex >= this.overlay.strokeSelection.points.length)
+    ) {
+      this.overlay.activeStrokeVertex = null
+    }
     this.markDirty('overlay')
     this.requestRender()
   }
@@ -1192,6 +1377,7 @@ export class ToolController {
     this.lastFreePropCenter = null
     this.fillStartCell = null
     this.shapeStart = null
+    this.strokeEditTarget = null
     this.overlay.linePreview = null
     this.overlay.fillRect = null
     this.overlay.shapeDraft = null

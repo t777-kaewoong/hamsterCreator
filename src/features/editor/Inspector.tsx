@@ -386,6 +386,11 @@ function StrokeFields({ doc, id }: { doc: MapDoc; id: string }) {
           <span className="t-label">총 길이</span>
           <span className="t-body t-nums">{Math.round(lengthMm)}mm</span>
         </div>
+        {(stroke.kind === 'spline' || stroke.kind === 'line') && (
+          <p className={`${styles.editHint} t-caption`}>
+            정점 드래그 · 경로 더블클릭으로 추가 · 정점 Alt+클릭 또는 Delete로 제거
+          </p>
+        )}
         {stroke.kind === 'spline' && (
           <ToggleRow label="닫힌 경로" checked={stroke.closed} onChange={(v) => updateStroke({ closed: v })} />
         )}

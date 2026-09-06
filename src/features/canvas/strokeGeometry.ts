@@ -1,18 +1,38 @@
 // 자유곡선의 공용 기하 계산.
 // 화면 렌더링·히트테스트·향후 PDF 벡터 출력과 검증이 같은 곡선을 바라봐야 하므로,
 // Catmull-Rom 보간과 샘플링을 한 파일에 모읍니다(PRD FR-10.1·10.2, §9.18).
-import type { Point, Stroke } from '@/lib/model/types'
+import type { Point, SplineStroke, Stroke } from '@/lib/model/types'
 import type { Viewport } from './viewport'
 
 const SPLINE_SAMPLES_PER_SEGMENT = 16
 
-function catmullRomPoint(p0: Point, p1: Point, p2: Point, p3: Point, t: number): Point {
+function cubicBezierPoint(p0: Point, p1: Point, p2: Point, p3: Point, t: number): Point {
+  const u = 1 - t
+  const u2 = u * u
   const t2 = t * t
-  const t3 = t2 * t
   return [
-    0.5 * ((2 * p1[0]) + (-p0[0] + p2[0]) * t + (2 * p0[0] - 5 * p1[0] + 4 * p2[0] - p3[0]) * t2 + (-p0[0] + 3 * p1[0] - 3 * p2[0] + p3[0]) * t3),
-    0.5 * ((2 * p1[1]) + (-p0[1] + p2[1]) * t + (2 * p0[1] - 5 * p1[1] + 4 * p2[1] - p3[1]) * t2 + (-p0[1] + 3 * p1[1] - 3 * p2[1] + p3[1]) * t3),
+    u2 * u * p0[0] + 3 * u2 * t * p1[0] + 3 * u * t2 * p2[0] + t2 * t * p3[0],
+    u2 * u * p0[1] + 3 * u2 * t * p1[1] + 3 * u * t2 * p2[1] + t2 * t * p3[1],
   ]
+}
+
+/** 한 정점의 자동/사용자 지정 베지어 핸들을 절대 mm 좌표로 돌려줍니다. */
+export function splineControlHandles(stroke: SplineStroke, index: number): { in: Point; out: Point } {
+  const { points, closed } = stroke
+  const point = points[index]
+  const lastIndex = points.length - 1
+  const prev = closed ? points[(index - 1 + points.length) % points.length] : points[Math.max(0, index - 1)]
+  const next = closed ? points[(index + 1) % points.length] : points[Math.min(lastIndex, index + 1)]
+  // Catmull-Rom을 cubic Bezier로 바꿀 때 접선 벡터는 (next-prev)/6입니다. 사용자 지정
+  // 핸들이 없는 예전 문서는 이 값을 써서 M1.5a와 같은 곡선을 유지합니다.
+  const automatic: Point = [(next[0] - prev[0]) / 6, (next[1] - prev[1]) / 6]
+  const custom = stroke.handles?.[index]
+  const inOffset = custom?.in ?? [-automatic[0], -automatic[1]]
+  const outOffset = custom?.out ?? automatic
+  return {
+    in: [point[0] + inOffset[0], point[1] + inOffset[1]],
+    out: [point[0] + outOffset[0], point[1] + outOffset[1]],
+  }
 }
 
 /** Stroke를 화면·판정에 함께 쓸 조밀한 꺾은선으로 바꿉니다. */
@@ -64,12 +84,13 @@ export function sampleStroke(stroke: Stroke): Point[] {
   const segmentCount = closed ? points.length : points.length - 1
   const result: Point[] = [points[0]]
   for (let i = 0; i < segmentCount; i++) {
-    const p0 = closed ? points[(i - 1 + points.length) % points.length] : points[Math.max(0, i - 1)]
-    const p1 = points[i]
-    const p2 = points[(i + 1) % points.length]
-    const p3 = closed ? points[(i + 2) % points.length] : points[Math.min(points.length - 1, i + 2)]
+    const nextIndex = (i + 1) % points.length
+    const p0 = points[i]
+    const p1 = splineControlHandles(stroke, i).out
+    const p2 = splineControlHandles(stroke, nextIndex).in
+    const p3 = points[nextIndex]
     for (let step = 1; step <= SPLINE_SAMPLES_PER_SEGMENT; step++) {
-      result.push(catmullRomPoint(p0, p1, p2, p3, step / SPLINE_SAMPLES_PER_SEGMENT))
+      result.push(cubicBezierPoint(p0, p1, p2, p3, step / SPLINE_SAMPLES_PER_SEGMENT))
     }
   }
   return result
@@ -124,6 +145,51 @@ function pointSegmentDistance(point: Point, a: Point, b: Point): number {
   if (dx === 0 && dy === 0) return Math.hypot(point[0] - a[0], point[1] - a[1])
   const t = Math.max(0, Math.min(1, ((point[0] - a[0]) * dx + (point[1] - a[1]) * dy) / (dx * dx + dy * dy)))
   return Math.hypot(point[0] - (a[0] + t * dx), point[1] - (a[1] + t * dy))
+}
+
+function closestPointOnSegment(point: Point, a: Point, b: Point): { point: Point; distance: number } {
+  const dx = b[0] - a[0]
+  const dy = b[1] - a[1]
+  if (dx === 0 && dy === 0) {
+    return { point: [a[0], a[1]], distance: Math.hypot(point[0] - a[0], point[1] - a[1]) }
+  }
+  const t = Math.max(0, Math.min(1, ((point[0] - a[0]) * dx + (point[1] - a[1]) * dy) / (dx * dx + dy * dy)))
+  const projected: Point = [a[0] + t * dx, a[1] + t * dy]
+  return { point: projected, distance: Math.hypot(point[0] - projected[0], point[1] - projected[1]) }
+}
+
+/** 더블클릭한 곡선 위치에 정점을 넣기 위한 가장 가까운 논리 구간과 투영점을 찾습니다. */
+export function closestEditableSegment(
+  stroke: Extract<Stroke, { kind: 'spline' | 'line' }>,
+  point: Point,
+): { insertIndex: number; point: Point; distance: number } | null {
+  if (stroke.points.length < 2) return null
+  const segmentCount = stroke.kind === 'spline' && stroke.closed ? stroke.points.length : stroke.points.length - 1
+  let best: { insertIndex: number; point: Point; distance: number } | null = null
+
+  for (let segmentIndex = 0; segmentIndex < segmentCount; segmentIndex++) {
+    let samples: Point[]
+    if (stroke.kind === 'line') {
+      samples = [stroke.points[segmentIndex], stroke.points[segmentIndex + 1]]
+    } else {
+      const nextIndex = (segmentIndex + 1) % stroke.points.length
+      const p0 = stroke.points[segmentIndex]
+      const p1 = splineControlHandles(stroke, segmentIndex).out
+      const p2 = splineControlHandles(stroke, nextIndex).in
+      const p3 = stroke.points[nextIndex]
+      samples = [p0]
+      for (let step = 1; step <= SPLINE_SAMPLES_PER_SEGMENT; step++) {
+        samples.push(cubicBezierPoint(p0, p1, p2, p3, step / SPLINE_SAMPLES_PER_SEGMENT))
+      }
+    }
+    for (let i = 1; i < samples.length; i++) {
+      const candidate = closestPointOnSegment(point, samples[i - 1], samples[i])
+      if (!best || candidate.distance < best.distance) {
+        best = { insertIndex: segmentIndex + 1, point: candidate.point, distance: candidate.distance }
+      }
+    }
+  }
+  return best
 }
 
 /** 선 중심까지의 최소 거리(mm). 선폭 절반을 더해 선택 판정에 사용합니다. */

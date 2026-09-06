@@ -14,7 +14,7 @@ import type { TokenName } from './cssTokens'
 import { tileBitmapCache } from './tileBitmaps'
 import { MARKER_OUTER_DIAMETER_MM, nodeCenterMm } from './drawBoard'
 import type { OverlayState } from './toolInteractions'
-import { drawStrokePath } from './strokeGeometry'
+import { drawStrokePath, splineControlHandles } from './strokeGeometry'
 
 type Tokens = Record<TokenName, string>
 
@@ -287,6 +287,32 @@ export function drawOverlayLayer(
         ctx.stroke()
       }
       ctx.restore()
+
+      const active = overlay.activeStrokeVertex
+      if (stroke.kind === 'spline' && active?.strokeId === stroke.id) {
+        const index = active.vertexIndex
+        if (index >= 0 && index < stroke.points.length) {
+          const anchor = viewport.mapToScreen(stroke.points[index][0], stroke.points[index][1])
+          const handles = splineControlHandles(stroke, index)
+          const inPoint = viewport.mapToScreen(handles.in[0], handles.in[1])
+          const outPoint = viewport.mapToScreen(handles.out[0], handles.out[1])
+          ctx.save()
+          ctx.strokeStyle = tokens['--c-primary']
+          ctx.lineWidth = 1
+          ctx.beginPath()
+          ctx.moveTo(inPoint.x, inPoint.y)
+          ctx.lineTo(anchor.x, anchor.y)
+          ctx.lineTo(outPoint.x, outPoint.y)
+          ctx.stroke()
+          ctx.fillStyle = tokens['--c-primary']
+          for (const point of [inPoint, outPoint]) {
+            ctx.beginPath()
+            ctx.arc(point.x, point.y, 3, 0, Math.PI * 2)
+            ctx.fill()
+          }
+          ctx.restore()
+        }
+      }
     }
   }
 

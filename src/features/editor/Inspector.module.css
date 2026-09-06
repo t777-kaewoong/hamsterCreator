@@ -50,6 +50,12 @@
   gap: var(--sp-3);
 }
 
+.editHint {
+  margin: 0;
+  color: var(--c-text-muted);
+  line-height: 1.45;
+}
+
 /* 프롭 X·Y·너비·높이, 맵 설정 열·행처럼 "숫자 입력 2개를 2열로" 배치할 때(PRD §9.13). */
 .grid2 {
   display: grid;

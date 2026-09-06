@@ -88,11 +88,22 @@ interface StrokeBase {
   width: number
 }
 
+/** 정점 하나의 사용자 지정 베지어 핸들. 값은 정점 기준 상대 벡터(mm)입니다. */
+export interface SplineVertexHandles {
+  /** 정점으로 들어오는 제어점. 생략하면 Catmull-Rom 자동값을 씁니다. */
+  in?: Point
+  /** 정점에서 나가는 제어점. 생략하면 Catmull-Rom 자동값을 씁니다. */
+  out?: Point
+}
+
 /** 펜/자유 그리기로 만든 스플라인 곡선(FR-10.1, FR-10.2). */
 export interface SplineStroke extends StrokeBase {
   kind: 'spline'
   /** 정점 목록(mm). 정점 사이를 부드러운 곡선으로 스무딩해서 그림 */
   points: Point[]
+  /** 정점별 선택형 곡선 핸들(FR-10.4). 상대 벡터라 정점을 옮겨도 곡선 모양이 유지됩니다.
+   *  예전 파일에는 이 필드가 없으며, 그때는 기존 Catmull-Rom 자동 스무딩을 그대로 씁니다. */
+  handles?: SplineVertexHandles[]
   /** true면 마지막 점과 첫 점을 이어 닫힌 도형으로 취급 */
   closed: boolean
 }
