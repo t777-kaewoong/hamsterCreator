@@ -127,6 +127,10 @@ interface EditorState {
    *  다시 null로 되돌리지 않습니다(같은 값이 남아있어도 nonce가 다시 바뀌기 전까지는
    *  effect가 재실행되지 않으므로 무해합니다). */
   focusRequest: FocusRequest | null
+  /** M3 출력 계획기 모달. 상단바와 인스펙터 어느 쪽에서도 같은 모달을 열 수 있습니다. */
+  printPlannerOpen: boolean
+  /** M4 정답 생성 모달. 상단바 정답 버튼에서 엽니다. */
+  answerOpen: boolean
 
   // ── 팔레트 패널(§9.11)이 쓰는 상태 ──────────────────────────────────
   /** 팔레트에서 지금 열려 있는 테마 탭. 'dungeon'~'dino' 6종 + 'icon' · 'track' · 'myImages' */
@@ -191,6 +195,8 @@ interface EditorState {
   setSelection: (selection: Selection) => void
   /** 인스펙터 검증 섹션의 항목(Issue.at이 있는 것만)을 클릭했을 때 부릅니다. */
   requestFocus: (node: NodeCoord) => void
+  setPrintPlannerOpen: (open: boolean) => void
+  setAnswerOpen: (open: boolean) => void
 
   setActiveTheme: (theme: string) => void
   setPaletteQuery: (query: string) => void
@@ -237,11 +243,15 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
   stampFlip: false,
   selection: null,
   focusRequest: null,
+  printPlannerOpen: false,
+  answerOpen: false,
 
   setTool: (id) => set({ activeTool: id }),
   setShape: (kind) => set({ activeShape: kind, activeTool: 'shape' }),
   setDoc: (doc) => set({ doc }),
   setSaveState: (saveState) => set({ saveState }),
+  setPrintPlannerOpen: (printPlannerOpen) => set({ printPlannerOpen }),
+  setAnswerOpen: (answerOpen) => set({ answerOpen }),
 
   commitDoc: (next) => {
     const state = get()

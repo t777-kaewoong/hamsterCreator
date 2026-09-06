@@ -14,6 +14,10 @@
 import type { MapDoc, NodeCoord, Point, Stroke } from '@/lib/model/types'
 import { LINE_WIDTH_MM, MIN_CURVE_RADIUS_MM, PITCH_MM, ROBOT_WIDTH_MM } from '@/lib/model/constants'
 import { sampleStroke } from '@/features/canvas/strokeGeometry'
+import { findPrintPlan } from '@/lib/print/plan'
+import { reachableNodes } from './gridGraph'
+
+export { reachableNodes } from './gridGraph'
 
 /** 문제의 심각도. §9.13이 좌측 색 막대를 오류/경고 두 가지로 구분합니다.
  *  - error: 이대로 인쇄하면 수업에서 실제로 문제가 되는 것(예: 로봇이 갈 수 없는 칸)
@@ -32,6 +36,8 @@ export interface Issue {
     | 'prop-covers-line'
     | 'curve-radius-too-small'
     | 'parallel-tracks-too-close'
+    | 'seam-crosses-curve'
+    | 'overlap-covers-line'
   severity: IssueSeverity
   /** §9.13: 본문 caption 2줄까지. 한 문장으로, 무엇이 문제인지 바로 알 수 있게 씁니다 */
   message: string
@@ -51,44 +57,6 @@ export interface Issue {
  * @param from 탐색을 시작할 노드
  * @returns 그 노드에서 도달할 수 있는 모든 노드의 "c,r" 문자열 집합
  */
-export function reachableNodes(doc: MapDoc, from: NodeCoord): Set<string> {
-  const { cols, rows } = doc.board
-  const key = (c: number, r: number) => `${c},${r}`
-
-  // edges 배열을 매번 훑으면 느리므로(칸이 많은 A0 맵은 368칸) 먼저 집합으로 바꿔 둡니다.
-  const hSet = new Set(doc.edges.h.map(([c, r]) => key(c, r)))
-  const vSet = new Set(doc.edges.v.map(([c, r]) => key(c, r)))
-
-  const seen = new Set<string>()
-  const queue: NodeCoord[] = []
-
-  const [fc, fr] = from
-  if (fc < 0 || fc >= cols || fr < 0 || fr >= rows) return seen // 맵 밖에서 시작하면 갈 곳이 없음
-  seen.add(key(fc, fr))
-  queue.push(from)
-
-  while (queue.length > 0) {
-    const [c, r] = queue.shift()!
-
-    // 네 방향 각각, "그 방향으로 나가는 선이 실제로 있는지"를 edges에서 확인합니다.
-    // h의 [c,r]은 (c,r)~(c+1,r) 가로 연결, v의 [c,r]은 (c,r)~(c,r+1) 세로 연결입니다.
-    const neighbors: NodeCoord[] = []
-    if (hSet.has(key(c, r)) && c + 1 < cols) neighbors.push([c + 1, r]) // 동
-    if (hSet.has(key(c - 1, r)) && c - 1 >= 0) neighbors.push([c - 1, r]) // 서
-    if (vSet.has(key(c, r)) && r + 1 < rows) neighbors.push([c, r + 1]) // 남
-    if (vSet.has(key(c, r - 1)) && r - 1 >= 0) neighbors.push([c, r - 1]) // 북
-
-    for (const n of neighbors) {
-      const k = key(n[0], n[1])
-      if (seen.has(k)) continue
-      seen.add(k)
-      queue.push(n)
-    }
-  }
-
-  return seen
-}
-
 /** ①·④ 검사에서 개별 Issue로 나열하는 최대 건수.
  *
  * [왜 자르는가] §9.13 검증 목록 항목은 한 건당 최소 44px입니다. 엣지를 몇 개만 그린
@@ -442,8 +410,39 @@ export function validateMap(doc: MapDoc): Issue[] {
     ...checkPropsOverLines(doc),
     ...checkMinimumCurveRadius(doc),
     ...checkParallelTrackSpacing(doc),
+    ...checkPrintSeams(doc),
   ]
 
   const severityRank: Record<IssueSeverity, number> = { error: 0, warn: 1 }
   return issues.sort((a, b) => severityRank[a.severity] - severityRank[b.severity])
+}
+
+function checkPrintSeams(doc: MapDoc): Issue[] {
+  if (doc.print.layout !== 'tiled') return []
+  const plan = findPrintPlan(doc)
+  if (!plan) return []
+  const issues: Issue[] = []
+  if (plan.curveCrossings > 0) {
+    issues.push({
+      code: 'seam-crosses-curve',
+      severity: 'warn',
+      message: `현재 분할선이 자유곡선을 ${plan.curveCrossings}곳 가릅니다. 출력 계획기에서 다른 용지를 확인하세요.`,
+    })
+  }
+
+  if (doc.print.seam !== 'overlap' || doc.print.overlap <= 0) return issues
+  const vertical = plan.columnCuts.map((cut) => cut * doc.board.pitch)
+  const horizontal = plan.rowCuts.map((cut) => cut * doc.board.pitch)
+  const covered = doc.strokes.some((stroke) => sampleStroke(stroke).some((point) =>
+    vertical.some((x) => Math.abs(point[0] - x) <= doc.print.overlap)
+    || horizontal.some((y) => Math.abs(point[1] - y) <= doc.print.overlap),
+  ))
+  if (covered) {
+    issues.push({
+      code: 'overlap-covers-line',
+      severity: 'warn',
+      message: `겹치기 ${doc.print.overlap}mm 영역이 곡선을 덮습니다. 맞대기 또는 더 좁은 겹치기를 권장합니다.`,
+    })
+  }
+  return issues
 }

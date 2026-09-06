@@ -15,7 +15,7 @@
 import { useEffect, useState } from 'react'
 import type { ChangeEvent, KeyboardEvent } from 'react'
 import { CircleAlert, CircleCheck, Trash2, TriangleAlert } from 'lucide-react'
-import { Button, Input, Segmented, useToast } from '@/components'
+import { Button, Input, Segmented } from '@/components'
 import type { SegmentedOption } from '@/components'
 import { useEditorStore } from './editorStore'
 import { useMapIssues } from './useMapIssues'
@@ -23,7 +23,9 @@ import type { Issue } from '@/lib/geometry/validate'
 import { PAPER_SIZES, PITCH_MM, LINE_WIDTH_MM } from '@/lib/model/constants'
 import { getTile } from '@/lib/tiles/catalog'
 import { getIcon } from '@/lib/icons/catalog'
-import type { Cell, Edges, Label, MapDoc, NodeCoord, PrintConfig, Prop, Stroke } from '@/lib/model/types'
+import { resizeMapDoc } from '@/lib/model/resize'
+import { findPrintPlan } from '@/lib/print/plan'
+import type { Cell, Label, MapDoc, NodeCoord, PrintConfig, Prop, Stroke } from '@/lib/model/types'
 import styles from './Inspector.module.css'
 
 export default function Inspector() {
@@ -542,38 +544,6 @@ function StrokeParameterFields({
  * 열·행에 붙어있던 선·진입로·출발/도착 지점은 더 이상 존재할 수 없는 자리를 가리키므로
  * 그대로 두면 이후 렌더링·검증 로직이 배열 밖 인덱스를 참조하게 됩니다.
  */
-function resizeBoard(doc: MapDoc, nextCols: number, nextRows: number): MapDoc {
-  const { cols: oldCols, rows: oldRows } = doc.board
-
-  const nextCells: (Cell | null)[] = new Array(nextCols * nextRows).fill(null)
-  for (let r = 0; r < nextRows; r++) {
-    for (let c = 0; c < nextCols; c++) {
-      if (c < oldCols && r < oldRows) {
-        nextCells[r * nextCols + c] = doc.cells[r * oldCols + c]
-      }
-    }
-  }
-
-  const inRange = (c: number, r: number) => c >= 0 && c < nextCols && r >= 0 && r < nextRows
-  const nextEdges: Edges = {
-    h: doc.edges.h.filter(([c, r]) => inRange(c, r) && inRange(c + 1, r)),
-    v: doc.edges.v.filter(([c, r]) => inRange(c, r) && inRange(c, r + 1)),
-  }
-  const nextStubs = doc.stubs.filter((s) => inRange(s.node[0], s.node[1]))
-  const nextStart =
-    doc.markers.start && inRange(doc.markers.start.cell[0], doc.markers.start.cell[1]) ? doc.markers.start : null
-  const nextGoals = doc.markers.goals.filter((g) => inRange(g.cell[0], g.cell[1]))
-
-  return {
-    ...doc,
-    board: { ...doc.board, cols: nextCols, rows: nextRows },
-    cells: nextCells,
-    edges: nextEdges,
-    stubs: nextStubs,
-    markers: { start: nextStart, goals: nextGoals },
-  }
-}
-
 function MapSettingsSection() {
   const doc = useEditorStore((s) => s.doc)
 
@@ -614,7 +584,7 @@ function MapSettingsSection() {
     setRowsDraft(String(nextRows))
     if (nextCols === currentDoc.board.cols && nextRows === currentDoc.board.rows) return // 안 바뀌면 실행취소 낭비 없이 종료
 
-    useEditorStore.getState().commitDoc(resizeBoard(currentDoc, nextCols, nextRows))
+    useEditorStore.getState().commitDoc(resizeMapDoc(currentDoc, nextCols, nextRows))
 
     // cell 선택은 배열 인덱스 기반인데 격자 크기가 바뀌면 인덱스 공식 자체가 달라져
     // 엉뚱한 칸을 가리키게 됩니다(editorStore.ts Selection 타입 주석과 같은 문제).
@@ -735,27 +705,14 @@ function summarizePrintPlan(doc: MapDoc): string {
     return `${paper.label} ${orientationLabel} 1장 · 이음매 없음`
   }
 
-  // PAPER_SIZES의 widthMm/heightMm은 "가로 방향 기준"(constants.ts 주석)이라, 세로
-  // 방향이면 폭·높이를 서로 바꿔 씁니다.
-  const sheetW = doc.print.orientation === 'landscape' ? paper.widthMm : paper.heightMm
-  const sheetH = doc.print.orientation === 'landscape' ? paper.heightMm : paper.widthMm
-  const mapWmm = doc.board.cols * doc.board.pitch
-  const mapHmm = doc.board.rows * doc.board.pitch
-  const sheetsX = Math.max(1, Math.ceil(mapWmm / sheetW))
-  const sheetsY = Math.max(1, Math.ceil(mapHmm / sheetH))
-  const totalSheets = sheetsX * sheetsY
-
-  if (totalSheets <= 1) return `${paper.label} ${orientationLabel} 1장 · 이음매 없음`
-
-  // 가로로 나뉜 이음매 수 = (가로 장수-1)×세로 장수, 세로로 나뉜 이음매 수 = (세로
-  // 장수-1)×가로 장수. 2×2(4장)면 (2-1)*2 + (2-1)*2 = 4곳 — §9.13 예시와 일치합니다.
-  const seams = (sheetsX - 1) * sheetsY + (sheetsY - 1) * sheetsX
-  return `${paper.label} ${orientationLabel} ${totalSheets}장 · 이음매 ${seams}곳`
+  const plan = findPrintPlan(doc)
+  if (!plan || plan.sheets <= 1) return `${paper.label} ${orientationLabel} 1장 · 이음매 없음`
+  return `${paper.label} ${orientationLabel} ${plan.sheets}장 · 이음매 ${plan.seams}곳`
 }
 
 function PaperSection() {
   const doc = useEditorStore((s) => s.doc)
-  const { show: showToast } = useToast()
+  const setPrintPlannerOpen = useEditorStore((s) => s.setPrintPlannerOpen)
 
   if (!doc) return null
 
@@ -812,9 +769,7 @@ function PaperSection() {
           />
         </div>
         <p className={`${styles.summaryLine} t-caption`}>{summarizePrintPlan(doc)}</p>
-        {/* 출력 계획기 모달(§9.14)은 아직 없습니다. TopBar.tsx의 미구현 버튼들과 같은
-            방식으로, 누르면 토스트만 띄웁니다. */}
-        <Button variant="ghost" onClick={() => showToast({ message: '출력 계획기는 준비 중입니다' })}>
+        <Button variant="ghost" onClick={() => setPrintPlannerOpen(true)}>
           출력 계획기 열기
         </Button>
       </div>

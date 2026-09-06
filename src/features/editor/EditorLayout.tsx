@@ -24,6 +24,8 @@ import Inspector from './Inspector'
 import { useMapIssues } from './useMapIssues'
 import CanvasViewport from '@/features/canvas/CanvasViewport'
 import PalettePanel from '@/features/palette/PalettePanel'
+import PrintPlannerModal from '@/features/print/PrintPlannerModal'
+import AnswerModal from '@/features/answer/AnswerModal'
 import styles from './EditorLayout.module.css'
 
 /** 이 폭 미만이면 인스펙터를 자동으로 접습니다(PRD §9.2). */
@@ -141,6 +143,8 @@ export default function EditorLayout({ onBack }: EditorLayoutProps) {
           <Inspector />
         </div>
       </div>
+      <PrintPlannerModal />
+      <AnswerModal />
     </div>
   )
 }

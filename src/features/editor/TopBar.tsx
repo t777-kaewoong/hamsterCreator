@@ -20,6 +20,7 @@ import { ChevronLeft, Save, Undo2, Redo2, Eye, Printer, ListChecks } from 'lucid
 import { Button, Modal, StatusChip, Tooltip, useToast } from '@/components'
 import { PAPER_SIZES } from '@/lib/model/constants'
 import type { MapDoc } from '@/lib/model/types'
+import { downloadSingleSheetPdf } from '@/lib/pdf/generateMapPdf'
 import { useEditorStore } from './editorStore'
 import styles from './TopBar.module.css'
 
@@ -60,6 +61,8 @@ export default function TopBar({ onBack }: TopBarProps) {
   const redoStack = useEditorStore((s) => s.redoStack)
   const undo = useEditorStore((s) => s.undo)
   const redo = useEditorStore((s) => s.redo)
+  const setPrintPlannerOpen = useEditorStore((s) => s.setPrintPlannerOpen)
+  const setAnswerOpen = useEditorStore((s) => s.setAnswerOpen)
 
   // Ctrl+Z / Ctrl+Shift+Z (맥에서는 Cmd). 도구 레일 단축키(ToolRail.tsx)와 마찬가지로
   // 입력창에 포커스가 있으면 무시합니다.
@@ -84,6 +87,7 @@ export default function TopBar({ onBack }: TopBarProps) {
   // 뒤로가기 확인 모달. saveState가 'unsaved'일 때만 이 모달을 거칩니다 — 저장된 상태라면
   // 되돌릴 게 없으므로 바로 나갑니다(PRD U7: 확인 모달은 정말 필요할 때만).
   const [confirmBackOpen, setConfirmBackOpen] = useState(false)
+  const [isCreatingPdf, setIsCreatingPdf] = useState(false)
 
   useEffect(() => {
     if (editingTitle) titleInputRef.current?.focus()
@@ -92,6 +96,24 @@ export default function TopBar({ onBack }: TopBarProps) {
   // 이번 단계에서 실제로 연결되지 않은 버튼들의 공통 동작.
   function notConnectedYet() {
     show({ message: '다음 단계에서 연결됩니다' })
+  }
+
+  async function handlePrint() {
+    if (!doc || isCreatingPdf) return
+    if (doc.print.layout === 'tiled') {
+      setPrintPlannerOpen(true)
+      return
+    }
+    setIsCreatingPdf(true)
+    try {
+      await downloadSingleSheetPdf(doc)
+      show({ message: 'PDF를 내려받았습니다' })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'PDF를 만들지 못했습니다'
+      show({ message, tone: 'danger' })
+    } finally {
+      setIsCreatingPdf(false)
+    }
   }
 
   function handleBackClick() {
@@ -199,12 +221,18 @@ export default function TopBar({ onBack }: TopBarProps) {
         <Button variant="ghost" icon={<Eye size={18} />} onClick={notConnectedYet}>
           미리보기
         </Button>
-        <Button variant="secondary" icon={<ListChecks size={18} />} onClick={notConnectedYet}>
+        <Button variant="secondary" icon={<ListChecks size={18} />} onClick={() => setAnswerOpen(true)} disabled={!doc}>
           정답
         </Button>
         {/* PRD §9.9: 인쇄가 화면에서 유일한 primary 버튼 — 최종 목적지를 하나만 남긴다 */}
-        <Button variant="primary" icon={<Printer size={18} />} onClick={notConnectedYet}>
-          인쇄
+        <Button
+          variant="primary"
+          icon={<Printer size={18} />}
+          onClick={handlePrint}
+          disabled={!doc || isCreatingPdf}
+          aria-busy={isCreatingPdf}
+        >
+          {isCreatingPdf ? '만드는 중…' : '인쇄'}
         </Button>
       </div>
 

@@ -299,12 +299,46 @@ M1.5c 정점 편집과 최소 곡률·평행 구간 간격 검증(FR-10.4·10.8�
   - 브라우저 검증: S 곡선 정점 드래그로 길이 217→268mm 변경, 실행취소 1회로 217mm 복구, 베지어 핸들 드래그로 곡선 형태·곡률 경고 갱신, 겹친 직선 2개에서 평행 간격 0mm 경고 확인
   - `npm run build`, `npm run build:single`, `git diff --check` 성공
 
+- [x] **M2 단일장 PDF 출력(FR-6.1·6.5·6.6·6.9·6.10·6.11)** (2026-09-06)
+  - `pdf-lib`와 `@pdf-lib/fontkit` 기반으로 A4~A0 단일장 PDF를 생성. 용지 mm·방향을 실제 PDF pt로 변환하고 맵을 페이지 중앙에 실물 크기로 배치하며, 페이지를 넘는 맵과 `나눠 인쇄`는 사용자 토스트 오류로 중단
+  - 렌더 순서를 바닥·블록 → 격자/진입로/교차점 → 오브젝트 → 자유 배치 → 라벨 → 출발·도착 마커로 고정. 셀·사용자 이미지는 원본 PNG 바이트를 임베드하고, 아이콘만 600px PNG로 변환
+  - 선·스플라인(사용자 베지어 핸들 반영)·원·타원·라운드 사각을 PDF 벡터 경로로 생성하고 맵 클리핑 적용. 회전·좌우 반전 셀 이미지도 페이지 좌표계에서 보존
+  - 모든 페이지에 `※ 실제 크기(100%)로 인쇄하세요` 안내와 50mm 눈금자를 표시. TopBar `인쇄`에서 비동기 생성·중복 클릭 방지·성공/오류 토스트·파일 다운로드 연결
+  - SP-7: 기존 WOFF2 3,728자 서브셋과 `subset:true`는 Poppler에서 한글이 공백/부분 글리프로 렌더됨. PDF 전용 공식 Pretendard SemiBold 전체 TTF를 `subset:false`로 임베드해 임의 한글 라벨을 안정적으로 출력하도록 결정(파일 크기 증가 위험)
+  - 구조 QA: 1페이지 A4, 50mm 눈금자, 벡터 베지어 제어점, 원/라운드 사각 경로 확인. 150dpi Poppler 렌더에서 안내문·`햄스터S 한글 PDF 검증`·격자·곡선·눈금자 시각 확인
+  - 브라우저 QA: A4 기본 프리셋 인쇄 성공 토스트 및 A4 2장(500×200mm)의 A4 실물 크기 초과 오류 토스트 확인
+  - `npx tsc -b --pretty false`, `npm run build`, `npm run build:single`, `git diff --check` 성공
+
+- [x] **M3 출력 계획기 + 타일링(FR-5, FR-6.2~6.8, §9.14)** (2026-09-06)
+  - 모든 지원 용지·가로/세로 후보에 대해 셀 수용량, 시트 수, 이음매 수, 낭비 칸을 계산하고 `장수 최소`·`이음매 최소`·`낭비 최소` 정렬 제공. 1장 대안을 자동 추천하고 낭비 0·이음매 0 조합 강조
+  - 최소 장수를 유지하는 셀 경계 분할 중 자유곡선 교차 수가 가장 적은 조합을 동적 계획법으로 선택. 동일 점수에서는 앞 시트를 최대한 채우고, 피할 수 없는 교차는 옵션·미리보기·검증 목록에서 경고
+  - 940×640 출력 계획기 모달: 격자/실물 크기 입력, SVG 분할 도식, 실제 맵 썸네일, 전체 시트 미리보기, 추천 카드, 맞대기/겹치기 및 겹침 mm 입력, 생성 중 진행 상태 구현. 좁은 화면에서는 옵션을 가로 스크롤하고 이음매 설정을 두 줄로 배치
+  - 타일 PDF는 셀 경계로 맵을 클리핑하고 원본 이미지·벡터 곡선 렌더를 재사용. 각 시트에 점선 재단선, 모서리 재단 마크, 변 중앙 삼각 정렬 마크, `행-열` 번호, 이웃 방향, 50mm 눈금자, 100% 안내문을 표시
+  - 겹치기는 오른쪽·아래쪽 이웃 영역을 지정 mm만큼 포함하며 용지를 넘으면 생성 전 오류. 마지막에 A4 조립 안내도 1장을 추가해 전체 시트 배치와 자르기/붙이기 순서를 제공
+  - 결정형 QA: A4 10×8 → 2×2장·이음매 4·낭비 0·절단 [5]/[4], 11×4 곡선 회피 맵 → 절단 [4,9]·교차 0 확인
+  - PDF QA: A4 4장 + 조립 안내도 = 5페이지, 1,265,275바이트. Poppler 110dpi 렌더에서 타일 내용·한글·재단선·정렬 마크·시트 번호·이웃 방향·50mm 눈금·조립 안내도 확인
+  - 브라우저 QA: 10×8 크기 입력, A4 4장 옵션 선택·미리보기, 맞대기 PDF 다운로드 성공, 상단 인쇄→계획기 연결, B4 10×10·겹치기 10mm 용지 초과 오류 토스트, 좁은 화면 이음매 설정 줄바꿈 확인
+  - `npx tsc -b --pretty false`, `npm run build`, `npm run build:single`, `git diff --check` 성공
+
+- [x] **M4 정답 생성(FR-7)** (2026-09-06)
+  - 격자 엣지를 공용 인접 그래프로 변환하고 BFS로 출발→도착 최단 경로를 생성. 복수 도착점은 모달의 위/아래 버튼으로 경유 순서를 정하며 각 구간 최단 경로를 연결
+  - 출발 방향 N/E/S/W를 반영해 `board_left()`·`board_right()`로 회전한 뒤 `board_forward()`로 한 칸 이동하는 실행 가능한 Python 코드를 생성. 180도는 90도 우회전 2회로 표현하고 이동 칸·회전 횟수 집계
+  - 출발점 없음·도착점 없음·도달 불가를 구분하고, 도달 불가는 목표에 가장 가까운 도달 가능 노드의 `캔버스에서 보기` 강조로 연결
+  - 상단바 `정답` → 900px 모달 연결. 최단 경로 SVG 도해·코드·통계·코드 클립보드 복사·복수 도착 순서·오류 상태 및 720px 이하 단일 열 반응형 UI 구현
+  - 자유곡선은 화면/PDF/검증과 동일한 샘플링으로 트랙 근사 길이를 계산하고 `line_speed(5)`·`line_gain(5)`·`line_both()` Python 템플릿 제공
+  - A4 정답지 PDF: 최단 경로 도해 + 도착 번호 + 이동/회전 통계 + 코드 페이지, 자유곡선 도해 + 근사 길이 + 템플릿 페이지 생성. PDF 폰트 로더를 공용화해 단일 HTML의 2.7MB TTF 중복 인라인 제거
+  - 공식 Hamster-S Python API Wiki에서 `board_forward()`=한 칸 전진, `board_left/right()`=제자리 90도 회전임을 확인
+  - 결정형 QA 15건: 정상 최단 경로·복수 도착 순서·90/180도 회전·도달 불가 마지막 지점·원 둘레 길이 통과
+  - 브라우저 QA(고정 495px): 출발점 없음 오류·정상 3칸/2회 경로·코드 복사 토스트·정답 PDF 다운로드·원 Ø100mm 31.4cm 라인트레이싱 탭·단일 스크롤 반응형 확인. QA로 추가한 마커·트랙은 실행취소로 원복
+  - PDF QA: 격자+원 혼합 답안 4페이지, 1,257,391바이트, A4. Poppler 110dpi 렌더에서 한글·보라 경로·도착 번호·격자 코드·원 도해·31.4cm·라인 템플릿 확인
+  - `npx tsc -b --pretty false`, `npm run build`, `npm run build:single` 성공. package.json에 별도 test 스크립트는 없어 Vite SSR 단언으로 관련 로직 검증
+
 ## In Progress
-- [ ] **일시 중단** — 사용자 요청. 다음 작업은 M2 단일장 PDF
+- [ ] **일시 중단** — M4 정답 생성 완료. 다음 작업 승인 대기
 
 ## Next Steps
-1. M2 단일장 PDF (SP-7 한글 폰트 임베드 확인 포함)
-2. M3 출력 계획기(§9.14) + 타일링 / M4 정답 생성
+1. 렌더링 버그 수정: 아이콘을 배치해도 캔버스에서 투명하게 보이는 문제
+2. 렌더링 버그 수정: 던전 상자 등 object 타일 배치 시 검은 격자선이 위에 그려져 타일이 뚫려 보이는 문제
 
 ## Changed Files
 - `package.json`, `vite.config.ts`, `tsconfig*.json`, `index.html`, `.claude/launch.json`: 빌드·개발 서버 설정
@@ -314,11 +348,19 @@ M1.5c 정점 편집과 최소 곡률·평행 구간 간격 검증(FR-10.4·10.8�
 - `src/components/`: 기본 컴포넌트 8종 (`Button` `Input` `Segmented` `TabPills` `Tooltip` `StatusChip` `Toast` `Modal`) + `index.ts`
 - `src/features/start/`: 시작 화면 — `StartScreen` `presets`(5종) `thumbnail`(실제 맵 렌더)
 - `src/features/editor/`: `EditorLayout` `TopBar` `ToolRail` `Inspector` `useMapIssues` `editorStore`
+- `src/features/print/`: M3 출력 계획기 모달·도식·반응형 레이아웃
+- `src/features/answer/`: M4 정답 경로·코드·도착 순서·라인트레이싱 모달
 - `src/features/palette/`: `PalettePanel` (테마 탭 6 + 아이콘/트랙/내 이미지)
 - `src/features/canvas/`: `CanvasViewport` `viewport` `renderer`(5레이어) `drawBoard` `drawOverlay` `gridMath` `hitTest` `toolInteractions` `ruler` `minimap` `tileBitmaps` `cssTokens`
 - `src/lib/model/`: `types` `constants` `factory` `serialize`
 - `src/lib/storage/`: `FsaStore` `DownloadStore` `draft` (File System Access API + 내려받기 대피로)
-- `src/lib/geometry/validate.ts`: FR-9 검증 + 격자 그래프 BFS
+- `src/lib/geometry/validate.ts`, `src/lib/geometry/gridGraph.ts`: FR-9 검증 + 공용 격자 그래프/BFS
+- `src/lib/answer/generateAnswer.ts`: 최단 경로·방향 명령·라인트랙 길이/코드 생성
+- `src/lib/print/plan.ts`: 용지 후보 계산·정렬·셀 경계/곡선 회피 분할
+- `src/lib/model/resize.ts`: 출력 계획기·인스펙터 공용 격자 크기 변경
+- `src/lib/pdf/generateMapPdf.ts`: M2 단일장 PDF 벡터/이미지 렌더러와 다운로드
+- `src/lib/pdf/generateAnswerPdf.ts`, `src/lib/pdf/pdfResources.ts`: M4 정답지 PDF와 공용 한글 폰트 로더
+- `src/assets/fonts/Pretendard-SemiBold.pdf.ttf`: PDF 한글 라벨용 전체 Pretendard SemiBold TTF
 - `src/lib/tiles/catalog.ts`, `src/assets/tiles/`: 내장 아트 타일 35종 + manifest
 - `src/lib/icons/catalog.ts`, `src/assets/icons/`: 인쇄용 아이콘 8종
 - `.github/workflows/deploy.yml`: Pages 자동 배포
@@ -330,6 +372,15 @@ npm install            → 성공
 npm run build          → 성공 (2026-09-06 M1.5c 기준 js 318.65kB / gzip 106.35kB, css 31.07kB)
 npm run build:single   → 성공, dist-single/index.html 1,997.04kB / gzip 1,338.78kB (M1.5c 기준)
 npm run dev            → http://localhost:5173 (포트 고정, IPv4·IPv6 양쪽 바인딩)
+npx tsc -b --pretty false → 성공 (M2 PDF 폰트/렌더러)
+npm run build           → 성공 (M2, PDF 전용 TTF 2,671.46kB 포함)
+npm run build:single    → 성공 (M2, dist-single/index.html 6,700.90kB / gzip 3,387.88kB)
+git diff --check        → 성공
+npm run build           → 성공 (M3, js 1,476.83kB / gzip 619.26kB, css 35.91kB)
+npm run build:single    → 성공 (M3, dist-single/index.html 6,721.99kB / gzip 3,393.85kB)
+npx tsc -b --pretty false → 성공 (M4)
+npm run build           → 성공 (M4, js 1,492.95kB / gzip 624.75kB, css 39.93kB)
+npm run build:single    → 성공 (M4, dist-single/index.html 6,742.07kB / gzip 3,398.67kB)
 ```
 
 ### 검증 방법 메모
@@ -351,6 +402,11 @@ npm run dev            → http://localhost:5173 (포트 고정, IPv4·IPv6 양�
 - 초안 id를 "브라우저 세션 1회 = 초안 1슬롯"으로 발급함. 맵 문서에 안정적인 id 필드가 없어서 내린 절충인데, 한 세션에서 맵 A→B로 갈아타면 A의 초안이 덮어써짐. M1에서 맵 전환이 실제로 생기면 `meta.createdAt` 기반 키로 바꿀지 재검토
 - 저장소가 Public이므로 GitHub Pages 무료 배포가 가능합니다. 다만 사용자가 모든 작업을 마친 뒤에 배포하자고 지시했으므로 임의로 푸시하지 마십시오
 - SP-6: 자유곡선을 곡선과 겹치지 않게 시트 분할하는 알고리즘의 실용성 — M1.5에서 확인. 실패 시 사용자가 이음매 위치를 직접 지정
-- SP-7: Pretendard 서브셋 + `pdf-lib` 폰트 임베드에서 한글이 정상 출력되는지 — M2 착수 시 최소 예제로 확인
+- SP-7: Pretendard 서브셋 + `pdf-lib` 폰트 임베드 — M2에서 Poppler 시각 렌더로 확인 완료
+- M2 PDF는 `pdf-lib/fontkit`의 한글 서브셋 경로가 복합 글리프를 누락해 전체 PDF 전용 TTF를 임베드함. 현재 샘플 PDF는 약 1.25MB이며, 향후 폰트 엔진 교체 또는 안전한 서브셋 도입 시 용량을 줄일 수 있음
+- M3 S3의 코드·PDF 렌더 기준(10×8 → A4 2×2, 시트 경계 셀 단위)은 통과했지만 실제 종이 4장을 100%로 인쇄·재단·조립한 물리 검증은 이 환경에서 수행할 수 없어 사용자 실측이 남아 있음
+- M3 모달은 인앱 브라우저의 고정 495px 폭에서 좁은 화면 분기까지 확인했으나, 이 환경에 Chrome/Edge 제어가 없어 1024px 이상 데스크톱 창의 실제 스크린샷 검증은 수행하지 못함
+- M4 S4/S6의 코드·PDF·브라우저 검증은 통과했지만 실제 햄스터S가 생성 코드로 완주하고 자유곡선을 주행하는 물리 검증은 장비가 없어 남아 있음
+- M4 PDF QA 산출물 `tmp/answer-qa`는 정확한 하위 경로만 확인해 삭제를 시도했으나 작업공간 정책이 재귀 삭제를 거부해 남아 있음. 기존 `tmp/pylibs`와 함께 광범위 삭제하지 말 것
 - 햄스터S 바닥 센서 2개의 좌우 간격(mm) 미확인 — FR-10.9의 40mm 기준을 정밀화할 때 필요 (M6)
 - GitHub 저장소가 Public이어야 Pages 무료. 내장 아트가 저작권 프리라 공개에 문제 없음

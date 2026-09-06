@@ -1,0 +1,46 @@
+.modalBody { height: min(520px, calc(88vh - 160px)); min-height: 400px; display: flex; flex-direction: column; gap: var(--sp-3); }
+.gridLayout, .lineLayout { min-height: 0; flex: 1; display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(300px, 0.95fr); gap: var(--sp-4); }
+.previewPane, .lineInfo, .codePane { min-height: 0; padding: var(--sp-4); border: 1px solid var(--c-border); border-radius: var(--r-lg); background: var(--c-surface-2); }
+.previewPane { display: flex; flex-direction: column; gap: var(--sp-3); overflow-y: auto; }
+.sectionTitle { display: flex; align-items: center; gap: var(--sp-2); color: var(--c-text); }
+.sectionTitle h3 { margin: 0; }
+.diagramFrame { min-height: 190px; flex: 1; display: flex; align-items: center; justify-content: center; padding: var(--sp-3); border-radius: var(--r-md); background: var(--c-canvas-bg); overflow: hidden; }
+.pathDiagram { max-width: 100%; max-height: 270px; filter: drop-shadow(var(--e1)); }
+.paper { fill: var(--c-paper); stroke: var(--c-border-strong); stroke-width: 0.03; }
+.guide { stroke: var(--c-guide); stroke-width: 0.025; }
+.edge { stroke: #777b84; stroke-width: 0.13; stroke-linecap: round; }
+.route { fill: none; stroke: var(--c-primary); stroke-width: 0.065; stroke-linecap: round; stroke-linejoin: round; }
+.start { fill: var(--c-ok); stroke: white; stroke-width: 0.025; }
+.heading { stroke: #065f46; stroke-width: 0.045; stroke-linecap: round; }
+.goal { fill: #f59e0b; stroke: white; stroke-width: 0.025; }
+.goalText { fill: white; font-size: 0.22px; font-weight: 600; }
+.metrics { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.metrics span { padding: 6px 10px; border-radius: var(--r-pill); background: var(--c-primary-soft); color: var(--c-text-2); font-size: 12px; }
+.metrics strong { color: var(--c-primary); font-size: 15px; }
+.codePane { display: flex; flex-direction: column; gap: var(--sp-3); overflow: hidden; }
+.codePane pre { min-height: 0; flex: 1; margin: 0; padding: var(--sp-4); overflow: auto; border-radius: var(--r-md); background: #1f2430; color: #f8fafc; font: 12px/1.65 Consolas, 'Courier New', monospace; white-space: pre; tab-size: 2; }
+.goalOrder { display: flex; flex-direction: column; gap: var(--sp-2); }
+.goalOrder ol { display: flex; flex-direction: column; gap: var(--sp-1); margin: 0; padding: 0; list-style: none; }
+.goalOrder li { min-height: 34px; display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); padding: 4px 6px 4px 10px; border: 1px solid var(--c-border); border-radius: var(--r-md); background: var(--c-surface); }
+.goalOrder b { display: inline-flex; width: 18px; height: 18px; align-items: center; justify-content: center; margin-right: 5px; border-radius: 50%; background: #f59e0b; color: white; }
+.orderButtons { display: flex; gap: 2px; }
+.orderButtons button { width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: var(--r-sm); background: var(--c-surface-3); color: var(--c-text-2); }
+.orderButtons button:disabled { opacity: 0.35; }
+.errorCard { display: flex; flex-direction: column; align-items: flex-start; gap: var(--sp-3); padding: var(--sp-4); border: 1px solid #fecaca; border-radius: var(--r-lg); background: var(--c-danger-soft); color: var(--c-danger); }
+.errorCard p { margin: 0; }
+.lineLayout { align-items: stretch; }
+.lineInfo { display: flex; flex-direction: column; gap: var(--sp-4); }
+.lineInfo p { margin: 0; color: var(--c-text-2); }
+.footer { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); }
+.footer > span { color: var(--c-text-2); }
+.footerActions { display: flex; gap: var(--sp-2); }
+
+@media (max-width: 720px) {
+  .modalBody { height: auto; min-height: 0; }
+  .gridLayout, .lineLayout { flex: none; grid-template-columns: 1fr; overflow: visible; }
+  .previewPane { min-height: 380px; overflow: visible; }
+  .lineInfo { min-height: 250px; }
+  .codePane { min-height: 300px; }
+  .footer { align-items: flex-start; flex-direction: column; }
+  .footerActions { width: 100%; flex-wrap: wrap; }
+}
