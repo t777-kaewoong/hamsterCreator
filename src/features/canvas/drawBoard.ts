@@ -10,6 +10,7 @@
 // 출발·도착 마커(markers, FR-4.3/4.4). 자유곡선(strokes)은 곡선 도구가 생기는 다음
 // 단계 이후에 이 파일에 추가됩니다.
 import type { Direction, Label, MapDoc } from '@/lib/model/types'
+import { getTile } from '@/lib/tiles/catalog'
 import type { MapPoint, Viewport } from './viewport'
 import type { TokenName } from './cssTokens'
 import { parseShadowToken } from './cssTokens'
@@ -102,15 +103,30 @@ export function drawPaperLayer(ctx: CanvasRenderingContext2D, viewport: Viewport
   ctx.restore()
 }
 
-/** ② 칸에 놓인 아트 타일. 50×50mm 칸 영역에 꽉 채워 그립니다. 회전(rot)·좌우반전(flip) 반영. */
-export function drawArtLayer(ctx: CanvasRenderingContext2D, viewport: Viewport, doc: MapDoc): void {
+/**
+ * 칸 아트를 격자선 아래/위 두 묶음으로 나눠 그립니다.
+ *
+ * [왜 TileKind에 따라 나누는가] floor·block은 말판 바닥에 깔리는 그림이라 검은 경로가
+ * 위에 보여야 하지만, object는 상자·금화처럼 바닥 위에 놓인 물건이라 경로가 그림을
+ * 가리면 안 됩니다. cells 배열은 저장 형식을 바꾸지 않고 그대로 두되, 카탈로그의 kind만
+ * 보고 어느 캔버스 레이어에 그릴지를 결정합니다. 카탈로그에 없는 사용자 자산 등은 기존
+ * 동작을 보존하기 위해 격자선 아래 아트로 취급합니다.
+ */
+function drawCellArtGroup(
+  ctx: CanvasRenderingContext2D,
+  viewport: Viewport,
+  doc: MapDoc,
+  aboveGrid: boolean,
+): void {
   const { cols, pitch } = doc.board
   const sizePx = viewport.mmToPx(pitch)
 
   doc.cells.forEach((cell, index) => {
     if (!cell) return
+    const isObject = getTile(cell.art)?.kind === 'object'
+    if (isObject !== aboveGrid) return
     const bitmap = tileBitmapCache.get(cell.art)
-    if (!bitmap) return // 아직 디코드 전 — 이번 프레임엔 그리지 않음(로드 완료 시 art 레이어가 다시 dirty 표시됨)
+    if (!bitmap) return // 아직 디코드 전 — 로드 완료 알림이 두 아트 레이어를 다시 dirty 표시함
 
     const c = index % cols
     const r = Math.floor(index / cols)
@@ -127,10 +143,20 @@ export function drawArtLayer(ctx: CanvasRenderingContext2D, viewport: Viewport, 
   })
 }
 
-/** ③-2 자유 배치 오브젝트(props, FR-3.8). Shift로 격자를 무시하고 놓은 아이콘·타일·
- *  이미지를 자기 x/y/w/h/rot 값 그대로 그립니다(§5 렌더 순서: cells→strokes→edges→
- *  props→labels 중 이 파일이 담당하는 부분. 이 앱의 레이어 합성 순서(renderer.ts)에서는
- *  격자선과 같은 'grid' 다음 'props' 레이어에 해당합니다).
+/** ② 바닥·블록 칸 아트. 50×50mm 칸에 그리며 격자선 아래에 합성합니다. */
+export function drawArtLayer(ctx: CanvasRenderingContext2D, viewport: Viewport, doc: MapDoc): void {
+  drawCellArtGroup(ctx, viewport, doc, false)
+}
+
+/** ④-1 낱개 물건(object) 칸 아트. 같은 cells 데이터지만 격자선 위에 합성합니다. */
+export function drawCellObjectsLayer(ctx: CanvasRenderingContext2D, viewport: Viewport, doc: MapDoc): void {
+  drawCellArtGroup(ctx, viewport, doc, true)
+}
+
+/** ④-2 자유 배치 오브젝트(props, FR-3.8). Shift로 격자를 무시하고 놓은 아이콘·타일·
+ *  이미지를 자기 x/y/w/h/rot 값 그대로 그립니다(§5 렌더 순서: floor·block cells →
+ *  strokes → edges → object cells → props → labels 중 이 파일이 담당하는 부분. 이 앱의
+ *  레이어 합성 순서(renderer.ts)에서는 격자선 다음 'props' 레이어에 해당합니다).
  *
  *  [cells와 props를 나눠 쓰는 이유] cells는 50mm 격자 칸에 딱 맞물려야 하는 바닥·벽
  *  타일용(D3: 인덱스 = r*cols+c로 칸 위치가 곧 배열 자리), props는 격자에 갇히지 않고

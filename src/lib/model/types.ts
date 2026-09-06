@@ -3,7 +3,8 @@
 // 추가·변경할 때는 반드시 PRD §5도 같이 고쳐서 둘이 어긋나지 않게 하세요.
 // 좌표 단위는 특별히 표시하지 않는 한 전부 mm이고, 원점은 맵 좌상단입니다(D1).
 //
-// 렌더 순서(고정, PRD §5): 흰 배경 → cells 아트 → strokes → edges → props → labels → markers
+// 렌더 순서(고정, PRD §5): 흰 배경 → cells의 floor·block → strokes → edges →
+// cells의 object → props → labels → markers
 
 /** mm 좌표 한 점. [x, y] */
 export type Point = [x: number, y: number]

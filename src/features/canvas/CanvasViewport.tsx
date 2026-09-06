@@ -24,6 +24,7 @@ import { LayeredRenderer } from './renderer'
 import type { LayerName } from './renderer'
 import {
   drawArtLayer,
+  drawCellObjectsLayer,
   drawGridLayer,
   drawLabelsLayer,
   drawMarkersLayer,
@@ -255,9 +256,10 @@ export default function CanvasViewport() {
       else if (name === 'art') drawArtLayer(ctx, viewportRef.current, currentDoc)
       else if (name === 'grid') drawGridLayer(ctx, viewportRef.current, currentDoc, tokens)
       else if (name === 'props') {
-        // props → labels → markers를 한 레이어 안에서 순서대로 이어 그립니다(§5 고정
-        // 렌더 순서). 셋 다 "자유 배치 오브젝트"라는 성격이 같아 항상 같이 dirty해지므로
-        // 레이어를 늘려서 얻는 실익이 없습니다(drawBoard.ts의 drawLabelsLayer 주석 참고).
+        // object 칸 아트 → props → labels → markers를 한 레이어 안에서 순서대로 그립니다.
+        // object는 바닥에 놓인 물건이므로 격자선 위에 있어야 하고, 자유 배치 props보다
+        // 먼저 그려야 겹쳤을 때 사용자가 나중에 얹은 자유 오브젝트가 가려지지 않습니다.
+        drawCellObjectsLayer(ctx, viewportRef.current, currentDoc)
         drawPropsLayer(ctx, viewportRef.current, currentDoc)
         drawLabelsLayer(ctx, viewportRef.current, currentDoc, tokens)
         drawMarkersLayer(ctx, viewportRef.current, currentDoc)
@@ -539,9 +541,11 @@ export default function CanvasViewport() {
     }
     window.addEventListener('keydown', handleToolShortcutKeyDown)
 
-    // ── 타일 이미지가 새로 디코드될 때마다 아트 레이어만 다시 그림 ───────────────────────────
+    // ── 타일 이미지가 새로 디코드될 때마다 타일을 쓰는 두 레이어를 다시 그림 ──────────────────
     const unsubscribeTiles = tileBitmapCache.onLoad(() => {
-      renderer.markDirty('art')
+      // 같은 타일이라도 floor/block은 art에, object 및 Shift 자유 배치는 props에 있으므로
+      // 둘 다 갱신해야 로드 시점과 무관하게 빠진 그림 없이 나타납니다.
+      renderer.markDirty('art', 'props')
       scheduleAll()
     })
 

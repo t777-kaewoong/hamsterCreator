@@ -207,7 +207,7 @@ interface MapStore {
 | D8 | `strokes`의 `width` 기본값 8mm |
 | D9 | 격자와 자유곡선은 한 문서에 공존. 어느 한쪽이 비어도 유효 |
 
-**렌더 순서 (고정):** 흰 배경 → `cells` 아트 → `strokes` → `edges` → `props` → `labels` → `markers`
+**렌더 순서 (고정):** 흰 배경 → `cells`의 `floor`·`block` 아트 → `strokes` → `edges` → `cells`의 `object` 아트 → `props` → `labels` → `markers`. 바닥 무늬와 블록 위에는 경로가 보여야 하지만, 상자·금화 같은 낱개 물건은 바닥 위에 놓인 장애물이므로 경로보다 위에 그립니다.
 
 ---
 
