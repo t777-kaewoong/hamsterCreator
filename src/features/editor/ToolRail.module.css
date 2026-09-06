@@ -8,7 +8,7 @@
   /* 그리드가 준 칸을 그대로 채웁니다. */
   width: 100%;
   height: 100%;
-  overflow-y: hidden; /* PRD: 도구 레일은 세로 스크롤 없음 */
+  overflow: visible; /* 스크롤은 없지만 도형 하위 메뉴는 우측 팔레트 위로 펼쳐져야 함 */
 
   background: var(--c-surface);
   border-right: 1px solid var(--c-border);
@@ -54,8 +54,29 @@
   margin: var(--sp-2) 0;
 }
 
-/* 도형 도구 우측 하단의 작은 삼각형 — 이 도구는 길게 누르면 하위 메뉴가 열릴 예정이라는
-   시각 힌트입니다(PRD §9.10). 지금은 표시만 하고 실제 하위 메뉴 동작은 없습니다. */
+.shapeToolWrap {
+  position: relative;
+}
+
+.submenuTrigger {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 17px;
+  height: 17px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: currentColor;
+  cursor: pointer;
+}
+
+.submenuTrigger:hover {
+  background: color-mix(in srgb, var(--c-primary) 12%, transparent);
+}
+
+/* 도형 도구 우측 하단의 작은 삼각형(PRD §9.10). */
 .submenuMark {
   position: absolute;
   right: 4px;
@@ -66,4 +87,43 @@
   border-width: 0 0 5px 5px;
   border-color: transparent transparent currentColor transparent;
   opacity: 0.6;
+}
+
+.shapeMenu {
+  position: absolute;
+  z-index: 30;
+  left: 52px;
+  bottom: 0;
+  width: 144px;
+  padding: var(--sp-1);
+  display: grid;
+  gap: 2px;
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-md);
+  background: var(--c-surface);
+  box-shadow: var(--e2);
+}
+
+.shapeMenuItem {
+  width: 100%;
+  height: 36px;
+  padding: 0 var(--sp-2);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--c-text-2);
+  font: inherit;
+  cursor: pointer;
+}
+
+.shapeMenuItem:hover {
+  background: var(--c-surface-3);
+}
+
+.shapeMenuItemActive {
+  background: var(--c-primary-soft);
+  color: var(--c-primary);
 }

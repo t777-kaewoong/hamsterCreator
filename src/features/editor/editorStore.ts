@@ -30,6 +30,9 @@ export type ToolId =
   | 'freeDraw' // D 자유 그리기
   | 'shape' // O 도형
 
+/** O 도구의 하위 도형. 문서의 Stroke.kind와 맞추되 자유곡선(spline)은 제외합니다. */
+export type ShapeKind = 'line' | 'circle' | 'ellipse' | 'roundedRect'
+
 /** 상단바 저장 상태 칩과 그대로 연결되는 값(components/StatusChip.tsx의 StatusChipStatus와 동일). */
 export type SaveState = 'saved' | 'saving' | 'unsaved'
 
@@ -89,6 +92,8 @@ interface EditorState {
   doc: MapDoc | null
   /** 지금 선택된 도구 */
   activeTool: ToolId
+  /** O 도구로 다음에 배치할 도형. 하위 메뉴에서 바뀝니다. */
+  activeShape: ShapeKind
   /** 이 브라우저가 파일에 바로 덮어쓸 수 있는 방식인지(§4.4). 세션 내내 바뀌지 않는 값이라
    *  스토어를 만들 때 한 번만 계산합니다. 상단바 "저장"/"내려받기" 버튼 문구 분기에 씁니다. */
   storeKind: StoreKind
@@ -138,6 +143,7 @@ interface EditorState {
   tilePlacementNonce: number
 
   setTool: (id: ToolId) => void
+  setShape: (kind: ShapeKind) => void
   setDoc: (doc: MapDoc | null) => void
   setSaveState: (saveState: SaveState) => void
   /**
@@ -217,6 +223,7 @@ let focusRequestNonce = 0
 export const useEditorStore = create<EditorState>()((set, get) => ({
   doc: null,
   activeTool: 'select',
+  activeShape: 'circle',
   storeKind: probe.kind,
   canOverwrite: probe.canOverwrite,
   saveState: 'saved',
@@ -232,6 +239,7 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
   focusRequest: null,
 
   setTool: (id) => set({ activeTool: id }),
+  setShape: (kind) => set({ activeShape: kind, activeTool: 'shape' }),
   setDoc: (doc) => set({ doc }),
   setSaveState: (saveState) => set({ saveState }),
 

@@ -3,7 +3,7 @@
 // 세로로 늘어선 아이콘 버튼 목록입니다. 버튼을 클릭하거나 키보드 단축키를 누르면
 // editorStore의 activeTool이 바뀝니다. 이번 단계에서는 "도구를 고른다"까지만 동작하고,
 // 고른 도구가 캔버스에서 실제로 무엇을 하는지는 다음 단계(캔버스 뷰포트)에서 만듭니다.
-import { useEffect } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import {
   MousePointer2,
@@ -17,10 +17,13 @@ import {
   PenTool,
   Pencil,
   Circle,
+  Minus,
+  RectangleHorizontal,
+  SquareRoundCorner,
 } from 'lucide-react'
 import { Tooltip } from '@/components'
 import { useEditorStore } from './editorStore'
-import type { ToolId } from './editorStore'
+import type { ShapeKind, ToolId } from './editorStore'
 import styles from './ToolRail.module.css'
 
 interface ToolDef {
@@ -52,6 +55,13 @@ const CURVE_TOOLS: ToolDef[] = [
 ]
 
 const ALL_TOOLS = [...GRID_TOOLS, ...CURVE_TOOLS]
+
+const SHAPES: { id: ShapeKind; label: string; icon: LucideIcon }[] = [
+  { id: 'line', label: '직선', icon: Minus },
+  { id: 'circle', label: '원', icon: Circle },
+  { id: 'ellipse', label: '타원', icon: RectangleHorizontal },
+  { id: 'roundedRect', label: '라운드 사각', icon: SquareRoundCorner },
+]
 
 /** 지금 포커스가 글자를 입력받는 요소(입력창·텍스트영역·contentEditable)에 있는지 확인합니다.
  *  이럴 때는 "l"을 눌러 파일명을 고치다가 도구가 바뀌어버리면 안 되므로 단축키를 무시합니다. */
@@ -106,9 +116,103 @@ export default function ToolRail() {
       <div className={styles.divider} role="separator" />
 
       {CURVE_TOOLS.map((tool) => (
-        <ToolButton key={tool.id} tool={tool} active={activeTool === tool.id} onSelect={setTool} />
+        tool.id === 'shape' ? (
+          <ShapeToolButton key={tool.id} tool={tool} active={activeTool === tool.id} />
+        ) : (
+          <ToolButton key={tool.id} tool={tool} active={activeTool === tool.id} onSelect={setTool} />
+        )
       ))}
     </nav>
+  )
+}
+
+function ShapeToolButton({ tool, active }: { tool: ToolDef; active: boolean }) {
+  const [open, setOpen] = useState(false)
+  const wrapperRef = useRef<HTMLDivElement>(null)
+  const longPressTimer = useRef<number | null>(null)
+  const activeShape = useEditorStore((s) => s.activeShape)
+  const setTool = useEditorStore((s) => s.setTool)
+  const setShape = useEditorStore((s) => s.setShape)
+  const ActiveIcon = SHAPES.find((shape) => shape.id === activeShape)?.icon ?? Circle
+
+  useEffect(() => {
+    if (!open) return
+    const closeOutside = (event: PointerEvent) => {
+      if (!wrapperRef.current?.contains(event.target as Node)) setOpen(false)
+    }
+    const closeWithEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false)
+    }
+    window.addEventListener('pointerdown', closeOutside)
+    window.addEventListener('keydown', closeWithEscape)
+    return () => {
+      window.removeEventListener('pointerdown', closeOutside)
+      window.removeEventListener('keydown', closeWithEscape)
+    }
+  }, [open])
+
+  function clearLongPress() {
+    if (longPressTimer.current !== null) window.clearTimeout(longPressTimer.current)
+    longPressTimer.current = null
+  }
+
+  return (
+    <div ref={wrapperRef} className={styles.shapeToolWrap}>
+      <Tooltip content={`${tool.label} · ${SHAPES.find((shape) => shape.id === activeShape)?.label}`} shortcut="O" placement="right">
+        <button
+          type="button"
+          className={`${styles.toolButton} ${active ? styles.active : ''}`}
+          aria-label={`${tool.label}: ${SHAPES.find((shape) => shape.id === activeShape)?.label}`}
+          aria-pressed={active}
+          aria-haspopup="menu"
+          aria-expanded={open}
+          onPointerDown={() => {
+            clearLongPress()
+            longPressTimer.current = window.setTimeout(() => setOpen(true), 450)
+          }}
+          onPointerUp={clearLongPress}
+          onPointerCancel={clearLongPress}
+          onPointerLeave={clearLongPress}
+          onClick={() => setTool('shape')}
+        >
+          <ActiveIcon size={22} />
+        </button>
+      </Tooltip>
+      <button
+        type="button"
+        className={styles.submenuTrigger}
+        aria-label="도형 종류 열기"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+      >
+        <span className={styles.submenuMark} aria-hidden="true" />
+      </button>
+
+      {open && (
+        <div className={styles.shapeMenu} role="menu" aria-label="도형 종류">
+          {SHAPES.map((shape) => {
+            const Icon = shape.icon
+            return (
+              <button
+                key={shape.id}
+                type="button"
+                role="menuitemradio"
+                aria-checked={activeShape === shape.id}
+                className={`${styles.shapeMenuItem} ${activeShape === shape.id ? styles.shapeMenuItemActive : ''}`}
+                onClick={() => {
+                  setShape(shape.id)
+                  setOpen(false)
+                }}
+              >
+                <Icon size={18} />
+                <span>{shape.label}</span>
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -122,8 +226,6 @@ function ToolButton({
   onSelect: (id: ToolId) => void
 }) {
   const Icon = tool.icon
-  const isShape = tool.id === 'shape'
-
   return (
     <Tooltip content={tool.label} shortcut={tool.key.toUpperCase()} placement="right">
       <button
@@ -134,10 +236,6 @@ function ToolButton({
         onClick={() => onSelect(tool.id)}
       >
         <Icon size={22} />
-        {/* 도형 도구는 길게 누르면 하위 메뉴(직선·원·타원·라운드 사각)가 열릴 예정임을
-            나타내는 삼각 표시입니다(PRD §9.10). 하위 메뉴 자체는 도형 도구를 실제로
-            구현하는 단계에서 만듭니다 — 지금은 표시만 하고 동작은 없습니다. */}
-        {isShape && <span className={styles.submenuMark} aria-hidden="true" />}
       </button>
     </Tooltip>
   )

@@ -60,7 +60,9 @@
 .railArea {
   grid-row: 2;
   grid-column: 1;
-  overflow: hidden;
+  position: relative;
+  z-index: 10;
+  overflow: visible;
 }
 
 .paletteArea {

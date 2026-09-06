@@ -20,7 +20,7 @@ import { LINE_WIDTH_MM } from '@/lib/model/constants'
 import { getTile, TILES_BY_THEME } from '@/lib/tiles/catalog'
 import { saveDraft } from '@/lib/storage/draft'
 import { useEditorStore } from '@/features/editor/editorStore'
-import type { Selection } from '@/features/editor/editorStore'
+import type { Selection, ShapeKind } from '@/features/editor/editorStore'
 import type { LayerName } from './renderer'
 import type { MapPoint, Viewport } from './viewport'
 import { nodeCenterMm } from './drawBoard'
@@ -41,7 +41,7 @@ import {
 
 /** 지금 진행 중인 제스처의 종류. 스포이드(I)·선택(V)은 문서를 바꾸지 않아 제스처로
  *  치지 않습니다(null로 둠 — 실행취소 대상이 아님). */
-type GestureKind = 'stamp' | 'eraser' | 'lineDraw' | 'fill' | 'freeDraw' | null
+type GestureKind = 'stamp' | 'eraser' | 'lineDraw' | 'fill' | 'freeDraw' | 'shape' | null
 
 /** overlay 레이어(drawOverlay.ts)가 그대로 읽어서 그리는 "지금 상호작용 중인 상태".
  *  전부 화면 표시용 데이터일 뿐, MapDoc에는 전혀 반영되지 않습니다. */
@@ -69,6 +69,8 @@ export interface OverlayState {
   selectionBox: { mx: number; my: number; wMm: number; hMm: number; rot: number } | null
   /** P/D 도구의 아직 확정되지 않은 경로. 문서에 넣기 전에도 결과 모양을 볼 수 있게 합니다. */
   curveDraft: { points: Point[]; hoverPoint: Point | null; mode: 'pen' | 'freeDraw'; width: number } | null
+  /** O 도구로 드래그 중인 도형. 확정 전이라 문서에는 아직 포함되지 않습니다. */
+  shapeDraft: Stroke | null
   /** 선택한 곡선 본체와 정점을 강조하기 위한 화면 전용 참조. */
   strokeSelection: Stroke | null
   /** 인스펙터 검증 섹션(§9.13) 항목을 클릭해 "여기로 이동해서 0.6초간 깜빡여라"라고
@@ -94,6 +96,7 @@ function emptyOverlay(): OverlayState {
     markerGhost: null,
     selectionBox: null,
     curveDraft: null,
+    shapeDraft: null,
     strokeSelection: null,
     focusHighlight: null,
   }
@@ -133,6 +136,39 @@ function createStrokeId(doc: MapDoc): string {
     id = `s_${Date.now().toString(36)}_${strokeIdSequence.toString(36)}`
   } while (doc.strokes.some((stroke) => stroke.id === id))
   return id
+}
+
+function buildShapeStroke(
+  kind: ShapeKind,
+  start: MapPoint,
+  end: MapPoint,
+  useDefaultSize: boolean,
+  id: string,
+): Stroke {
+  if (kind === 'line') {
+    const points: Point[] = useDefaultSize
+      ? [[start.mx - 30, start.my], [start.mx + 30, start.my]]
+      : [[start.mx, start.my], [end.mx, end.my]]
+    return { id, kind, points, width: LINE_WIDTH_MM }
+  }
+  if (kind === 'circle') {
+    if (useDefaultSize) return { id, kind, cx: start.mx, cy: start.my, r: 50, width: LINE_WIDTH_MM }
+    return {
+      id,
+      kind,
+      cx: (start.mx + end.mx) / 2,
+      cy: (start.my + end.my) / 2,
+      r: Math.max(1, Math.hypot(end.mx - start.mx, end.my - start.my) / 2),
+      width: LINE_WIDTH_MM,
+    }
+  }
+
+  const cx = useDefaultSize ? start.mx : (start.mx + end.mx) / 2
+  const cy = useDefaultSize ? start.my : (start.my + end.my) / 2
+  const w = useDefaultSize ? 100 : Math.max(1, Math.abs(end.mx - start.mx))
+  const h = useDefaultSize ? 70 : Math.max(1, Math.abs(end.my - start.my))
+  if (kind === 'ellipse') return { id, kind, cx, cy, rx: w / 2, ry: h / 2, width: LINE_WIDTH_MM }
+  return { id, kind, cx, cy, w, h, radius: Math.min(15, w / 2, h / 2), width: LINE_WIDTH_MM }
 }
 
 export class ToolController {
@@ -186,6 +222,8 @@ export class ToolController {
   private penDraftPoints: Point[] = []
   /** D 도구가 pointerdown~up 사이에 모은 원시 궤적. 종료 시 Douglas-Peucker로 단순화합니다. */
   private freeDrawPoints: Point[] = []
+  /** O 도형 드래그의 시작점(mm). */
+  private shapeStart: MapPoint | null = null
 
   constructor(
     private readonly viewport: Viewport,
@@ -320,6 +358,15 @@ export class ToolController {
         }
         break
 
+      case 'shape': {
+        this.activeGesture = 'shape'
+        this.gestureSnapshot = structuredClone(doc)
+        this.shapeStart = mapPt
+        const { activeShape } = useEditorStore.getState()
+        this.overlay.shapeDraft = buildShapeStroke(activeShape, mapPt, mapPt, true, '__shape_draft__')
+        break
+      }
+
       default:
         break
     }
@@ -436,6 +483,20 @@ export class ToolController {
         break
       }
 
+
+      case 'shape':
+        if (this.shapeStart) {
+          const { activeShape } = useEditorStore.getState()
+          this.overlay.shapeDraft = buildShapeStroke(
+            activeShape,
+            this.shapeStart,
+            mapPt,
+            !this.dragMoved,
+            '__shape_draft__',
+          )
+        }
+        break
+
       default:
         break
     }
@@ -480,6 +541,23 @@ export class ToolController {
         }
         this.finishFreeDrawDraft()
       }
+
+
+      if (gestureKind === 'shape' && this.shapeStart) {
+        const fresh = this.getDoc()
+        if (fresh) {
+          const { activeShape } = useEditorStore.getState()
+          const stroke = buildShapeStroke(
+            activeShape,
+            this.shapeStart,
+            mapPt,
+            !this.dragMoved,
+            createStrokeId(fresh),
+          )
+          this.commitDocChange({ ...fresh, strokes: [...fresh.strokes, stroke] })
+          useEditorStore.getState().setSelection({ kind: 'stroke', id: stroke.id })
+        }
+      }
     }
 
     // 제스처 시작~끝 사이에 실제로 문서가 달라졌을 때만 실행취소 스택에 하나 쌓습니다.
@@ -506,6 +584,7 @@ export class ToolController {
     this.overlay.stampGhost = null
     this.overlay.freePropGhost = null
     this.overlay.markerGhost = null
+    this.overlay.shapeDraft = null
     if (this.penDraftPoints.length > 0) {
       this.overlay.curveDraft = {
         points: this.penDraftPoints.slice(),
@@ -1112,8 +1191,10 @@ export class ToolController {
     this.lastPointerMapPt = null
     this.lastFreePropCenter = null
     this.fillStartCell = null
+    this.shapeStart = null
     this.overlay.linePreview = null
     this.overlay.fillRect = null
+    this.overlay.shapeDraft = null
     if (this.freeDrawPoints.length > 0) {
       this.freeDrawPoints = []
       this.overlay.curveDraft = null

@@ -304,6 +304,7 @@ const STROKE_KIND_LABELS: Record<Stroke['kind'], string> = {
   line: '직선',
   circle: '원',
   ellipse: '타원',
+  roundedRect: '둥근 사각형',
 }
 
 /** stroke의 "총 길이(mm)"를 계산합니다(§9.13 명시).
@@ -319,6 +320,10 @@ function computeStrokeLengthMm(stroke: Stroke): number {
     const a = stroke.rx
     const b = stroke.ry
     return Math.PI * (3 * (a + b) - Math.sqrt((3 * a + b) * (a + 3 * b)))
+  }
+  if (stroke.kind === 'roundedRect') {
+    const radius = Math.max(0, Math.min(stroke.radius, stroke.w / 2, stroke.h / 2))
+    return 2 * (stroke.w + stroke.h - 4 * radius) + 2 * Math.PI * radius
   }
   let total = 0
   for (let i = 1; i < stroke.points.length; i++) {
@@ -350,7 +355,9 @@ function StrokeFields({ doc, id }: { doc: MapDoc; id: string }) {
 
   function updateStroke(patch: Partial<Stroke>) {
     const nextStrokes = doc.strokes.slice()
-    nextStrokes[index] = { ...stroke, ...patch } as Stroke
+    const nextStroke = { ...stroke, ...patch } as Stroke
+    if (JSON.stringify(nextStroke) === JSON.stringify(stroke)) return
+    nextStrokes[index] = nextStroke
     useEditorStore.getState().commitDoc({ ...doc, strokes: nextStrokes })
   }
 
@@ -369,16 +376,8 @@ function StrokeFields({ doc, id }: { doc: MapDoc; id: string }) {
       <h2 className={`${styles.sectionTitle} t-h2`}>선택 항목</h2>
       <div className={styles.sectionBody}>
         <p className={`${styles.itemName} t-caption`}>{STROKE_KIND_LABELS[stroke.kind]}</p>
-        <Input
-          label="선폭"
-          unit="mm"
-          type="number"
-          value={stroke.width}
-          onChange={(e) => {
-            const value = Number(e.target.value)
-            if (!Number.isNaN(value)) updateStroke({ width: value })
-          }}
-        />
+        <DraftNumberInput label="선폭" value={stroke.width} min={0.1} onCommit={(value) => updateStroke({ width: value })} />
+        <StrokeParameterFields stroke={stroke} updateStroke={updateStroke} />
         <div className={styles.field}>
           <span className="t-label">정점 수</span>
           <span className="t-body t-nums">{vertexCount ?? '—'}</span>
@@ -395,6 +394,123 @@ function StrokeFields({ doc, id }: { doc: MapDoc; id: string }) {
         </Button>
       </div>
     </section>
+  )
+}
+
+function DraftNumberInput({
+  label,
+  value,
+  min,
+  onCommit,
+}: {
+  label: string
+  value: number
+  min?: number
+  onCommit: (value: number) => void
+}) {
+  const [draft, setDraft] = useState(String(value))
+
+  useEffect(() => setDraft(String(value)), [value])
+
+  function commit() {
+    const parsed = Number(draft)
+    if (!Number.isFinite(parsed) || (min !== undefined && parsed < min)) {
+      setDraft(String(value))
+      return
+    }
+    setDraft(String(parsed))
+    if (parsed !== value) onCommit(parsed)
+  }
+
+  return (
+    <Input
+      label={label}
+      unit="mm"
+      type="number"
+      min={min}
+      value={draft}
+      onChange={(event) => setDraft(event.target.value)}
+      onBlur={commit}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter') event.currentTarget.blur()
+        else if (event.key === 'Escape') {
+          setDraft(String(value))
+          event.currentTarget.blur()
+        }
+      }}
+    />
+  )
+}
+
+function StrokeParameterFields({
+  stroke,
+  updateStroke,
+}: {
+  stroke: Stroke
+  updateStroke: (patch: Partial<Stroke>) => void
+}) {
+  if (stroke.kind === 'spline') return null
+
+  if (stroke.kind === 'line') {
+    const start = stroke.points[0] ?? [0, 0]
+    const end = stroke.points[1] ?? start
+    const updatePoint = (pointIndex: 0 | 1, axis: 0 | 1, value: number) => {
+      const points: [number, number][] = [[...start], [...end]]
+      points[pointIndex][axis] = value
+      updateStroke({ points })
+    }
+    return (
+      <div className={styles.grid2}>
+        <DraftNumberInput label="시작 X" value={start[0]} onCommit={(value) => updatePoint(0, 0, value)} />
+        <DraftNumberInput label="시작 Y" value={start[1]} onCommit={(value) => updatePoint(0, 1, value)} />
+        <DraftNumberInput label="끝 X" value={end[0]} onCommit={(value) => updatePoint(1, 0, value)} />
+        <DraftNumberInput label="끝 Y" value={end[1]} onCommit={(value) => updatePoint(1, 1, value)} />
+      </div>
+    )
+  }
+
+  const centerFields = (
+    <div className={styles.grid2}>
+      <DraftNumberInput label="중심 X" value={stroke.cx} onCommit={(value) => updateStroke({ cx: value })} />
+      <DraftNumberInput label="중심 Y" value={stroke.cy} onCommit={(value) => updateStroke({ cy: value })} />
+    </div>
+  )
+
+  if (stroke.kind === 'circle') {
+    return (
+      <>
+        {centerFields}
+        <DraftNumberInput label="직경" value={stroke.r * 2} min={2} onCommit={(value) => updateStroke({ r: value / 2 })} />
+      </>
+    )
+  }
+
+  if (stroke.kind === 'ellipse') {
+    return (
+      <>
+        {centerFields}
+        <div className={styles.grid2}>
+          <DraftNumberInput label="가로" value={stroke.rx * 2} min={1} onCommit={(value) => updateStroke({ rx: value / 2 })} />
+          <DraftNumberInput label="세로" value={stroke.ry * 2} min={1} onCommit={(value) => updateStroke({ ry: value / 2 })} />
+        </div>
+      </>
+    )
+  }
+
+  return (
+    <>
+      {centerFields}
+      <div className={styles.grid2}>
+        <DraftNumberInput label="가로" value={stroke.w} min={1} onCommit={(value) => updateStroke({ w: value })} />
+        <DraftNumberInput label="세로" value={stroke.h} min={1} onCommit={(value) => updateStroke({ h: value })} />
+      </div>
+      <DraftNumberInput
+        label="모서리 반경"
+        value={stroke.radius}
+        min={0}
+        onCommit={(value) => updateStroke({ radius: Math.min(value, stroke.w / 2, stroke.h / 2) })}
+      />
+    </>
   )
 }
 

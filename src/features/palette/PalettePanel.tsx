@@ -17,6 +17,9 @@ import { ICONS } from '@/lib/icons/catalog'
 import { USER_ASSET_MAX_PX } from '@/lib/model/constants'
 import type { UserAsset } from '@/lib/model/types'
 import { useEditorStore } from '@/features/editor/editorStore'
+import { sampleStroke, strokeBounds } from '@/features/canvas/strokeGeometry'
+import { TRACK_PRESETS } from './trackPresets'
+import type { TrackPreset } from './trackPresets'
 import styles from './PalettePanel.module.css'
 
 /** 팔레트 그리드 한 칸에 필요한 최소 정보. 내장 타일·인쇄용 아이콘·내 이미지가
@@ -100,6 +103,34 @@ export default function PalettePanel() {
 
   function handleSelect(item: PaletteItem) {
     setStampTile(item.id)
+  }
+
+  function handleTrackSelect(preset: TrackPreset) {
+    const currentDoc = useEditorStore.getState().doc
+    if (!currentDoc) return
+    const centerX = (currentDoc.board.cols * currentDoc.board.pitch) / 2
+    const centerY = (currentDoc.board.rows * currentDoc.board.pitch) / 2
+    let sequence = currentDoc.strokes.length + 1
+    let strokeId = `track_${preset.id}_${sequence}`
+    while (currentDoc.strokes.some((stroke) => stroke.id === strokeId)) {
+      sequence += 1
+      strokeId = `track_${preset.id}_${sequence}`
+    }
+    const stroke = preset.create(centerX, centerY, strokeId)
+    useEditorStore.getState().commitDoc({ ...currentDoc, strokes: [...currentDoc.strokes, stroke] })
+    useEditorStore.getState().setSelection({ kind: 'stroke', id: stroke.id })
+    useEditorStore.getState().setTool('select')
+
+    const bounds = strokeBounds(stroke)
+    const mapWidth = currentDoc.board.cols * currentDoc.board.pitch
+    const mapHeight = currentDoc.board.rows * currentDoc.board.pitch
+    const outside = Boolean(
+      bounds && (bounds.minX < 0 || bounds.minY < 0 || bounds.maxX > mapWidth || bounds.maxY > mapHeight),
+    )
+    showToast({
+      message: outside ? `${preset.name}을 중앙에 배치했지만 일부가 말판 밖에 있습니다` : `${preset.name}을 중앙에 배치했습니다`,
+      action: { label: '실행취소', onClick: () => useEditorStore.getState().undo() },
+    })
   }
 
   function handleDragStart(e: DragEvent<HTMLButtonElement>, item: PaletteItem) {
@@ -254,10 +285,11 @@ export default function PalettePanel() {
     }
 
     if (activeTheme === 'track') {
-      // 라인트레이서 트랙 프리셋(FR-10.7)은 아직 없습니다. 다음 단계에서 채워질 자리입니다.
       return (
-        <div className={styles.emptyState}>
-          <span className={`${styles.trackNotice} t-caption`}>라인트레이서 트랙은 다음 단계에서 추가됩니다</span>
+        <div className={styles.trackGrid}>
+          {TRACK_PRESETS.map((preset) => (
+            <TrackPresetTile key={preset.id} preset={preset} onSelect={handleTrackSelect} />
+          ))}
         </div>
       )
     }
@@ -319,6 +351,30 @@ export default function PalettePanel() {
       </div>
     )
   }
+}
+
+function TrackPresetTile({ preset, onSelect }: { preset: TrackPreset; onSelect: (preset: TrackPreset) => void }) {
+  const stroke = preset.create(0, 0, '__preview__')
+  const points = sampleStroke(stroke)
+  const minX = Math.min(...points.map(([x]) => x))
+  const minY = Math.min(...points.map(([, y]) => y))
+  const maxX = Math.max(...points.map(([x]) => x))
+  const maxY = Math.max(...points.map(([, y]) => y))
+  const padding = 10
+  const viewWidth = Math.max(1, maxX - minX)
+  const viewHeight = Math.max(1, maxY - minY)
+  const viewBox = `${minX - padding} ${minY - padding} ${viewWidth + padding * 2} ${viewHeight + padding * 2}`
+  const polyline = points.map(([x, y]) => `${x},${y}`).join(' ')
+
+  return (
+    <Tooltip content={preset.name}>
+      <button type="button" className={styles.trackTile} aria-label={`${preset.name} 중앙에 배치`} onClick={() => onSelect(preset)}>
+        <svg className={styles.trackPreview} viewBox={viewBox} aria-hidden="true" preserveAspectRatio="xMidYMid meet">
+          <polyline points={polyline} pathLength="100" />
+        </svg>
+      </button>
+    </Tooltip>
+  )
 }
 
 /** 타일 하나. 타일 그리드·아이콘 그리드·내 이미지 그리드가 전부 이 컴포넌트를 재사용합니다.

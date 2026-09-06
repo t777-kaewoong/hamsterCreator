@@ -176,7 +176,8 @@ interface MapStore {
     { "id": "s1", "kind": "spline",  "points": [[x,y], ...], "width": 8, "closed": false },
     { "id": "s2", "kind": "circle",  "cx": 200, "cy": 150, "r": 50, "width": 8 },
     { "id": "s3", "kind": "ellipse", "cx": 200, "cy": 150, "rx": 115, "ry": 75, "width": 8 },
-    { "id": "s4", "kind": "line",    "points": [[0,100],[270,100]], "width": 8 }
+    { "id": "s4", "kind": "line",    "points": [[0,100],[270,100]], "width": 8 },
+    { "id": "s5", "kind": "roundedRect", "cx": 125, "cy": 100, "w": 180, "h": 120, "radius": 30, "width": 8 }
   ],
 
   "props":  [ { "asset": "icon/fire", "x": 125, "y": 75, "w": 40, "h": 40, "rot": 0 } ],

@@ -18,6 +18,33 @@ function catmullRomPoint(p0: Point, p1: Point, p2: Point, p3: Point, t: number):
 /** Stroke를 화면·판정에 함께 쓸 조밀한 꺾은선으로 바꿉니다. */
 export function sampleStroke(stroke: Stroke): Point[] {
   if (stroke.kind === 'line') return stroke.points.slice()
+  if (stroke.kind === 'roundedRect') {
+    const halfW = Math.max(0, stroke.w) / 2
+    const halfH = Math.max(0, stroke.h) / 2
+    const radius = Math.max(0, Math.min(stroke.radius, halfW, halfH))
+    const left = stroke.cx - halfW
+    const right = stroke.cx + halfW
+    const top = stroke.cy - halfH
+    const bottom = stroke.cy + halfH
+    if (radius === 0) {
+      return [[left, top], [right, top], [right, bottom], [left, bottom], [left, top]]
+    }
+
+    const result: Point[] = []
+    const cornerSteps = 16
+    const appendCorner = (cx: number, cy: number, startAngle: number) => {
+      for (let i = 0; i <= cornerSteps; i++) {
+        const angle = startAngle + (i / cornerSteps) * (Math.PI / 2)
+        result.push([cx + Math.cos(angle) * radius, cy + Math.sin(angle) * radius])
+      }
+    }
+    appendCorner(right - radius, top + radius, -Math.PI / 2)
+    appendCorner(right - radius, bottom - radius, 0)
+    appendCorner(left + radius, bottom - radius, Math.PI / 2)
+    appendCorner(left + radius, top + radius, Math.PI)
+    result.push(result[0])
+    return result
+  }
   if (stroke.kind === 'circle' || stroke.kind === 'ellipse') {
     const steps = 96
     const cx = stroke.cx
@@ -56,6 +83,25 @@ export function drawStrokePath(ctx: CanvasRenderingContext2D, viewport: Viewport
     const ry = viewport.mmToPx(stroke.kind === 'circle' ? stroke.r : stroke.ry)
     ctx.beginPath()
     ctx.ellipse(center.x, center.y, rx, ry, 0, 0, Math.PI * 2)
+    ctx.stroke()
+    return
+  }
+
+  if (stroke.kind === 'roundedRect') {
+    const halfW = Math.max(0, stroke.w) / 2
+    const halfH = Math.max(0, stroke.h) / 2
+    const radius = Math.max(0, Math.min(stroke.radius, halfW, halfH))
+    const topLeft = viewport.mapToScreen(stroke.cx - halfW, stroke.cy - halfH)
+    const w = viewport.mmToPx(halfW * 2)
+    const h = viewport.mmToPx(halfH * 2)
+    const r = viewport.mmToPx(radius)
+    ctx.beginPath()
+    ctx.moveTo(topLeft.x + r, topLeft.y)
+    ctx.arcTo(topLeft.x + w, topLeft.y, topLeft.x + w, topLeft.y + h, r)
+    ctx.arcTo(topLeft.x + w, topLeft.y + h, topLeft.x, topLeft.y + h, r)
+    ctx.arcTo(topLeft.x, topLeft.y + h, topLeft.x, topLeft.y, r)
+    ctx.arcTo(topLeft.x, topLeft.y, topLeft.x + w, topLeft.y, r)
+    ctx.closePath()
     ctx.stroke()
     return
   }

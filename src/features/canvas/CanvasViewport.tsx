@@ -70,6 +70,7 @@ function cursorForTool(tool: ToolId): string {
     case 'fill':
       return 'copy'
     case 'lineDraw':
+    case 'shape':
     case 'eraser':
     case 'eyedropper':
       return 'crosshair'

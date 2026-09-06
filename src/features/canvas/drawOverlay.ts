@@ -250,6 +250,18 @@ export function drawOverlayLayer(
     }
   }
 
+  // O 도형은 pointerup 전까지 primary 색 반투명 경로로만 보여줍니다.
+  if (overlay.shapeDraft) {
+    ctx.save()
+    ctx.globalAlpha = LINE_PREVIEW_ALPHA
+    ctx.strokeStyle = tokens['--c-primary']
+    ctx.lineWidth = viewport.mmToPx(overlay.shapeDraft.width)
+    ctx.lineCap = 'round'
+    ctx.lineJoin = 'round'
+    drawStrokePath(ctx, viewport, overlay.shapeDraft)
+    ctx.restore()
+  }
+
   // 선택한 곡선은 본체 윤곽과 7px 정점 원으로 표시합니다(§9.12 곡선 편집 오버레이).
   if (overlay.strokeSelection) {
     const stroke = overlay.strokeSelection

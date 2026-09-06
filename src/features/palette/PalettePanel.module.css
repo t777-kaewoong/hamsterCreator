@@ -139,8 +139,47 @@
   padding: var(--sp-6) var(--sp-2);
 }
 
-.trackNotice {
-  color: var(--c-text-3);
+.trackGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-auto-rows: 92px;
+  gap: var(--sp-2);
+}
+
+.trackTile {
+  width: 100%;
+  height: 92px;
+  padding: var(--sp-2);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-md);
+  background: var(--c-surface);
+  cursor: pointer;
+  transition:
+    border-color var(--t-fast),
+    transform var(--t-fast),
+    box-shadow var(--t-fast);
+}
+
+.trackTile:hover {
+  border-color: var(--c-primary);
+  transform: scale(1.02);
+  box-shadow: var(--e1);
+}
+
+.trackPreview {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.trackPreview polyline {
+  fill: none;
+  stroke: var(--c-print-black);
+  stroke-width: 6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
 }
 
 /* 내 이미지가 하나도 없을 때는 설명 문장 대신 72px 드롭존 축소판을 보여줍니다

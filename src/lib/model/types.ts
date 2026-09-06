@@ -127,9 +127,24 @@ export interface EllipseStroke extends StrokeBase {
   ry: number
 }
 
+/** 모서리가 둥근 사각형(FR-10.3). */
+export interface RoundedRectStroke extends StrokeBase {
+  kind: 'roundedRect'
+  /** 중심 x(mm) */
+  cx: number
+  /** 중심 y(mm) */
+  cy: number
+  /** 전체 가로 길이(mm) */
+  w: number
+  /** 전체 세로 길이(mm) */
+  h: number
+  /** 모서리 반경(mm). 렌더링할 때 0~min(w,h)/2 범위로 제한합니다. */
+  radius: number
+}
+
 /** 자유곡선 하나. kind로 구분되는 판별 유니온이라, 코드에서
  *  `if (stroke.kind === 'circle')` 처럼 좁히면 cx/cy/r 같은 전용 필드에 안전하게 접근됩니다. */
-export type Stroke = SplineStroke | LineStroke | CircleStroke | EllipseStroke
+export type Stroke = SplineStroke | LineStroke | CircleStroke | EllipseStroke | RoundedRectStroke
 
 // ── 오브젝트(props) · 라벨 ─────────────────────────────────────────────
 
