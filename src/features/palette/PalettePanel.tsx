@@ -75,6 +75,7 @@ export default function PalettePanel() {
   // dragstart 때마다 src만 바꿔 dataTransfer.setDragImage()에 넘깁니다(PRD §9.11).
   const dragPreviewRef = useRef<HTMLImageElement>(null)
   const [uploading, setUploading] = useState(false)
+  const [userAssetDragActive, setUserAssetDragActive] = useState(false)
   const [coachMarkVisible, setCoachMarkVisible] = useState(shouldShowCoachMark)
 
   useEffect(() => {
@@ -119,6 +120,18 @@ export default function PalettePanel() {
 
   function openFilePicker() {
     fileInputRef.current?.click()
+  }
+
+  function handleUserAssetDragOver(e: DragEvent<HTMLButtonElement>) {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'copy'
+    setUserAssetDragActive(true)
+  }
+
+  function handleUserAssetDrop(e: DragEvent<HTMLButtonElement>) {
+    e.preventDefault()
+    setUserAssetDragActive(false)
+    void handleFilesSelected(e.dataTransfer.files)
   }
 
   async function handleFilesSelected(fileList: FileList | null) {
@@ -253,8 +266,19 @@ export default function PalettePanel() {
       const entries = Object.entries(doc?.userAssets ?? {})
       if (entries.length === 0) {
         return (
-          <div className={styles.emptyState}>
-            <span className="t-caption">아직 추가한 이미지가 없습니다</span>
+          <div className={styles.userImageEmpty}>
+            <button
+              type="button"
+              className={`${styles.userImageDropzone} ${userAssetDragActive ? styles.userImageDropzoneActive : ''}`}
+              onClick={openFilePicker}
+              onDragOver={handleUserAssetDragOver}
+              onDragLeave={() => setUserAssetDragActive(false)}
+              onDrop={handleUserAssetDrop}
+              aria-label="이미지 파일 선택 또는 놓기"
+            >
+              <Upload size={20} aria-hidden="true" />
+              <span className="t-caption">이미지를 놓으세요</span>
+            </button>
           </div>
         )
       }

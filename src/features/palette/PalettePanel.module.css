@@ -1,9 +1,10 @@
 /*
   PalettePanel.module.css — PRD §9.11 팔레트 패널 규격.
 
-  타일 그리드 치수는 절대 임의로 바꾸지 마세요:
+  타일 그리드 치수는 PRD 반응형 규격과 함께 유지하세요:
   패널 폭 280px, 좌우 여백 16px → 내부 폭 248px → 3열, 간격 8px → 타일 한 변 77px.
   ((248 - 8*2) / 3 = 77.33 → 77px로 반올림, PRD 그대로)
+  1080px 미만에서는 패널 240px, 내부 폭 208px → 타일 한 변 65px입니다.
 */
 
 .panel {
@@ -142,6 +143,42 @@
   color: var(--c-text-3);
 }
 
+/* 내 이미지가 하나도 없을 때는 설명 문장 대신 72px 드롭존 축소판을 보여줍니다
+   (PRD §9.15). 클릭과 파일 드롭 모두 아래의 같은 업로드 처리로 이어집니다. */
+.userImageEmpty {
+  display: flex;
+  justify-content: center;
+  padding-top: var(--sp-4);
+}
+
+.userImageDropzone {
+  width: 100%;
+  height: 72px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-1);
+  padding: 0;
+  border: 1px dashed var(--c-border-strong);
+  border-radius: var(--r-md);
+  background: var(--c-surface-2);
+  color: var(--c-text-3);
+  cursor: pointer;
+  transition:
+    border-color var(--t-fast),
+    background var(--t-fast),
+    color var(--t-fast);
+}
+
+.userImageDropzone:hover,
+.userImageDropzone:focus-visible,
+.userImageDropzoneActive {
+  border-color: var(--c-primary);
+  background: var(--c-primary-soft);
+  color: var(--c-primary);
+}
+
 /* ── 하단 고정 영역: 내 이미지 탭에서만 보이는 "이미지 추가" 버튼 ─── */
 .footer {
   flex-shrink: 0;
@@ -167,4 +204,25 @@
   object-fit: cover;
   border-radius: var(--r-sm);
   pointer-events: none;
+}
+
+/* PRD §9.17: 최소 지원 폭 구간(1024~1079px)에서는 팔레트만 240px로 줄이고,
+   같은 3열 구조를 유지하도록 각 타일을 65px로 축소합니다. */
+@media (max-width: 1079.98px) {
+  .grid {
+    grid-template-columns: repeat(3, 65px);
+    grid-auto-rows: 65px;
+  }
+
+  .tileSlot,
+  .tile {
+    width: 65px;
+    height: 65px;
+  }
+
+  /* 240px 패널에서도 말풍선이 잘리지 않도록 첫 타일 오른쪽 가장자리에 2px 겹칩니다. */
+  .coachMark {
+    left: calc(100% - 2px);
+    padding-inline: 8px;
+  }
 }

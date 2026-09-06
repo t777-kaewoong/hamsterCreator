@@ -143,3 +143,10 @@
   color: var(--c-text-2);
   text-decoration: underline;
 }
+
+/* PRD §9.17: 최소 지원 폭 안에서도 캔버스 공간을 확보하도록 팔레트를 축소합니다. */
+@media (max-width: 1079.98px) {
+  .layout {
+    --ed-palette-w: 240px;
+  }
+}
