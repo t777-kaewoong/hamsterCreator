@@ -8,6 +8,7 @@
 // 바로 지정/토글하는 방식이라 "먼저 선택한 뒤 조작"하는 흐름 자체가 필요 없습니다.
 import type { Label, MapDoc } from '@/lib/model/types'
 import type { Selection } from '@/features/editor/editorStore'
+import { getIcon } from '@/lib/icons/catalog'
 import { getTile } from '@/lib/tiles/catalog'
 import { cellAtMm } from './gridMath'
 import { measureLabelBoxMm } from './drawBoard'
@@ -90,7 +91,7 @@ export function hitTest(doc: MapDoc, mx: number, my: number): Selection {
   if (cell) {
     const index = cell.r * doc.board.cols + cell.c
     const placed = doc.cells[index]
-    if (placed && (placed.art.startsWith('asset:') || getTile(placed.art)?.kind === 'object')) {
+    if (placed && (placed.art.startsWith('asset:') || getTile(placed.art)?.kind === 'object' || getIcon(placed.art))) {
       return { kind: 'cell', index }
     }
   }

@@ -4,7 +4,7 @@
 // 않고, 제목 한 줄 + 부제 한 줄 다음 곧바로 프리셋 카드 그리드로 들어갑니다. 카드를
 // 클릭하면 중간에 아무 대화상자도 없이 바로 편집기로 넘어갑니다(NFR-9) — 그 전환은 이
 // 컴포넌트가 하지 않고, 부모(App.tsx)가 onOpen(doc) 콜백을 받아 화면을 바꿔줍니다.
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Upload } from 'lucide-react'
 import { Button, useToast } from '@/components'
 import type { MapDoc } from '@/lib/model/types'
@@ -13,6 +13,7 @@ import { clearDraft, isDraftAvailable, listDrafts, loadDraft } from '@/lib/stora
 import type { DraftSummary } from '@/lib/storage/draft'
 import { START_PRESETS } from './presets'
 import { renderMapThumbnail } from './thumbnail'
+import { tileBitmapCache } from '@/features/canvas/tileBitmaps'
 import styles from './StartScreen.module.css'
 
 /** 프리셋 카드 썸네일을 렌더할 캔버스 CSS 크기. 카드 자체의 실제 폭은 화면 폭에 따라
@@ -34,16 +35,31 @@ export default function StartScreen({ onOpen }: StartScreenProps) {
   const [dragActive, setDragActive] = useState(false)
   const [latestDraft, setLatestDraft] = useState<DraftSummary | null>(null)
 
-  // 프리셋 썸네일은 실제로 캔버스에 그리는 비용이 있으므로, 화면이 떠 있는 동안 딱 한 번만
-  // 만들고 재사용합니다. START_PRESETS는 이 파일 밖의 모듈 상수라 다시 바뀌지 않으므로
-  // 의존성 배열을 비워둬도 안전합니다.
-  const thumbnails = useMemo(() => {
+  const buildThumbnails = useCallback(() => {
     const map = new Map<string, string>()
     for (const preset of START_PRESETS) {
       map.set(preset.id, renderMapThumbnail(preset.create(), THUMB_CSS_W, THUMB_CSS_H))
     }
     return map
   }, [])
+  const [thumbnails, setThumbnails] = useState(buildThumbnails)
+
+  // 교과서 프리셋의 아이콘 비트맵이 비동기로 준비되면 한 프레임에 묶어 썸네일을 다시
+  // 그립니다. 그렇지 않으면 새로고침 직후 아이콘이 빠진 이미지만 계속 남습니다.
+  useEffect(() => {
+    let frame: number | null = null
+    const unsubscribe = tileBitmapCache.onLoad(() => {
+      if (frame !== null) return
+      frame = window.requestAnimationFrame(() => {
+        frame = null
+        setThumbnails(buildThumbnails())
+      })
+    })
+    return () => {
+      unsubscribe()
+      if (frame !== null) window.cancelAnimationFrame(frame)
+    }
+  }, [buildThumbnails])
 
   // 초안 복구 배너(§9.16). isDraftAvailable()이 false면 대피로(file://) 빌드처럼
   // localStorage 자체를 못 쓰는 환경이라 listDrafts()를 불러봐야 항상 빈 배열이므로

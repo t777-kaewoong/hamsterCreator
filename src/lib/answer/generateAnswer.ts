@@ -1,6 +1,7 @@
 import { sampleStroke } from '@/features/canvas/strokeGeometry'
 import { findShortestPath } from '@/lib/geometry/gridGraph'
 import type { Direction, GoalMarker, MapDoc, NodeCoord } from '@/lib/model/types'
+import { goalDisplayNameMap, goalDisplayNames, goalMarkerKey } from '@/lib/model/goalNames'
 
 export type BoardCommand = 'board_forward' | 'board_left' | 'board_right'
 
@@ -66,20 +67,25 @@ export function createGridAnswer(doc: MapDoc, goals: GoalMarker[] = doc.markers.
     return { ok: false, error: { code: 'no-start', message: '출발점이 없습니다. M 도구로 출발점을 지정하세요.' } }
   }
   if (goals.length === 0) {
-    return { ok: false, error: { code: 'no-goal', message: '도착점이 없습니다. M 도구에서 Alt+클릭으로 지정하세요.', at: start.cell } }
+    return { ok: false, error: { code: 'no-goal', message: '도착점이 없습니다. M 도구에서 도착지를 선택해 지정하세요.', at: start.cell } }
   }
 
   const path: NodeCoord[] = [start.cell]
   const goalStops: AnswerGoalStop[] = []
+  const documentGoalNames = goalDisplayNameMap(doc.markers.goals)
+  const fallbackGoalNames = goalDisplayNames(goals)
+  const goalNames = goals.map(
+    (goal, index) => documentGoalNames.get(goalMarkerKey(goal)) ?? fallbackGoalNames[index],
+  )
   let segmentStart = start.cell
-  for (const goal of goals) {
+  for (const [goalIndex, goal] of goals.entries()) {
     const segment = findShortestPath(doc, segmentStart, goal.cell)
     if (!segment.path) {
       return {
         ok: false,
         error: {
           code: 'unreachable',
-          message: `${goal.name || '도착'}까지 이어진 길이 없습니다. 마지막으로 갈 수 있는 지점을 확인하세요.`,
+          message: `${goalNames[goalIndex]}까지 이어진 길이 없습니다. 마지막으로 갈 수 있는 지점을 확인하세요.`,
           at: segment.closest,
         },
       }

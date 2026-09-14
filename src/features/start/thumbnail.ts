@@ -9,7 +9,16 @@
 // 직접 호출합니다.
 import type { MapDoc } from '@/lib/model/types'
 import { MAX_PX_PER_MM, MIN_PX_PER_MM, Viewport } from '@/features/canvas/viewport'
-import { drawArtLayer, drawGridLayer, drawPaperLayer, drawPropsLayer, mapSizeMm } from '@/features/canvas/drawBoard'
+import {
+  drawArtLayer,
+  drawCellObjectsLayer,
+  drawGridLayer,
+  drawLabelsLayer,
+  drawMarkersLayer,
+  drawPaperLayer,
+  drawPropsLayer,
+  mapSizeMm,
+} from '@/features/canvas/drawBoard'
 import { getTokens } from '@/features/canvas/cssTokens'
 
 /**
@@ -34,14 +43,8 @@ function clamp(value: number, min: number, max: number): number {
  * setTransform(dpr,0,0,dpr,0,0)으로 다시 CSS 픽셀 기준으로 되돌립니다(renderer.ts의
  * LayeredRenderer.resize가 하는 것과 같은 이유 — dpr 배율 화면에서 흐리게 나오지 않게).
  *
- * 주의(아트 타일이 있는 프리셋을 나중에 추가할 때 반드시 읽을 것): drawArtLayer는
- * tileBitmapCache(타일 비트맵을 fetch→createImageBitmap으로 비동기 디코드해두는 캐시,
- * tileBitmaps.ts)를 읽습니다. 이 함수를 부르는 시점에 해당 타일이 아직 디코드되기
- * 전이면 그 칸은 그냥 빈 채로 그려지고, 이 함수는 그걸 기다려주지 않습니다(콜백이나
- * Promise가 없는 동기 함수). 지금 START_PRESETS 5종은 전부 cells가 비어 있어(격자선만
- * 있는 프리셋) 이 문제가 실제로는 나타나지 않지만, 나중에 아트 타일이 채워진 프리셋을
- * 추가하면 새로고침 직후 잠깐(또는 어쩌다 계속) 썸네일이 비어 보일 수 있습니다. 그때는
- * tileBitmapCache.onLoad로 다시 그려 캐시를 갱신하는 방식으로 이 함수를 고쳐야 합니다.
+ * 비트맵 자산은 비동기 캐시를 읽으므로 첫 호출에서 빠질 수 있습니다. 호출부는
+ * tileBitmapCache.onLoad를 구독해 자산이 준비될 때 이 함수를 다시 호출합니다.
  */
 export function renderMapThumbnail(doc: MapDoc, cssW: number, cssH: number): string {
   const canvas = document.createElement('canvas')
@@ -68,10 +71,11 @@ export function renderMapThumbnail(doc: MapDoc, cssW: number, cssH: number): str
   drawPaperLayer(ctx, viewport, doc, tokens)
   drawArtLayer(ctx, viewport, doc)
   drawGridLayer(ctx, viewport, doc, tokens)
-  // 오버레이(호버·고스트)는 상호작용 중에만 존재하므로 애초에 그릴 게 없습니다.
-  // props는 지금 프리셋 5종에 전혀 없지만, 있으면 그리라는 작업 지시에 따라 조건 없이
-  // 그냥 호출합니다 — doc.props가 빈 배열이면 이 함수는 아무것도 안 그리고 바로 끝납니다.
+  drawCellObjectsLayer(ctx, viewport, doc)
   drawPropsLayer(ctx, viewport, doc)
+  drawLabelsLayer(ctx, viewport, doc, tokens)
+  drawMarkersLayer(ctx, viewport, doc)
+  // 오버레이(호버·고스트)는 상호작용 중에만 존재하므로 그리지 않습니다.
 
   return canvas.toDataURL('image/png')
 }

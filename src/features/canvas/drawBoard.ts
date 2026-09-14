@@ -9,6 +9,8 @@
 // 칸에 놓인 아트 타일 · 자유 배치 오브젝트(props) · 텍스트 라벨(labels, FR-4.1/4.2) ·
 // 출발·도착 마커(markers, FR-4.3/4.4) · 자유곡선(strokes, FR-10).
 import type { Direction, Label, MapDoc } from '@/lib/model/types'
+import { getIcon } from '@/lib/icons/catalog'
+import { goalDisplayNames } from '@/lib/model/goalNames'
 import { getTile } from '@/lib/tiles/catalog'
 import type { MapPoint, Viewport } from './viewport'
 import type { TokenName } from './cssTokens'
@@ -123,9 +125,9 @@ function drawCellArtGroup(
 
   doc.cells.forEach((cell, index) => {
     if (!cell) return
-    const isObject = getTile(cell.art)?.kind === 'object'
+    const isObject = getTile(cell.art)?.kind === 'object' || Boolean(getIcon(cell.art))
     if (isObject !== aboveGrid) return
-    const bitmap = tileBitmapCache.get(cell.art)
+    const bitmap = tileBitmapCache.get(cell.art, doc.userAssets)
     if (!bitmap) return // 아직 디코드 전 — 로드 완료 알림이 두 아트 레이어를 다시 dirty 표시함
 
     const c = index % cols
@@ -164,14 +166,13 @@ export function drawCellObjectsLayer(ctx: CanvasRenderingContext2D, viewport: Vi
  *  있는지"(cells)와 "자유롭게 놓인 게 뭐가 있는지"(props)를 서로 다른 방식으로 다룰 수
  *  있습니다 — 격자 칸은 인덱스로 바로 찾고, 프롭은 좌표·크기를 직접 들고 다닙니다.
  *
- *  [타일 캐시를 그대로 재사용] Prop.asset은 Cell.art와 같은 문자열 규칙(내장 타일 id·
- *  "icon/이름"·"asset:u1")을 씁니다. 지금은 내장 타일만 tileBitmapCache에 미리
- *  디코드돼 있어 실제로 그려지고, 아이콘·사용자 이미지는 이 단계 이전부터 이미 같은
- *  한계가 있었습니다(칸 아트도 마찬가지) — 이 단계에서 새로 생긴 제약이 아닙니다.
+ *  [자산 캐시를 그대로 재사용] Prop.asset은 Cell.art와 같은 문자열 규칙(내장 타일 id·
+ *  아이콘 id·"asset:u1")을 씁니다. 내장 타일·아이콘은 미리 디코드하고 사용자 이미지는
+ *  현재 문서의 userAssets에서 찾아 필요할 때 디코드하므로 세 종류가 같은 경로로 그려집니다.
  */
 export function drawPropsLayer(ctx: CanvasRenderingContext2D, viewport: Viewport, doc: MapDoc): void {
   for (const prop of doc.props) {
-    const bitmap = tileBitmapCache.get(prop.asset)
+    const bitmap = tileBitmapCache.get(prop.asset, doc.userAssets)
     if (!bitmap) continue // 아직 디코드 전이거나(로드 완료 시 다시 그려짐) 캐시에 없는 종류
 
     const wPx = viewport.mmToPx(prop.w)
@@ -299,6 +300,7 @@ const MARKER_INNER_DIAMETER_MM = 22
 const MARKER_RING_WIDTH_MM = 3
 const MARKER_LABEL_SIZE_MM = 6
 const MARKER_COLOR = '#111'
+const MARKER_BACKGROUND = '#fff'
 
 /** 마커 이름표(글자)를 원 바로 아래 중앙에 그립니다. 출발·도착이 이 부분만 공유합니다. */
 function drawMarkerCaption(
@@ -337,6 +339,12 @@ export function drawMarkersLayer(ctx: CanvasRenderingContext2D, viewport: Viewpo
     const p = viewport.mapToScreen(center.mx, center.my)
 
     ctx.save()
+    // 밑의 굵은 격자선이 원 안을 관통하면 방향 화살표와 한 덩어리로 보여 알아보기
+    // 어렵습니다. 흰 바탕으로 먼저 가린 뒤 윤곽과 화살표를 그립니다.
+    ctx.fillStyle = MARKER_BACKGROUND
+    ctx.beginPath()
+    ctx.arc(p.x, p.y, outerRadiusPx, 0, Math.PI * 2)
+    ctx.fill()
     ctx.strokeStyle = MARKER_COLOR
     ctx.lineWidth = ringWidthPx
     ctx.beginPath()
@@ -347,9 +355,9 @@ export function drawMarkersLayer(ctx: CanvasRenderingContext2D, viewport: Viewpo
     // 테두리 안쪽에 살짝 여유를 두고 들어가게 했습니다(PRD 미규정 — 임의로 정함).
     const [dx, dy] = DIR_VECTOR[heading]
     const angle = Math.atan2(dy, dx)
-    const triTip = outerRadiusPx * 0.9
-    const triBack = -outerRadiusPx * 0.5
-    const triHalfWidth = outerRadiusPx * 0.45
+    const triTip = outerRadiusPx * 0.68
+    const triBack = -outerRadiusPx * 0.22
+    const triHalfWidth = outerRadiusPx * 0.28
     ctx.save()
     ctx.translate(p.x, p.y)
     ctx.rotate(angle)
@@ -366,11 +374,16 @@ export function drawMarkersLayer(ctx: CanvasRenderingContext2D, viewport: Viewpo
     ctx.restore()
   }
 
-  for (const goal of doc.markers.goals) {
+  const goalNames = goalDisplayNames(doc.markers.goals)
+  doc.markers.goals.forEach((goal, index) => {
     const center = nodeCenterMm(goal.cell[0], goal.cell[1], pitch)
     const p = viewport.mapToScreen(center.mx, center.my)
 
     ctx.save()
+    ctx.fillStyle = MARKER_BACKGROUND
+    ctx.beginPath()
+    ctx.arc(p.x, p.y, outerRadiusPx, 0, Math.PI * 2)
+    ctx.fill()
     ctx.strokeStyle = MARKER_COLOR
     ctx.lineWidth = ringWidthPx
     // 겹원(과녁) — 바깥 원과 안쪽 원을 각각 그립니다.
@@ -381,9 +394,9 @@ export function drawMarkersLayer(ctx: CanvasRenderingContext2D, viewport: Viewpo
     ctx.arc(p.x, p.y, innerRadiusPx, 0, Math.PI * 2)
     ctx.stroke()
 
-    drawMarkerCaption(ctx, p.x, p.y, outerRadiusPx, ringWidthPx, labelSizePx, goal.name || '도착')
+    drawMarkerCaption(ctx, p.x, p.y, outerRadiusPx, ringWidthPx, labelSizePx, goalNames[index])
     ctx.restore()
-  }
+  })
 }
 
 /** ③ 자유곡선 → 격자선 + 진입로(stub). 같은 오프스크린 레이어 안에서도 PRD §5의

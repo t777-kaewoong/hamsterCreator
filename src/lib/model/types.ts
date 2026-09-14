@@ -211,7 +211,7 @@ export interface StartMarker {
 /** 도착 지점(FR-4.4). 복수 지정 가능. */
 export interface GoalMarker {
   cell: NodeCoord
-  /** 도착지 이름(여러 개일 때 구분용) */
+  /** 도착지 이름. 빈 문자열이면 표시할 때 순서에 맞는 자동 이름을 계산합니다. */
   name: string
 }
 

@@ -547,11 +547,11 @@ export default function CanvasViewport() {
     }
     window.addEventListener('keydown', handleToolShortcutKeyDown)
 
-    // ── 타일 이미지가 새로 디코드될 때마다 타일을 쓰는 두 레이어를 다시 그림 ──────────────────
+    // ── 자산 이미지가 새로 디코드될 때마다 이를 쓸 수 있는 레이어를 다시 그림 ─────────────────
     const unsubscribeTiles = tileBitmapCache.onLoad(() => {
-      // 같은 타일이라도 floor/block은 art에, object 및 Shift 자유 배치는 props에 있으므로
-      // 둘 다 갱신해야 로드 시점과 무관하게 빠진 그림 없이 나타납니다.
-      renderer.markDirty('art', 'props')
+      // 사용자 이미지·아이콘은 셀/자유 배치/배치 고스트 어디에든 올 수 있습니다. 세 레이어를
+      // 함께 갱신해야 비동기 디코드가 포인터 이동 뒤 끝나도 고스트까지 즉시 나타납니다.
+      renderer.markDirty('art', 'props', 'overlay')
       scheduleAll()
     })
 

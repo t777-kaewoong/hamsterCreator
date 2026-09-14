@@ -26,6 +26,7 @@ import {
 } from 'pdf-lib'
 import type { PDFDocument as PdfDocument, PDFFont, PDFImage, PDFPage } from 'pdf-lib'
 import { PAPER_SIZES } from '@/lib/model/constants'
+import { goalDisplayNames } from '@/lib/model/goalNames'
 import type { Direction, Label, MapDoc, Point, Stroke } from '@/lib/model/types'
 import { getIcon } from '@/lib/icons/catalog'
 import { findPrintPlan } from '@/lib/print/plan'
@@ -390,20 +391,27 @@ function drawMarkers(context: RenderContext): void {
   const { doc, page, layout } = context
   const outerRadiusMm = 17
   const ringWidth = pt(3)
-  const drawRing = (center: Point, radiusMm: number) => {
+  const drawRing = (center: Point, radiusMm: number, fillBackground = false) => {
     const point = mapPoint(layout, center)
-    page.drawCircle({ x: point.x, y: point.y, size: pt(radiusMm), borderWidth: ringWidth, borderColor: rgb(0.067, 0.067, 0.067) })
+    page.drawCircle({
+      x: point.x,
+      y: point.y,
+      size: pt(radiusMm),
+      color: fillBackground ? rgb(1, 1, 1) : undefined,
+      borderWidth: ringWidth,
+      borderColor: rgb(0.067, 0.067, 0.067),
+    })
   }
 
   if (doc.markers.start) {
     const center = nodePoint(doc, doc.markers.start.cell[0], doc.markers.start.cell[1])
-    drawRing(center, outerRadiusMm)
+    drawRing(center, outerRadiusMm, true)
     const vectors: Record<Direction, Point> = { N: [0, -1], E: [1, 0], S: [0, 1], W: [-1, 0] }
     const direction = vectors[doc.markers.start.heading]
     const perpendicular: Point = [-direction[1], direction[0]]
-    const tip = outerRadiusMm * 0.9
-    const back = -outerRadiusMm * 0.5
-    const halfWidth = outerRadiusMm * 0.45
+    const tip = outerRadiusMm * 0.68
+    const back = -outerRadiusMm * 0.22
+    const halfWidth = outerRadiusMm * 0.28
     fillPolygon(context, [
       [center[0] + direction[0] * tip, center[1] + direction[1] * tip],
       [center[0] + direction[0] * back + perpendicular[0] * halfWidth, center[1] + direction[1] * back + perpendicular[1] * halfWidth],
@@ -412,12 +420,13 @@ function drawMarkers(context: RenderContext): void {
     drawMarkerCaption(context, '출발', center[0], center[1] + outerRadiusMm + 5)
   }
 
-  for (const goal of doc.markers.goals) {
+  const goalNames = goalDisplayNames(doc.markers.goals)
+  doc.markers.goals.forEach((goal, index) => {
     const center = nodePoint(doc, goal.cell[0], goal.cell[1])
-    drawRing(center, outerRadiusMm)
+    drawRing(center, outerRadiusMm, true)
     drawRing(center, 11)
-    drawMarkerCaption(context, goal.name || '도착', center[0], center[1] + outerRadiusMm + 5)
-  }
+    drawMarkerCaption(context, goalNames[index], center[0], center[1] + outerRadiusMm + 5)
+  })
 }
 
 function drawPageGuides(context: RenderContext, pageLabel?: string): void {

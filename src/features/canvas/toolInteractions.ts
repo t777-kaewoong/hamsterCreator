@@ -15,7 +15,7 @@
 // 셀을 찍을 때마다 실행취소 스택에 쌓지 않고, pointerdown 시점의 문서를 깊은 복사해
 // gestureSnapshot으로만 들고 있다가, pointerup(제스처가 끝나는 순간) 실제로 문서가
 // 달라졌을 때만 그 스냅샷 하나를 스토어의 undoStack에 넣습니다.
-import type { Cell, Direction, GoalMarker, Label, MapDoc, NodeCoord, Point, Prop, StartMarker, Stroke } from '@/lib/model/types'
+import type { Cell, GoalMarker, Label, MapDoc, NodeCoord, Point, Prop, StartMarker, Stroke } from '@/lib/model/types'
 import { LINE_WIDTH_MM } from '@/lib/model/constants'
 import { getTile, TILES_BY_THEME } from '@/lib/tiles/catalog'
 import { saveDraft } from '@/lib/storage/draft'
@@ -205,10 +205,6 @@ export class ToolController {
    *  중인 제스처의 동작 자체는 gestureShift로 고정되지만, 아직 누르지도 않은 상태에서
    *  "지금 Shift를 누르면 자유 배치로 바뀐다"는 호버 고스트 미리보기는 이 값을 봅니다. */
   private isShiftDown = false
-  /** 가장 최근에 알고 있는 Alt 키 상태. M(마커) 도구의 호버 미리보기가 "지금 Alt를
-   *  누르면 도착점 모드로 바뀐다"를 실시간으로 보여주기 위해 isShiftDown과 같은
-   *  방식으로 둡니다(gestureAlt와 달리 클릭 시점에 고정하지 않고 계속 갱신). */
-  private isAltDown = false
   /** 스탬프·지우개 드래그 중 "직전에 칠한 칸" 인덱스. 같은 칸을 다시 지나가도 중복으로
    *  기록하지 않기 위한 값입니다(같은 칸에 already 같은 타일을 또 써봤자 낭비이고,
    *  나중에 "지나간 칸 개수"를 셀 일이 생기면 이 값이 없으면 셀 수도 없습니다). */
@@ -260,7 +256,6 @@ export class ToolController {
     const sy = e.clientY - rect.top
     this.lastScreen = { x: sx, y: sy }
     this.isShiftDown = e.shiftKey
-    this.isAltDown = e.altKey
     const mapPt = this.viewport.screenToMap(sx, sy)
 
     // 우클릭 재사용(FR-3.3) — 지금 고른 도구와 무관하게 항상 동작합니다.
@@ -374,10 +369,13 @@ export class ToolController {
         break
 
       case 'marker':
-        // gestureAlt는 이 switch 앞에서 이미 e.altKey로 고정해뒀습니다(위 참고). M
-        // 도구는 드래그 개념이 없는 즉시 동작이라 이 값을 그대로 "지금 이 클릭이 도착
-        // 지정인지"로 씁니다.
-        this.placeMarker(doc, nearestNode(mapPt.mx, mapPt.my, doc.board.cols, doc.board.rows, doc.board.pitch), this.gestureAlt)
+        // 출발/도착은 팔레트에서 직접 고릅니다. Alt 키에 숨겨두면 터치 환경과 처음 쓰는
+        // 사용자에게 도착 배치가 사실상 불가능해집니다.
+        this.placeMarker(
+          doc,
+          nearestNode(mapPt.mx, mapPt.my, doc.board.cols, doc.board.rows, doc.board.pitch),
+          useEditorStore.getState().markerMode === 'goal',
+        )
         break
 
       case 'pen':
@@ -422,7 +420,6 @@ export class ToolController {
     const sy = e.clientY - rect.top
     this.lastScreen = { x: sx, y: sy }
     this.isShiftDown = e.shiftKey
-    this.isAltDown = e.altKey
     if (!doc) return
     const mapPt = this.viewport.screenToMap(sx, sy)
 
@@ -745,12 +742,10 @@ export class ToolController {
       this.overlay.curveDraft = null
     }
 
-    // M(마커) 도구: 지금 가장 가까운 노드에 무엇이 찍힐지 미리 보여줍니다. Alt를 누르고
-    // 있는지는 매 프레임 새로 확인합니다(this.isAltDown) — 마우스는 그대로 두고 Alt만
-    // 눌렀다 떼도 미리보기가 즉시 출발/도착 모드를 오갑니다.
+    // M(마커) 도구: 팔레트에서 고른 종류를 가장 가까운 노드에 미리 보여줍니다.
     if (activeTool === 'marker') {
       const node = nearestNode(mapPt.mx, mapPt.my, doc.board.cols, doc.board.rows, doc.board.pitch)
-      this.overlay.markerGhost = { c: node[0], r: node[1], mode: this.isAltDown ? 'goal' : 'start' }
+      this.overlay.markerGhost = { c: node[0], r: node[1], mode: useEditorStore.getState().markerMode }
       return
     }
 
@@ -1089,8 +1084,8 @@ export class ToolController {
     this.onRequestLabelEdit?.(newIndex, true)
   }
 
-  /** M 도구 클릭 처리. isGoalMode가 false면 출발 지정(같은 자리를 다시 클릭하면 방향
-   *  회전), true면 Alt+클릭 = 도착 지정/해제 토글입니다.
+  /** M 도구 클릭 처리. isGoalMode가 false면 팔레트에서 고른 방향의 출발을 지정하고,
+   *  true면 도착을 지정/해제합니다.
    *
    *  [출발·도착이 같은 노드에 공존할 수 없는 이유] 이 둘은 로봇이 "어디서 시작해서
    *  어디로 가야 하는가"를 정의하는 값입니다. 한 노드가 출발이면서 동시에 도착이면
@@ -1098,24 +1093,13 @@ export class ToolController {
    *  그래서 한쪽을 새로 지정하는 순간 그 자리에 있던 반대쪽은 지웁니다. */
   private placeMarker(doc: MapDoc, node: NodeCoord, isGoalMode: boolean): void {
     if (!isGoalMode) {
-      const start = doc.markers.start
-      let nextStart: StartMarker
-      if (start && start.cell[0] === node[0] && start.cell[1] === node[1]) {
-        // 같은 자리를 다시 클릭 — 흔히 "방향이 삐딱하게 잡혔을 때 다시 눌러서 맞추는"
-        // 조작이라 N→E→S→W 순으로 한 칸 돌립니다.
-        const order: Direction[] = ['N', 'E', 'S', 'W']
-        nextStart = { cell: node, heading: order[(order.indexOf(start.heading) + 1) % order.length] }
-      } else {
-        // 새 자리에 출발 지정. 기본 방향은 PRD 미규정 — 로봇 그림이 흔히 위(북)를
-        // 바라보는 모습으로 그려지는 관례를 따라 'N'으로 임의로 정함.
-        nextStart = { cell: node, heading: 'N' }
-      }
+      const nextStart: StartMarker = { cell: node, heading: useEditorStore.getState().markerHeading }
       const nextGoals = doc.markers.goals.filter((g) => !(g.cell[0] === node[0] && g.cell[1] === node[1]))
       useEditorStore.getState().commitDoc({ ...doc, markers: { start: nextStart, goals: nextGoals } })
       return
     }
 
-    // Alt+클릭 = 도착점 토글.
+    // 선택된 도착 도구로 같은 노드를 다시 클릭하면 토글로 제거합니다.
     const existingIndex = doc.markers.goals.findIndex((g) => g.cell[0] === node[0] && g.cell[1] === node[1])
     let nextGoals: GoalMarker[]
     if (existingIndex >= 0) {
@@ -1123,12 +1107,9 @@ export class ToolController {
     } else {
       nextGoals = [...doc.markers.goals, { cell: node, name: '' }]
     }
-    // 이름은 항상 자동으로 다시 매깁니다: 도착점이 1개면 "도착", 여러 개면 순서대로
-    // "도착1","도착2"... — 인스펙터에 이름을 직접 고치는 UI가 아직 없어(§9.13은 다음
-    // 단계) 지금은 매번 다시 매겨도 잃어버릴 사용자 입력이 없습니다. 나중에 수동 이름
-    // 편집이 생기면 "사용자가 고친 이름은 그대로 두고 새로 생긴 것만 번호를 매긴다"는
-    // 식으로 이 로직을 다시 설계해야 합니다(PRD 미규정 — 임의로 정한 임시 규칙).
-    nextGoals = nextGoals.map((g, i) => ({ ...g, name: nextGoals.length === 1 ? '도착' : `도착${i + 1}` }))
+    // 새 도착점의 빈 name은 "자동 이름"을 뜻합니다. 기존 name은 파일에서 불러온 사용자
+    // 이름일 수 있으므로 추가·삭제 때 다시 매기지 않습니다. 실제 표시명은 goalNames.ts가
+    // 빈 이름에만 현재 순서와 중복을 고려해 계산합니다.
 
     let nextStart = doc.markers.start
     if (existingIndex < 0 && nextStart && nextStart.cell[0] === node[0] && nextStart.cell[1] === node[1]) {

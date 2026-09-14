@@ -9,14 +9,37 @@
 // 하나의 PaletteTile 컴포넌트로 그립니다 — 그리드 코드가 세 벌로 갈라지지 않게 하기 위함입니다.
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { DragEvent } from 'react'
-import { Search, Upload, Check } from 'lucide-react'
-import { Button, Input, TabPills, Tooltip, useToast } from '@/components'
-import type { TabPillOption } from '@/components'
+import type { LucideIcon } from 'lucide-react'
+import {
+  ArrowDown,
+  ArrowLeft,
+  ArrowRight,
+  ArrowUp,
+  Check,
+  Circle,
+  Eraser,
+  Flag,
+  Grid3x3,
+  MapPin,
+  Minus,
+  MousePointer2,
+  PenTool,
+  Pencil,
+  Pipette,
+  RectangleHorizontal,
+  Search,
+  SquareRoundCorner,
+  Type,
+  Upload,
+} from 'lucide-react'
+import { Button, Input, Tooltip, useToast } from '@/components'
 import { TILES, TILES_BY_THEME } from '@/lib/tiles/catalog'
 import { ICONS } from '@/lib/icons/catalog'
 import { USER_ASSET_MAX_PX } from '@/lib/model/constants'
-import type { UserAsset } from '@/lib/model/types'
+import { goalDisplayNames, goalMarkerKey } from '@/lib/model/goalNames'
+import type { Direction, GoalMarker, UserAsset } from '@/lib/model/types'
 import { useEditorStore } from '@/features/editor/editorStore'
+import type { ShapeKind, ToolId } from '@/features/editor/editorStore'
 import { sampleStroke, strokeBounds } from '@/features/canvas/strokeGeometry'
 import { TRACK_PRESETS } from './trackPresets'
 import type { TrackPreset } from './trackPresets'
@@ -31,18 +54,104 @@ interface PaletteItem {
   url: string
 }
 
-/** 테마 탭 목록. 내장 6테마(TILES_BY_THEME 순서 그대로) 뒤에 아이콘·트랙·내 이미지를 붙입니다
- *  (PRD §9.11: "던전·숲·얼음·모험·사탕·공룡·아이콘·트랙·내 이미지"). */
-const THEME_TABS: TabPillOption[] = [
+/** 가로 스크롤 대신 한 번에 고를 수 있는 자산 종류 목록. 트랙은 도형 도구 안에 표시합니다. */
+const ASSET_CATEGORIES = [
   ...TILES_BY_THEME.map((group) => ({ value: group.theme, label: group.themeName })),
   { value: 'icon', label: '아이콘' },
-  { value: 'track', label: '트랙' },
   { value: 'myImages', label: '내 이미지' },
 ]
+
+const SHAPES: { id: ShapeKind; label: string; icon: LucideIcon }[] = [
+  { id: 'line', label: '직선', icon: Minus },
+  { id: 'circle', label: '원', icon: Circle },
+  { id: 'ellipse', label: '타원', icon: RectangleHorizontal },
+  { id: 'roundedRect', label: '라운드 사각', icon: SquareRoundCorner },
+]
+
+const DIRECTIONS: { id: Direction; label: string; icon: LucideIcon }[] = [
+  { id: 'N', label: '위', icon: ArrowUp },
+  { id: 'E', label: '오른쪽', icon: ArrowRight },
+  { id: 'S', label: '아래', icon: ArrowDown },
+  { id: 'W', label: '왼쪽', icon: ArrowLeft },
+]
+
+const TOOL_HELP: Partial<Record<ToolId, { title: string; description: string; hint: string; icon: LucideIcon }>> = {
+  select: { title: '선택', description: '캔버스의 타일·글자·도형을 선택합니다.', hint: '선택한 항목은 오른쪽에서 수정하거나 Delete로 지울 수 있어요.', icon: MousePointer2 },
+  lineDraw: { title: '격자선 긋기', description: '격자점 사이를 드래그해 길을 연결합니다.', hint: 'Alt를 누른 채 드래그하면 선을 지웁니다.', icon: Grid3x3 },
+  eyedropper: { title: '타일 집기', description: '캔버스에 놓인 타일을 클릭해 같은 타일을 가져옵니다.', hint: '타일을 집으면 자동으로 타일 배치 도구로 바뀝니다.', icon: Pipette },
+  eraser: { title: '지우개', description: '타일이나 객체를 클릭 또는 드래그해 지웁니다.', hint: 'Alt를 누르면 격자선을 지울 수 있어요.', icon: Eraser },
+  text: { title: '글자', description: '글자를 넣을 위치를 클릭한 뒤 바로 입력합니다.', hint: '입력 후 오른쪽 선택 항목에서 크기·색·회전을 바꿀 수 있어요.', icon: Type },
+  pen: { title: '곡선 펜', description: '캔버스를 차례로 클릭해 곡선의 정점을 만듭니다.', hint: 'Enter 또는 더블클릭으로 완료하고 Esc로 취소합니다.', icon: PenTool },
+  freeDraw: { title: '자유 그리기', description: '캔버스를 드래그한 궤적대로 트랙을 만듭니다.', hint: '완성된 곡선은 선택 도구에서 정점을 수정할 수 있어요.', icon: Pencil },
+}
 
 /** 코치 마크는 앱을 다시 열어도 되풀이하지 않습니다(§9.15). 초안 저장 키와 분리해,
  *  초안을 지우거나 새 맵을 만들어도 이미 배운 안내가 다시 나타나지 않게 합니다. */
 const COACH_MARK_STORAGE_KEY = 'hamsterS.coach.tilePlaced.v1'
+
+/**
+ * 한 글자마다 실행취소 기록을 쌓지 않고, 입력을 마쳤을 때 이름 변경 한 번만 저장합니다.
+ * 위치를 키로 다시 찾으므로 다른 도착지가 추가·삭제되어 배열 순서가 바뀌어도 엉뚱한
+ * 도착점을 수정하지 않습니다.
+ */
+function GoalNameField({ goal, displayName }: { goal: GoalMarker; displayName: string }) {
+  const [draft, setDraft] = useState(goal.name)
+  const cancelBlurRef = useRef(false)
+
+  useEffect(() => setDraft(goal.name), [goal.name])
+
+  function commit() {
+    if (cancelBlurRef.current) {
+      cancelBlurRef.current = false
+      setDraft(goal.name)
+      return
+    }
+
+    const nextName = draft.trim()
+    const currentDoc = useEditorStore.getState().doc
+    if (!currentDoc) return
+
+    const key = goalMarkerKey(goal)
+    const index = currentDoc.markers.goals.findIndex((item) => goalMarkerKey(item) === key)
+    if (index < 0) {
+      setDraft(goal.name)
+      return
+    }
+
+    const currentGoal = currentDoc.markers.goals[index]
+    if (currentGoal.name === nextName) {
+      setDraft(nextName)
+      return
+    }
+
+    const goals = currentDoc.markers.goals.slice()
+    goals[index] = { ...currentGoal, name: nextName }
+    useEditorStore.getState().commitDoc({
+      ...currentDoc,
+      markers: { ...currentDoc.markers, goals },
+    })
+    setDraft(nextName)
+  }
+
+  return (
+    <Input
+      label={`${displayName} · ${goal.cell[0] + 1}열 ${goal.cell[1] + 1}행`}
+      value={draft}
+      placeholder={displayName}
+      aria-label={`${displayName} 이름`}
+      onChange={(event) => setDraft(event.target.value)}
+      onBlur={commit}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter') event.currentTarget.blur()
+        else if (event.key === 'Escape') {
+          cancelBlurRef.current = true
+          setDraft(goal.name)
+          event.currentTarget.blur()
+        }
+      }}
+    />
+  )
+}
 
 function shouldShowCoachMark(): boolean {
   try {
@@ -63,6 +172,10 @@ function rememberCoachMarkCompleted(): void {
 
 export default function PalettePanel() {
   const doc = useEditorStore((s) => s.doc)
+  const activeTool = useEditorStore((s) => s.activeTool)
+  const activeShape = useEditorStore((s) => s.activeShape)
+  const markerMode = useEditorStore((s) => s.markerMode)
+  const markerHeading = useEditorStore((s) => s.markerHeading)
   const activeTheme = useEditorStore((s) => s.activeTheme)
   const paletteQuery = useEditorStore((s) => s.paletteQuery)
   const stampTileId = useEditorStore((s) => s.stampTileId)
@@ -70,6 +183,9 @@ export default function PalettePanel() {
   const setActiveTheme = useEditorStore((s) => s.setActiveTheme)
   const setPaletteQuery = useEditorStore((s) => s.setPaletteQuery)
   const setStampTile = useEditorStore((s) => s.setStampTile)
+  const setShape = useEditorStore((s) => s.setShape)
+  const setMarkerMode = useEditorStore((s) => s.setMarkerMode)
+  const setMarkerHeading = useEditorStore((s) => s.setMarkerHeading)
   const addUserAsset = useEditorStore((s) => s.addUserAsset)
   const { show: showToast } = useToast()
 
@@ -80,6 +196,7 @@ export default function PalettePanel() {
   const [uploading, setUploading] = useState(false)
   const [userAssetDragActive, setUserAssetDragActive] = useState(false)
   const [coachMarkVisible, setCoachMarkVisible] = useState(shouldShowCoachMark)
+  const goalNames = useMemo(() => goalDisplayNames(doc?.markers.goals ?? []), [doc?.markers.goals])
 
   useEffect(() => {
     if (!coachMarkVisible || tilePlacementNonce === 0) return
@@ -89,6 +206,8 @@ export default function PalettePanel() {
 
   const query = paletteQuery.trim().toLowerCase()
   const isSearching = query.length > 0
+  const showsAssets = activeTool === 'stamp' || activeTool === 'fill'
+  const activeCategory = ASSET_CATEGORIES.some((category) => category.value === activeTheme) ? activeTheme : 'dungeon'
 
   // 검색어가 있으면 테마 탭을 무시하고 내장 타일 35종 전체를 이름으로 가로질러 찾습니다
   // (PRD §9.11: "검색어가 있으면 모든 테마를 가로질러 이름으로 필터링").
@@ -102,7 +221,9 @@ export default function PalettePanel() {
   }, [isSearching, query])
 
   function handleSelect(item: PaletteItem) {
+    const keepFillTool = useEditorStore.getState().activeTool === 'fill'
     setStampTile(item.id)
+    if (keepFillTool) useEditorStore.getState().setTool('fill')
   }
 
   function handleTrackSelect(preset: TrackPreset) {
@@ -188,27 +309,47 @@ export default function PalettePanel() {
     if (lastKey) setStampTile(`asset:${lastKey}`)
   }
 
-  const gridContent = renderGridContent()
-
   return (
     <div className={styles.panel}>
-      <div className={styles.searchRow}>
-        <Input
-          icon={<Search size={16} />}
-          placeholder="타일 검색"
-          value={paletteQuery}
-          onChange={(e) => setPaletteQuery(e.target.value)}
-          aria-label="타일 검색"
-        />
-      </div>
+      {showsAssets ? (
+        <>
+          <div className={styles.contextHeader}>
+            <h2 className="t-h2">{activeTool === 'fill' ? '영역 채우기' : '타일 배치'}</h2>
+            <p className="t-caption">
+              {activeTool === 'fill' ? '타일을 고른 뒤 채울 범위를 드래그하세요.' : '타일을 고른 뒤 칸을 클릭하거나 드래그하세요.'}
+            </p>
+          </div>
+          <div className={styles.searchRow}>
+            <Input
+              icon={<Search size={16} />}
+              placeholder="타일 검색"
+              value={paletteQuery}
+              onChange={(e) => setPaletteQuery(e.target.value)}
+              aria-label="타일 검색"
+            />
+          </div>
+          {!isSearching && (
+            <div className={styles.categoryRow}>
+              <label className="t-label" htmlFor="asset-category">종류</label>
+              <select
+                id="asset-category"
+                className={styles.categorySelect}
+                value={activeCategory}
+                onChange={(event) => setActiveTheme(event.target.value)}
+              >
+                {ASSET_CATEGORIES.map((category) => (
+                  <option key={category.value} value={category.value}>{category.label}</option>
+                ))}
+              </select>
+            </div>
+          )}
+          <div className={styles.gridArea}>{renderGridContent()}</div>
+        </>
+      ) : (
+        <div className={styles.contextArea}>{renderToolContext()}</div>
+      )}
 
-      <div className={styles.tabsRow}>
-        <TabPills options={THEME_TABS} value={activeTheme} onChange={setActiveTheme} aria-label="팔레트 테마" />
-      </div>
-
-      <div className={styles.gridArea}>{gridContent}</div>
-
-      {!isSearching && activeTheme === 'myImages' && (
+      {showsAssets && !isSearching && activeCategory === 'myImages' && (
         <div className={styles.footer}>
           <Button
             variant="secondary"
@@ -239,6 +380,94 @@ export default function PalettePanel() {
     </div>
   )
 
+  function renderToolContext() {
+    if (activeTool === 'marker') {
+      return (
+        <>
+          <div className={styles.contextHeaderInner}>
+            <h2 className="t-h2">출발·도착</h2>
+            <p className="t-caption">종류를 고른 뒤 원하는 격자점을 클릭하세요.</p>
+          </div>
+          <div className={styles.choiceGrid} role="group" aria-label="마커 종류">
+            <ContextChoice icon={Flag} label="출발지" selected={markerMode === 'start'} onClick={() => setMarkerMode('start')} />
+            <ContextChoice icon={MapPin} label="도착지" selected={markerMode === 'goal'} onClick={() => setMarkerMode('goal')} />
+          </div>
+          {markerMode === 'start' && (
+            <div className={styles.contextSection}>
+              <h3 className="t-label">출발 방향</h3>
+              <div className={styles.directionGrid} role="group" aria-label="출발 방향">
+                {DIRECTIONS.map((direction) => (
+                  <ContextChoice
+                    key={direction.id}
+                    icon={direction.icon}
+                    label={direction.label}
+                    selected={markerHeading === direction.id}
+                    compact
+                    onClick={() => setMarkerHeading(direction.id)}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+          {markerMode === 'goal' && (
+            <div className={styles.contextSection}>
+              <h3 className="t-label">도착지 이름</h3>
+              {doc && doc.markers.goals.length > 0 ? (
+                <>
+                  <div className={styles.goalNameList}>
+                    {doc.markers.goals.map((goal, index) => (
+                      <GoalNameField key={goalMarkerKey(goal)} goal={goal} displayName={goalNames[index]} />
+                    ))}
+                  </div>
+                  <p className={`${styles.goalNameHint} t-caption`}>이름을 비워 두면 자동 이름을 사용합니다.</p>
+                </>
+              ) : (
+                <p className={`${styles.goalNameEmpty} t-caption`}>캔버스에 도착지를 놓으면 여기에서 이름을 바꿀 수 있습니다.</p>
+              )}
+            </div>
+          )}
+          <p className={`${styles.contextHint} t-caption`}>
+            {markerMode === 'goal' ? '도착지는 여러 곳에 놓을 수 있고, 같은 곳을 다시 누르면 삭제됩니다.' : '새 출발지를 놓으면 기존 출발지가 이동합니다.'}
+          </p>
+        </>
+      )
+    }
+
+    if (activeTool === 'shape') {
+      return (
+        <>
+          <div className={styles.contextHeaderInner}>
+            <h2 className="t-h2">도형</h2>
+            <p className="t-caption">도형을 고르고 캔버스에서 드래그해 크기를 정하세요.</p>
+          </div>
+          <div className={styles.choiceGrid} role="group" aria-label="도형 종류">
+            {SHAPES.map((shape) => (
+              <ContextChoice key={shape.id} icon={shape.icon} label={shape.label} selected={activeShape === shape.id} onClick={() => setShape(shape.id)} />
+            ))}
+          </div>
+          <div className={styles.contextSection}>
+            <h3 className="t-label">트랙 프리셋</h3>
+            <div className={styles.trackGrid}>
+              {TRACK_PRESETS.map((preset) => <TrackPresetTile key={preset.id} preset={preset} onSelect={handleTrackSelect} />)}
+            </div>
+          </div>
+        </>
+      )
+    }
+
+    const help = TOOL_HELP[activeTool]
+    if (!help) return null
+    const Icon = help.icon
+    return (
+      <div className={styles.helpCard}>
+        <span className={styles.helpIcon}><Icon size={28} /></span>
+        <h2 className="t-h2">{help.title}</h2>
+        <p className="t-body">{help.description}</p>
+        <p className={`${styles.contextHint} t-caption`}>{help.hint}</p>
+      </div>
+    )
+  }
+
   function renderGridContent() {
     if (isSearching) {
       if (searchResults.length === 0) {
@@ -267,7 +496,7 @@ export default function PalettePanel() {
       )
     }
 
-    if (activeTheme === 'icon') {
+    if (activeCategory === 'icon') {
       return (
         <div className={styles.grid}>
           {ICONS.map((icon, index) => (
@@ -284,17 +513,7 @@ export default function PalettePanel() {
       )
     }
 
-    if (activeTheme === 'track') {
-      return (
-        <div className={styles.trackGrid}>
-          {TRACK_PRESETS.map((preset) => (
-            <TrackPresetTile key={preset.id} preset={preset} onSelect={handleTrackSelect} />
-          ))}
-        </div>
-      )
-    }
-
-    if (activeTheme === 'myImages') {
+    if (activeCategory === 'myImages') {
       const entries = Object.entries(doc?.userAssets ?? {})
       if (entries.length === 0) {
         return (
@@ -334,7 +553,7 @@ export default function PalettePanel() {
     }
 
     // 나머지는 내장 6테마(던전·숲·얼음·모험·사탕·공룡) 중 하나입니다.
-    const group = TILES_BY_THEME.find((g) => g.theme === activeTheme)
+    const group = TILES_BY_THEME.find((g) => g.theme === activeCategory)
     const tiles = group?.tiles ?? []
     return (
       <div className={styles.grid}>
@@ -351,6 +570,33 @@ export default function PalettePanel() {
       </div>
     )
   }
+}
+
+function ContextChoice({
+  icon: Icon,
+  label,
+  selected,
+  onClick,
+  compact = false,
+}: {
+  icon: LucideIcon
+  label: string
+  selected: boolean
+  onClick: () => void
+  compact?: boolean
+}) {
+  return (
+    <button
+      type="button"
+      className={`${styles.contextChoice} ${selected ? styles.contextChoiceSelected : ''} ${compact ? styles.contextChoiceCompact : ''}`}
+      aria-pressed={selected}
+      onClick={onClick}
+    >
+      <Icon size={compact ? 18 : 24} />
+      <span className="t-label">{label}</span>
+      {selected && <Check size={14} className={styles.choiceCheck} aria-hidden="true" />}
+    </button>
+  )
 }
 
 function TrackPresetTile({ preset, onSelect }: { preset: TrackPreset; onSelect: (preset: TrackPreset) => void }) {

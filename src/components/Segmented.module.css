@@ -14,8 +14,11 @@
 }
 
 .item {
-  flex: 1 1 0;
+  /* 글자 길이를 무시한 0 기준으로 똑같이 나누면 "나눠 인쇄" 같은 항목이 두 줄로
+     꺾입니다. 내용 폭을 기준으로 나누되 PRD의 항목당 최소 64px은 유지합니다. */
+  flex: 1 1 auto;
   min-width: 64px; /* 항목당 최소 폭. PRD §9.7 */
+  white-space: nowrap;
   height: 100%;
   display: flex;
   align-items: center;

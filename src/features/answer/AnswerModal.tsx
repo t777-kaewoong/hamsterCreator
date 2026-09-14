@@ -4,15 +4,12 @@ import { Button, Modal, Segmented, useToast } from '@/components'
 import { createGridAnswer, createLineTracerAnswer } from '@/lib/answer/generateAnswer'
 import type { GridAnswer } from '@/lib/answer/generateAnswer'
 import { downloadAnswerPdf } from '@/lib/pdf/generateAnswerPdf'
+import { goalDisplayNameMap, goalMarkerKey } from '@/lib/model/goalNames'
 import type { Direction, GoalMarker, MapDoc, NodeCoord } from '@/lib/model/types'
 import { useEditorStore } from '@/features/editor/editorStore'
 import styles from './AnswerModal.module.css'
 
 type AnswerMode = 'grid' | 'line'
-
-function goalKey(goal: GoalMarker): string {
-  return `${goal.cell[0]},${goal.cell[1]}`
-}
 
 function PathDiagram({ doc, answer }: { doc: MapDoc; answer: GridAnswer }) {
   const point = ([column, row]: NodeCoord) => `${column + 0.5},${row + 0.5}`
@@ -30,7 +27,7 @@ function PathDiagram({ doc, answer }: { doc: MapDoc; answer: GridAnswer }) {
       <circle cx={start[0] + 0.5} cy={start[1] + 0.5} r="0.17" className={styles.start} />
       <line x1={start[0] + 0.5} y1={start[1] + 0.5} x2={start[0] + 0.5 + vector[0] * 0.3} y2={start[1] + 0.5 + vector[1] * 0.3} className={styles.heading} />
       {answer.goalStops.map((stop, index) => (
-        <g key={goalKey(stop.goal)}>
+        <g key={goalMarkerKey(stop.goal)}>
           <circle cx={stop.goal.cell[0] + 0.5} cy={stop.goal.cell[1] + 0.5} r="0.2" className={styles.goal} />
           <text x={stop.goal.cell[0] + 0.5} y={stop.goal.cell[1] + 0.57} textAnchor="middle" className={styles.goalText}>{index + 1}</text>
         </g>
@@ -68,7 +65,7 @@ export default function AnswerModal() {
 
   useEffect(() => {
     if (open && !wasOpenRef.current && doc) {
-      setGoalOrder(doc.markers.goals.map(goalKey))
+      setGoalOrder(doc.markers.goals.map(goalMarkerKey))
       setMode('grid')
     }
     wasOpenRef.current = open
@@ -76,9 +73,14 @@ export default function AnswerModal() {
 
   const orderedGoals = useMemo(() => {
     if (!doc) return []
-    const byKey = new Map(doc.markers.goals.map((goal) => [goalKey(goal), goal]))
+    const byKey = new Map(doc.markers.goals.map((goal) => [goalMarkerKey(goal), goal]))
     return goalOrder.map((key) => byKey.get(key)).filter((goal): goal is GoalMarker => Boolean(goal))
   }, [doc, goalOrder])
+  const goalNamesByKey = useMemo(() => goalDisplayNameMap(doc?.markers.goals ?? []), [doc?.markers.goals])
+  const orderedGoalNames = useMemo(
+    () => orderedGoals.map((goal) => goalNamesByKey.get(goalMarkerKey(goal)) ?? '도착'),
+    [goalNamesByKey, orderedGoals],
+  )
   const gridResult = useMemo(() => doc ? createGridAnswer(doc, orderedGoals) : null, [doc, orderedGoals])
   const lineAnswer = useMemo(() => doc ? createLineTracerAnswer(doc) : null, [doc])
 
@@ -176,11 +178,11 @@ export default function AnswerModal() {
                   <span className="t-label">도착 경유 순서</span>
                   <ol>
                     {orderedGoals.map((goal, index) => (
-                      <li key={goalKey(goal)}>
-                        <span className="t-caption"><b>{index + 1}</b> {goal.name || `도착 ${index + 1}`} · {goal.cell[0] + 1}열 {goal.cell[1] + 1}행</span>
+                      <li key={goalMarkerKey(goal)}>
+                        <span className="t-caption"><b>{index + 1}</b> {orderedGoalNames[index]} · {goal.cell[0] + 1}열 {goal.cell[1] + 1}행</span>
                         <span className={styles.orderButtons}>
-                          <button type="button" onClick={() => moveGoal(index, -1)} disabled={index === 0} aria-label={`${goal.name} 순서 올리기`}><ArrowUp size={14} /></button>
-                          <button type="button" onClick={() => moveGoal(index, 1)} disabled={index === orderedGoals.length - 1} aria-label={`${goal.name} 순서 내리기`}><ArrowDown size={14} /></button>
+                          <button type="button" onClick={() => moveGoal(index, -1)} disabled={index === 0} aria-label={`${orderedGoalNames[index]} 순서 올리기`}><ArrowUp size={14} /></button>
+                          <button type="button" onClick={() => moveGoal(index, 1)} disabled={index === orderedGoals.length - 1} aria-label={`${orderedGoalNames[index]} 순서 내리기`}><ArrowDown size={14} /></button>
                         </span>
                       </li>
                     ))}

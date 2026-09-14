@@ -50,6 +50,9 @@ const ROTATION_OPTIONS: SegmentedOption[] = [
   { value: '270', label: '270°' },
 ]
 
+/** 용지 선택은 크기가 아니라 계열을 먼저 찾는 경우가 많아 A/B 두 묶음으로 보여줍니다. */
+const PAPER_SERIES = ['A', 'B'] as const
+
 /**
  * 켬/끔 스위치 하나.
  *
@@ -649,7 +652,7 @@ function MapSettingsSection() {
             onKeyDown={blurOnEnter}
           />
         </div>
-        <div>
+        <div className={styles.grid2}>
           <Input
             label="피치"
             unit="mm"
@@ -659,12 +662,6 @@ function MapSettingsSection() {
             onBlur={commitPitch}
             onKeyDown={blurOnEnter}
           />
-          {/* D6: 기본값(50/8mm)에서 벗어나면 경고 한 줄(§9.13, 규칙 D6) */}
-          {pitchOffSpec && (
-            <p className={`${styles.warnCaption} t-caption`}>기본값 {PITCH_MM}mm과 달라 정품 말판과 어긋날 수 있어요</p>
-          )}
-        </div>
-        <div>
           <Input
             label="선폭"
             unit="mm"
@@ -674,10 +671,19 @@ function MapSettingsSection() {
             onBlur={commitLineWidth}
             onKeyDown={blurOnEnter}
           />
-          {lineWidthOffSpec && (
-            <p className={`${styles.warnCaption} t-caption`}>기본값 {LINE_WIDTH_MM}mm과 달라 정품 말판과 어긋날 수 있어요</p>
-          )}
         </div>
+        {/* D6: 좁은 2열 입력 안에 긴 경고를 넣으면 한 글자씩 꺾이므로, 경고는 두 입력
+            공통 아래쪽의 전체 폭을 사용합니다(§9.13: 입력 아래 caption 한 줄). */}
+        {(pitchOffSpec || lineWidthOffSpec) && (
+          <div className={styles.specWarnings}>
+            {pitchOffSpec && (
+              <p className={`${styles.warnCaption} t-caption`}>피치가 기본값 {PITCH_MM}mm과 달라 정품 말판과 어긋날 수 있어요</p>
+            )}
+            {lineWidthOffSpec && (
+              <p className={`${styles.warnCaption} t-caption`}>선폭이 기본값 {LINE_WIDTH_MM}mm과 달라 정품 말판과 어긋날 수 있어요</p>
+            )}
+          </div>
+        )}
       </div>
     </section>
   )
@@ -737,10 +743,14 @@ function PaperSection() {
             onChange={(e) => updatePrint({ sheet: e.target.value })}
             aria-label="용지"
           >
-            {PAPER_SIZES.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.label}
-              </option>
+            {PAPER_SERIES.map((series) => (
+              <optgroup key={series} label={`${series} 계열`}>
+                {PAPER_SIZES.filter((paper) => paper.series === series).map((paper) => (
+                  <option key={paper.id} value={paper.id}>
+                    {paper.label}
+                  </option>
+                ))}
+              </optgroup>
             ))}
           </select>
         </div>

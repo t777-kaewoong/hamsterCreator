@@ -17,6 +17,11 @@ export const LINE_WIDTH_MM = 8
  *  작은 곡선을 만들지 않았다는 것이 실질적인 하한선입니다. */
 export const MIN_CURVE_RADIUS_MM = 50
 
+/** FR-10.7이 이름까지 고정한 공식 라인트레이서 타원 규격. 프리셋과 곡률 검증이 같은
+ * 값을 참조해야 한쪽만 바뀌어 정합성 예외가 엉뚱한 크기에 적용되는 일을 막습니다. */
+export const OFFICIAL_ELLIPSE_WIDTH_MM = 230
+export const OFFICIAL_ELLIPSE_HEIGHT_MM = 150
+
 /** 햄스터S 로봇 폭(mm)(FR-10.9). 평행한 두 트랙 구간 사이 간격이 이보다 좁으면
  *  로봇이 옆 트랙의 센서까지 같이 읽어버릴 수 있어 경고 기준으로 씁니다. */
 export const ROBOT_WIDTH_MM = 40
@@ -40,6 +45,8 @@ export const USER_ASSET_MAX_PX = 433
 export interface PaperSize {
   /** 용지 id. print.sheet 필드에 그대로 씀(예: "A4") */
   id: string
+  /** 인스펙터 드롭다운에서 묶어 보여줄 국제 A/JIS B 계열 */
+  series: 'A' | 'B'
   /** 화면에 보여줄 이름 */
   label: string
   /** 가로 방향 기준 폭(mm). §6.1: "피치 50mm, 가로 방향 기준" */
@@ -48,16 +55,17 @@ export interface PaperSize {
   heightMm: number
 }
 
-/** 지원 용지 8종(FR-1.2 프리셋의 근거 표, PRD §6.1).
+/** 지원 용지 9종(FR-1.2 프리셋의 근거 표, PRD §6.1).
  *  A4·A3·A2 값은 공식 자료 실측 격자 수(5×4=20 / 8×5=40 / 11×8=88칸)와 정확히
  *  일치하는 값이니 임의로 반올림하거나 조정하지 마세요. B 계열은 JIS 규격(국내 복사기 표준). */
 export const PAPER_SIZES: PaperSize[] = [
-  { id: 'A4', label: 'A4', widthMm: 297, heightMm: 210 },
-  { id: 'B4', label: 'B4', widthMm: 364, heightMm: 257 },
-  { id: 'A3', label: 'A3', widthMm: 420, heightMm: 297 },
-  { id: 'B3', label: 'B3', widthMm: 515, heightMm: 364 },
-  { id: 'A2', label: 'A2', widthMm: 594, heightMm: 420 },
-  { id: 'B2', label: 'B2', widthMm: 728, heightMm: 515 },
-  { id: 'A1', label: 'A1', widthMm: 841, heightMm: 594 },
-  { id: 'A0', label: 'A0', widthMm: 1189, heightMm: 841 },
+  { id: 'A4', series: 'A', label: 'A4', widthMm: 297, heightMm: 210 },
+  { id: 'A3', series: 'A', label: 'A3', widthMm: 420, heightMm: 297 },
+  { id: 'A2', series: 'A', label: 'A2', widthMm: 594, heightMm: 420 },
+  { id: 'A1', series: 'A', label: 'A1', widthMm: 841, heightMm: 594 },
+  { id: 'A0', series: 'A', label: 'A0', widthMm: 1189, heightMm: 841 },
+  { id: 'B4', series: 'B', label: 'B4', widthMm: 364, heightMm: 257 },
+  { id: 'B3', series: 'B', label: 'B3', widthMm: 515, heightMm: 364 },
+  { id: 'B2', series: 'B', label: 'B2', widthMm: 728, heightMm: 515 },
+  { id: 'B1', series: 'B', label: 'B1', widthMm: 1030, heightMm: 728 },
 ]

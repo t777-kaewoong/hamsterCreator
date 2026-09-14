@@ -1,29 +1,10 @@
 // 시작 화면 프리셋 카드 정의 (PRD §9.8 "프리셋 8종" 표).
 //
-// PRD 표에는 8종이 나열되어 있지만, 이 파일에는 지금 실제로 만들 수 있는 5종만 담습니다.
-//
-//   A4 기본 · A4 2장 · A4 4장 · A2 1장 · 빈 격자   ← 여기 있음 (전부 격자만 있는 맵)
-//   부록 배리어프리 (교과서 p190 재현)             ← 없음
-//   부록 재난구조 (교과서 p185 재현, 격자+곡선 혼합) ← 없음
-//   라인트레이서 (곡선 트랙, 격자 없음)             ← 없음
-//
-// 뒤 3종은 전부 "자유곡선"(strokes: 펜/도형으로 그리는 곡선 트랙)이 있어야 재현되는
-// 프리셋인데, 이 프로젝트에는 아직 자유곡선을 실제로 만드는 도구가 없습니다(FR-10,
-// M1.5 단계에서 펜·도형 도구와 함께 구현 예정 — src/lib/model/types.ts의 Stroke 타입은
-// 이미 있지만 그걸 채워 넣는 편집 기능이 없다는 뜻입니다). 지금 만들면 "곡선이 통째로
-// 빠진 격자만 있는 가짜 프리셋"이 되어버립니다.
-//
-// 그래서 이 3종은 카드 자체를 화면에 올리지 않았습니다. PRD §9.8의 목적이 "10초 안에
-// 클릭할 것을 찾게 하는 것"(U1)인데, 눌러도 기대한 모양이 안 나오는 카드가 섞여 있으면
-// 오히려 고르는 시간을 늘리고 신뢰를 깎아 먹습니다. 비활성(회색) 카드로 자리만 차지하게
-// 두는 것도 같은 이유로 하지 않았습니다 — 아예 없는 편이 "지금 쓸 수 있는 것"만 보여줘서
-// 더 빠르게 고를 수 있습니다.
-//
-// M1.5에서 자유곡선 펜/도형 도구가 들어오면, 이 배열에 위 3개 항목을 create()와 함께
-// 추가하면 됩니다(교과서 p190/p185 실측 좌표는 이 작업 범위 밖이라 별도 확인 필요).
-import type { MapDoc } from '@/lib/model/types'
+// 기본 용지 5종과 교과서 활동 2종, 라인트레이서 1종을 실제 편집 가능한 MapDoc으로 만듭니다.
+import type { Label, MapDoc, NodeCoord, Prop } from '@/lib/model/types'
 import { createEmptyMap, createFullGridMap } from '@/lib/model/factory'
 import { PAPER_SIZES, PITCH_MM } from '@/lib/model/constants'
+import { TRACK_PRESETS } from '@/features/palette/trackPresets'
 
 /** 프리셋 카드 하나의 정보. StartScreen이 이 배열을 그대로 매핑해 카드를 그립니다. */
 export interface StartPreset {
@@ -50,6 +31,106 @@ function buildSpecLabel(sheetId: string, cols: number, rows: number): string {
   const widthMm = cols * PITCH_MM
   const heightMm = rows * PITCH_MM
   return `${paperLabel(sheetId)} · ${cols}×${rows}칸 · ${widthMm}×${heightMm}mm`
+}
+
+function nodeCenter(col: number, row: number): [number, number] {
+  return [(col + 0.5) * PITCH_MM, (row + 0.5) * PITCH_MM]
+}
+
+function propAtNode(asset: string, col: number, row: number, size = 20): Prop {
+  const [cx, cy] = nodeCenter(col, row)
+  return { asset, x: cx - size / 2, y: cy - size / 2, w: size, h: size, rot: 0, flip: false }
+}
+
+function lineLabel(text: string, col: number, row: number, size = 8): Label {
+  const [x, y] = nodeCenter(col, row)
+  return { text, x, y, rot: 0, size, color: '#ffffff', onLine: true }
+}
+
+/** 교과서 p190: 3×3 교차점과 거실·화장실·현관 위치를 50mm 규격으로 재현합니다. */
+function createBarrierFreeMap(): MapDoc {
+  const doc = createFullGridMap(3, 3, {
+    title: '부록 배리어프리',
+    sheet: 'A4',
+    orientation: 'landscape',
+  })
+  return {
+    ...doc,
+    stubs: [
+      ...Array.from({ length: 3 }, (_, row) => ({ node: [0, row] as NodeCoord, dir: 'W' as const })),
+      ...Array.from({ length: 3 }, (_, row) => ({ node: [2, row] as NodeCoord, dir: 'E' as const })),
+      ...Array.from({ length: 3 }, (_, col) => ({ node: [col, 0] as NodeCoord, dir: 'N' as const })),
+      ...Array.from({ length: 3 }, (_, col) => ({ node: [col, 2] as NodeCoord, dir: 'S' as const })),
+    ],
+    labels: [
+      lineLabel('거실', 0, 0),
+      lineLabel('화장실', 2, 1),
+      { ...lineLabel('↑', 0, 2, 9), y: nodeCenter(0, 2)[1] - 10 },
+      { ...lineLabel('현관', 0, 2), y: nodeCenter(0, 2)[1] + 8 },
+    ],
+  }
+}
+
+/** 교과서 p185: 5×5 구조 격자와 아래쪽 원형 임무 구역·시작 경로를 한 문서로 만듭니다. */
+function createDisasterRescueMap(): MapDoc {
+  const doc = createEmptyMap(6, 7, {
+    title: '부록 재난구조',
+    sheet: 'A2',
+    orientation: 'portrait',
+  })
+  const h: NodeCoord[] = []
+  const v: NodeCoord[] = []
+
+  // 위쪽 5×5 교차점 격자(실제 board의 1~5열)와 아래쪽 시작 경로.
+  for (let row = 0; row < 5; row++) {
+    for (let col = 1; col < 5; col++) h.push([col, row])
+  }
+  for (let row = 0; row < 4; row++) {
+    for (let col = 1; col < 6; col++) v.push([col, row])
+  }
+  v.push([1, 4], [1, 5])
+  for (let col = 1; col < 5; col++) h.push([col, 6])
+
+  return {
+    ...doc,
+    edges: { h, v },
+    stubs: [
+      ...Array.from({ length: 5 }, (_, row) => ({ node: [1, row] as NodeCoord, dir: 'W' as const })),
+      ...Array.from({ length: 5 }, (_, row) => ({ node: [5, row] as NodeCoord, dir: 'E' as const })),
+      ...Array.from({ length: 5 }, (_, col) => ({ node: [col + 1, 0] as NodeCoord, dir: 'N' as const })),
+      ...Array.from({ length: 4 }, (_, col) => ({ node: [col + 2, 4] as NodeCoord, dir: 'S' as const })),
+      { node: [5, 6], dir: 'E' },
+    ],
+    strokes: [{ id: 'preset-disaster-valve-zone', kind: 'circle', cx: 75, cy: 275, r: 50, width: 8 }],
+    props: [
+      propAtNode('fire', 5, 0),
+      propAtNode('fire', 3, 1),
+      propAtNode('fire', 5, 2),
+      propAtNode('fire', 1, 3),
+      propAtNode('person', 5, 1),
+      propAtNode('valve', 1, 5, 24),
+      { asset: 'fire', x: 208, y: 272, w: 28, h: 28, rot: 0, flip: false },
+    ],
+    labels: [
+      { ...lineLabel('■', 3, 3, 23), color: '#ffb800', onLine: false },
+      { text: '가스 밸브 잠그기', x: 22, y: 275, rot: -90, size: 7, color: '#111111', onLine: false },
+      { text: '사람 찾기', x: 288, y: 75, rot: -90, size: 7, color: '#111111', onLine: false },
+      { text: '문 열기', x: 200, y: 312, rot: 0, size: 7, color: '#111111', onLine: false },
+      { text: '시작 위치', x: 288, y: 325, rot: -90, size: 7, color: '#111111', onLine: false },
+    ],
+  }
+}
+
+/** PRD §9.8: 격자 없이 안전 곡률을 만족하는 S 트랙만 배치합니다. */
+function createLineTracerMap(): MapDoc {
+  const doc = createEmptyMap(5, 4, {
+    title: '라인트레이서',
+    sheet: 'A4',
+    orientation: 'landscape',
+  })
+  const curve = TRACK_PRESETS.find((preset) => preset.id === 'curve-s')
+  if (!curve) throw new Error('S 곡선 트랙 프리셋을 찾을 수 없습니다.')
+  return { ...doc, strokes: [curve.create(125, 100, 'preset-line-tracer-s')] }
 }
 
 export const START_PRESETS: StartPreset[] = [
@@ -85,5 +166,23 @@ export const START_PRESETS: StartPreset[] = [
     // 엣지(edges.h/v)를 전혀 안 채운 순수 빈 맵. createFullGridMap과 달리 격자선이 하나도
     // 없어 편집기를 열자마자 흰 종이만 보입니다(PRD §9.8 "빈 격자 = 5×4, 엣지 없음").
     create: () => createEmptyMap(5, 4, { title: '새 말판', sheet: 'A4', orientation: 'landscape' }),
+  },
+  {
+    id: 'appendix-barrier-free',
+    name: '부록 배리어프리',
+    specLabel: buildSpecLabel('A4', 3, 3),
+    create: createBarrierFreeMap,
+  },
+  {
+    id: 'appendix-disaster-rescue',
+    name: '부록 재난구조',
+    specLabel: 'A2 · 혼합 트랙 · 300×350mm',
+    create: createDisasterRescueMap,
+  },
+  {
+    id: 'line-tracer',
+    name: '라인트레이서',
+    specLabel: 'A4 · 곡선 트랙 · 250×200mm',
+    create: createLineTracerMap,
   },
 ]

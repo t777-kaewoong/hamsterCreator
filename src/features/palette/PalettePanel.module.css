@@ -14,15 +14,180 @@
   min-height: 0;
 }
 
-/* 검색 입력 · 테마 탭은 스크롤되지 않고 항상 위에 고정됩니다. */
-.searchRow {
-  flex-shrink: 0;
-  padding: var(--sp-4) var(--sp-4) var(--sp-3);
+/* 현재 도구 이름과 짧은 사용법은 어떤 도구를 눌러도 즉시 보입니다. */
+.contextHeader,
+.contextHeaderInner {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
 }
 
-.tabsRow {
+.contextHeader {
+  padding: var(--sp-4) var(--sp-4) var(--sp-2);
+}
+
+.contextHeader h2,
+.contextHeader p,
+.contextHeaderInner h2,
+.contextHeaderInner p,
+.contextSection h3,
+.helpCard h2,
+.helpCard p {
+  margin: 0;
+}
+
+.contextHeader p,
+.contextHeaderInner p {
+  color: var(--c-text-2);
+  line-height: 1.45;
+}
+
+/* 검색 입력은 타일·영역 채우기 도구에서만 표시합니다. */
+.searchRow {
   flex-shrink: 0;
   padding: 0 var(--sp-4) var(--sp-3);
+}
+
+.categoryRow {
+  flex-shrink: 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 0 var(--sp-4) var(--sp-3);
+}
+
+.categorySelect {
+  min-width: 0;
+  height: 36px;
+  padding: 0 var(--sp-3);
+  border: 1px solid var(--c-border-strong);
+  border-radius: var(--r-md);
+  background: var(--c-surface);
+  color: var(--c-text);
+  cursor: pointer;
+}
+
+.categorySelect:focus-visible {
+  border-color: var(--c-primary);
+  box-shadow: 0 0 0 3px var(--c-primary-ring);
+}
+
+.contextArea {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--sp-4);
+}
+
+.choiceGrid,
+.directionGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sp-2);
+  margin-top: var(--sp-4);
+}
+
+.directionGrid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: var(--sp-2);
+}
+
+.contextChoice {
+  position: relative;
+  min-width: 0;
+  min-height: 72px;
+  padding: var(--sp-3) var(--sp-2);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-md);
+  background: var(--c-surface);
+  color: var(--c-text-2);
+  cursor: pointer;
+}
+
+.contextChoice:hover {
+  border-color: var(--c-primary);
+  background: var(--c-primary-soft);
+}
+
+.contextChoiceSelected {
+  border: 2px solid var(--c-primary);
+  background: var(--c-primary-soft);
+  color: var(--c-primary);
+}
+
+.contextChoiceCompact {
+  min-height: 56px;
+  padding: var(--sp-2);
+  flex-direction: row;
+}
+
+.choiceCheck {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+}
+
+.contextSection {
+  margin-top: var(--sp-6);
+}
+
+.goalNameList {
+  display: grid;
+  gap: var(--sp-3);
+  margin-top: var(--sp-3);
+}
+
+.goalNameHint,
+.goalNameEmpty {
+  margin: var(--sp-2) 0 0;
+  color: var(--c-text-2);
+  line-height: 1.45;
+}
+
+.goalNameEmpty {
+  padding: var(--sp-3);
+  border-radius: var(--r-md);
+  background: var(--c-surface-2);
+}
+
+.contextHint {
+  margin: var(--sp-4) 0 0;
+  padding: var(--sp-3);
+  border-radius: var(--r-md);
+  background: var(--c-surface-2);
+  color: var(--c-text-2);
+  line-height: 1.5;
+}
+
+.helpCard {
+  min-height: 240px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: var(--sp-2);
+}
+
+.helpIcon {
+  width: 52px;
+  height: 52px;
+  display: grid;
+  place-items: center;
+  margin-bottom: var(--sp-2);
+  border-radius: var(--r-lg);
+  background: var(--c-primary-soft);
+  color: var(--c-primary);
+}
+
+.helpCard > p:not(.contextHint) {
+  color: var(--c-text-2);
+  line-height: 1.55;
 }
 
 /* 타일 그리드만 세로 스크롤됩니다(PRD "그리드는 세로 스크롤"). */

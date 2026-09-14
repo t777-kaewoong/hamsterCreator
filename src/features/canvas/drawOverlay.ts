@@ -77,7 +77,7 @@ export function drawOverlayLayer(
     const topLeft = viewport.mapToScreen(c * pitch, r * pitch)
     const centerX = topLeft.x + sizePx / 2
     const centerY = topLeft.y + sizePx / 2
-    const bitmap = tileBitmapCache.get(tileId)
+    const bitmap = tileBitmapCache.get(tileId, doc.userAssets)
 
     if (bitmap) {
       ctx.save()
@@ -105,7 +105,7 @@ export function drawOverlayLayer(
   if (overlay.freePropGhost) {
     const { mx, my, tileId, rot, flip } = overlay.freePropGhost
     const center = viewport.mapToScreen(mx, my)
-    const bitmap = tileBitmapCache.get(tileId)
+    const bitmap = tileBitmapCache.get(tileId, doc.userAssets)
 
     if (bitmap) {
       ctx.save()

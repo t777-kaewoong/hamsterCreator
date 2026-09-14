@@ -12,7 +12,14 @@
 // 돌려줄 뿐이라, 나중에 시험 코드를 붙이거나 PDF 만들기 직전 검사에 재사용하기 쉽습니다.
 
 import type { MapDoc, NodeCoord, Point, Stroke } from '@/lib/model/types'
-import { LINE_WIDTH_MM, MIN_CURVE_RADIUS_MM, PITCH_MM, ROBOT_WIDTH_MM } from '@/lib/model/constants'
+import {
+  LINE_WIDTH_MM,
+  MIN_CURVE_RADIUS_MM,
+  OFFICIAL_ELLIPSE_HEIGHT_MM,
+  OFFICIAL_ELLIPSE_WIDTH_MM,
+  PITCH_MM,
+  ROBOT_WIDTH_MM,
+} from '@/lib/model/constants'
 import { sampleStroke } from '@/features/canvas/strokeGeometry'
 import { findPrintPlan } from '@/lib/print/plan'
 import { reachableNodes } from './gridGraph'
@@ -286,12 +293,26 @@ function minimumStrokeRadius(stroke: Stroke): { radius: number; at: Point } | nu
   return Number.isFinite(minimum) ? { radius: minimum, at } : null
 }
 
+/**
+ * FR-10.7의 공식 230×150mm 타원은 해석상 최소 곡률 반경이 48.91mm라 FR-10.8의
+ * 권장값 50mm와 약 1.09mm 충돌합니다. 공식 규격 자체를 몰래 바꾸거나 모든 곡선의
+ * 기준을 낮추지 않고, 정확히 이 크기의 타원에만 명시적 예외를 적용합니다. 사용자가
+ * 크기를 조금이라도 바꾸면 일반 50mm 검증으로 돌아갑니다.
+ */
+function isOfficialEllipse(stroke: Stroke): boolean {
+  if (stroke.kind !== 'ellipse') return false
+  const width = Math.abs(stroke.rx) * 2
+  const height = Math.abs(stroke.ry) * 2
+  return Math.abs(width - OFFICIAL_ELLIPSE_WIDTH_MM) < 1e-6
+    && Math.abs(height - OFFICIAL_ELLIPSE_HEIGHT_MM) < 1e-6
+}
+
 /** FR-10.8: 도형의 해석해와 스플라인 표본의 외접원 반경을 같은 50mm 기준으로 검사합니다. */
 function checkMinimumCurveRadius(doc: MapDoc): Issue[] {
   const issues: Issue[] = []
   for (const stroke of doc.strokes) {
     const result = minimumStrokeRadius(stroke)
-    if (!result || result.radius >= MIN_CURVE_RADIUS_MM) continue
+    if (!result || result.radius >= MIN_CURVE_RADIUS_MM || isOfficialEllipse(stroke)) continue
     issues.push({
       code: 'curve-radius-too-small',
       severity: 'warn',

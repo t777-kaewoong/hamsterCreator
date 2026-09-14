@@ -4,7 +4,7 @@
     "name": "보물상자",
     "theme": "dungeon",
     "themeName": "던전",
-    "kind": "floor",
+    "kind": "object",
     "w": 433,
     "h": 433,
     "bytes": 7025
@@ -14,7 +14,7 @@
     "name": "나무 상자",
     "theme": "dungeon",
     "themeName": "던전",
-    "kind": "floor",
+    "kind": "object",
     "w": 433,
     "h": 433,
     "bytes": 7310
@@ -34,7 +34,7 @@
     "name": "나무 빗장",
     "theme": "dungeon",
     "themeName": "던전",
-    "kind": "floor",
+    "kind": "object",
     "w": 433,
     "h": 433,
     "bytes": 25798
@@ -104,7 +104,7 @@
     "name": "펭귄",
     "theme": "ice",
     "themeName": "얼음",
-    "kind": "block",
+    "kind": "object",
     "w": 433,
     "h": 433,
     "bytes": 17503
@@ -184,7 +184,7 @@
     "name": "책",
     "theme": "adventure",
     "themeName": "모험",
-    "kind": "floor",
+    "kind": "object",
     "w": 433,
     "h": 433,
     "bytes": 2663
@@ -214,7 +214,7 @@
     "name": "두루마리",
     "theme": "adventure",
     "themeName": "모험",
-    "kind": "floor",
+    "kind": "object",
     "w": 433,
     "h": 433,
     "bytes": 4995
@@ -264,7 +264,7 @@
     "name": "초콜릿",
     "theme": "candy",
     "themeName": "사탕",
-    "kind": "floor",
+    "kind": "object",
     "w": 433,
     "h": 433,
     "bytes": 2844

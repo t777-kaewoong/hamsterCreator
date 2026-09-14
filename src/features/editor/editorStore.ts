@@ -9,7 +9,7 @@
 // 실제로 스택에 스냅샷을 쌓는 로직은 src/features/canvas/toolInteractions.ts가
 // 제스처(드래그 등) 단위로 호출합니다 — 이 파일은 "스택을 어떻게 조작하는지"만 압니다.
 import { create } from 'zustand'
-import type { MapDoc, NodeCoord, UserAsset } from '@/lib/model/types'
+import type { Direction, MapDoc, NodeCoord, UserAsset } from '@/lib/model/types'
 import { createMapStore } from '@/lib/storage'
 import type { StoreKind } from '@/lib/storage'
 import { saveDraft } from '@/lib/storage/draft'
@@ -32,6 +32,9 @@ export type ToolId =
 
 /** O 도구의 하위 도형. 문서의 Stroke.kind와 맞추되 자유곡선(spline)은 제외합니다. */
 export type ShapeKind = 'line' | 'circle' | 'ellipse' | 'roundedRect'
+
+/** M 도구로 다음에 배치할 마커 종류. Alt 키에 숨기지 않고 팔레트에서 직접 고릅니다. */
+export type MarkerMode = 'start' | 'goal'
 
 /** 상단바 저장 상태 칩과 그대로 연결되는 값(components/StatusChip.tsx의 StatusChipStatus와 동일). */
 export type SaveState = 'saved' | 'saving' | 'unsaved'
@@ -94,6 +97,9 @@ interface EditorState {
   activeTool: ToolId
   /** O 도구로 다음에 배치할 도형. 하위 메뉴에서 바뀝니다. */
   activeShape: ShapeKind
+  /** M 도구로 다음에 배치할 마커와 출발 방향. */
+  markerMode: MarkerMode
+  markerHeading: Direction
   /** 이 브라우저가 파일에 바로 덮어쓸 수 있는 방식인지(§4.4). 세션 내내 바뀌지 않는 값이라
    *  스토어를 만들 때 한 번만 계산합니다. 상단바 "저장"/"내려받기" 버튼 문구 분기에 씁니다. */
   storeKind: StoreKind
@@ -148,6 +154,8 @@ interface EditorState {
 
   setTool: (id: ToolId) => void
   setShape: (kind: ShapeKind) => void
+  setMarkerMode: (mode: MarkerMode) => void
+  setMarkerHeading: (heading: Direction) => void
   setDoc: (doc: MapDoc | null) => void
   setSaveState: (saveState: SaveState) => void
   /**
@@ -230,6 +238,8 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
   doc: null,
   activeTool: 'select',
   activeShape: 'circle',
+  markerMode: 'start',
+  markerHeading: 'N',
   storeKind: probe.kind,
   canOverwrite: probe.canOverwrite,
   saveState: 'saved',
@@ -248,6 +258,8 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
 
   setTool: (id) => set({ activeTool: id }),
   setShape: (kind) => set({ activeShape: kind, activeTool: 'shape' }),
+  setMarkerMode: (mode) => set({ markerMode: mode, activeTool: 'marker' }),
+  setMarkerHeading: (heading) => set({ markerHeading: heading, markerMode: 'start', activeTool: 'marker' }),
   setDoc: (doc) => set({ doc }),
   setSaveState: (saveState) => set({ saveState }),
   setPrintPlannerOpen: (printPlannerOpen) => set({ printPlannerOpen }),
