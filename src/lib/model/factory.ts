@@ -3,6 +3,7 @@
 // 이 함수들로 빈 문서를 만들고 편집을 시작합니다. PRD §5의 JSON 구조를 그대로 채웁니다.
 import type { BoardConfig, Edges, MapDoc, Markers, NodeCoord, PrintConfig } from './types'
 import { DEFAULT_COLS, DEFAULT_ROWS, LINE_WIDTH_MM, PITCH_MM, SCHEMA_VERSION } from './constants'
+import { allBoundaryStubs } from './stubs'
 
 /** createEmptyMap / createFullGridMap에 줄 수 있는 선택 옵션. 생략한 값은 기본값을 씁니다. */
 export interface CreateMapOptions {
@@ -70,7 +71,19 @@ export function createEmptyMap(
 
 /**
  * 격자 엣지가 전부 켜진 맵을 만듭니다("전체 격자 채우기" 기본 프리셋용, FR-2.3, §9.8의 "A4 기본").
- * 인접한 모든 노드 사이를 가로·세로로 전부 연결합니다.
+ * 인접한 모든 노드 사이를 가로·세로로 전부 연결하고, 경계 노드마다 바깥으로 나가는
+ * 진입로를 답니다(FR-2.4).
+ *
+ * [왜 진입로를 기본으로 넣는가 — 2026-09-16 사용자 결정]
+ * 로보메이션 공식 playbot 말판이 그 모양입니다. 선이 종이 끝까지 닿아 있어야 로봇을 말판
+ * 바깥에 놓고 선을 따라 들여보낼 수 있고, 말판을 이어 붙이거나 라인트레이서 트랙과 연결할 때
+ * 선이 끊기지 않습니다. 교과서 말판을 재현하는 게 이 앱의 주 용도라 그쪽을 기본으로 둡니다.
+ * 예전에는 "넣으면 지울 방법이 없다"는 이유로 비워 뒀는데, FR-2.4 편집 수단이 생겨서
+ * (L 도구로 격자 바깥 클릭, 팔레트의 일괄 버튼) 그 제약이 없어졌습니다.
+ * 진입로가 필요 없으면 팔레트에서 "모두 빼기" 한 번이면 됩니다.
+ *
+ * ※ 격자선이 하나도 없는 "빈 격자"(createEmptyMap)에는 넣지 않습니다.
+ *   이어질 선이 없는데 가장자리에만 토막이 떠 있으면 무슨 뜻인지 알 수 없기 때문입니다.
  */
 export function createFullGridMap(
   cols: number = DEFAULT_COLS,
@@ -78,6 +91,7 @@ export function createFullGridMap(
   opts: CreateMapOptions = {},
 ): MapDoc {
   const doc = createEmptyMap(cols, rows, opts)
+  const stubs = allBoundaryStubs(cols, rows)
 
   // h: 노드 (c,r)~(c+1,r) 가로 연결. c는 0 ~ cols-2까지만 존재
   const h: NodeCoord[] = []
@@ -90,5 +104,5 @@ export function createFullGridMap(
     for (let c = 0; c < cols; c++) v.push([c, r])
   }
 
-  return { ...doc, edges: { h, v } }
+  return { ...doc, edges: { h, v }, stubs }
 }

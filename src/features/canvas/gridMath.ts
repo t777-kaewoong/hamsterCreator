@@ -5,7 +5,7 @@
 // 같은 격자 전용 계산을 담당합니다. 도구 동작(toolInteractions.ts)이 이 계산에 크게
 // 의존하므로, viewport.ts와 분리해서 이 파일만 보면 "좌표 → 칸/노드/엣지" 로직을
 // 한눈에 알 수 있게 했습니다.
-import type { Edges, NodeCoord } from '@/lib/model/types'
+import type { Direction, Edges, NodeCoord, Stub } from '@/lib/model/types'
 
 /** 격자 칸 하나의 (열, 행) 인덱스. */
 export interface CellCoord {
@@ -176,4 +176,68 @@ export function nearestEdgeToPoint(
     }
   }
   return best
+}
+
+
+/** mm 좌표가 격자(종이) 안쪽인지. 경계선 위는 안쪽으로 봅니다.
+ *  "빈 곳을 클릭했는데 격자선이 지워졌다"를 막는 용도입니다. */
+export function isInsideBoard(mx: number, my: number, cols: number, rows: number, pitch: number): boolean {
+  return mx >= 0 && my >= 0 && mx <= cols * pitch && my <= rows * pitch
+}
+
+// ── 경계 진입로(stub) ────────────────────────────────────────────────────
+//
+// 진입로는 "경계 노드에서 종이 바깥쪽으로 나가는 반 칸(25mm)짜리 선"입니다(FR-2.4).
+// 로보메이션 공식 playbot 말판은 경계 노드마다 이걸 달아 두어, 로봇이 말판 밖에서
+// 선을 따라 들어오거나 라인트레이서 트랙과 이어 붙일 수 있게 되어 있습니다.
+//
+// 격자 엣지(Edges)와 따로 두는 이유: 엣지는 노드 두 개를 잇지만 진입로는 나가는 쪽에
+// 노드가 없습니다. 그래서 (노드, 방향) 쌍으로 저장합니다(model/types.ts의 Stub).
+
+/** 진입로를 받아 주는 바깥 여유 거리(mm). 격자 경계에서 이보다 멀리 클릭하면 무시합니다.
+ *  반 칸(pitch/2)으로 잡은 이유는 그게 곧 진입로가 실제로 그려지는 길이라, 눈에 보이는
+ *  선 위를 클릭하면 반응한다는 규칙이 자연스럽게 성립하기 때문입니다. */
+function stubReachMm(pitch: number): number {
+  return pitch / 2
+}
+
+/**
+ * 격자 **바깥**을 클릭했을 때 어느 경계 노드의 어느 방향 진입로인지 찾습니다.
+ * 격자 안쪽이거나 너무 멀면 null — 그때는 호출부가 기존 엣지 토글로 넘어갑니다.
+ */
+export function stubAtPoint(
+  mx: number,
+  my: number,
+  cols: number,
+  rows: number,
+  pitch: number,
+): Stub | null {
+  const width = cols * pitch
+  const height = rows * pitch
+  const reach = stubReachMm(pitch)
+
+  // 네 변 바깥으로 얼마나 벗어났는지. 안쪽이면 0 이하입니다.
+  const outLeft = -mx
+  const outRight = mx - width
+  const outTop = -my
+  const outBottom = my - height
+
+  // 가장 많이 벗어난 변을 고릅니다. 모서리 바깥을 클릭하면 더 크게 벗어난 쪽이 이깁니다.
+  const candidates: Array<{ out: number; dir: Direction }> = [
+    { out: outLeft, dir: 'W' },
+    { out: outRight, dir: 'E' },
+    { out: outTop, dir: 'N' },
+    { out: outBottom, dir: 'S' },
+  ]
+  let best = candidates[0]
+  for (const candidate of candidates) if (candidate.out > best.out) best = candidate
+  if (best.out <= 0 || best.out > reach) return null
+
+  // 벗어난 변을 따라 가장 가까운 경계 노드를 고릅니다.
+  if (best.dir === 'W' || best.dir === 'E') {
+    const r = clamp(Math.round(my / pitch - 0.5), 0, rows - 1)
+    return { node: [best.dir === 'W' ? 0 : cols - 1, r], dir: best.dir }
+  }
+  const c = clamp(Math.round(mx / pitch - 0.5), 0, cols - 1)
+  return { node: [c, best.dir === 'N' ? 0 : rows - 1], dir: best.dir }
 }

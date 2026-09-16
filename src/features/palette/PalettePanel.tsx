@@ -41,6 +41,7 @@ import type { Direction, GoalMarker, UserAsset } from '@/lib/model/types'
 import { useEditorStore } from '@/features/editor/editorStore'
 import type { ShapeKind, ToolId } from '@/features/editor/editorStore'
 import { sampleStroke, strokeBounds } from '@/features/canvas/strokeGeometry'
+import { allBoundaryStubs } from '@/lib/model/stubs'
 import { TRACK_PRESETS } from './trackPresets'
 import type { TrackPreset } from './trackPresets'
 import styles from './PalettePanel.module.css'
@@ -77,7 +78,7 @@ const DIRECTIONS: { id: Direction; label: string; icon: LucideIcon }[] = [
 
 const TOOL_HELP: Partial<Record<ToolId, { title: string; description: string; hint: string; icon: LucideIcon }>> = {
   select: { title: '선택', description: '캔버스의 타일·글자·도형을 선택합니다.', hint: '선택한 항목은 오른쪽에서 수정하거나 Delete로 지울 수 있어요.', icon: MousePointer2 },
-  lineDraw: { title: '격자선 긋기', description: '격자점 사이를 드래그해 길을 연결합니다.', hint: 'Alt를 누른 채 드래그하면 선을 지웁니다.', icon: Grid3x3 },
+  lineDraw: { title: '격자선 긋기', description: '격자점 사이를 드래그해 길을 연결합니다.', hint: '격자 바깥을 클릭하면 경계 진입로가 생깁니다. Alt는 지우기.', icon: Grid3x3 },
   eyedropper: { title: '타일 집기', description: '캔버스에 놓인 타일을 클릭해 같은 타일을 가져옵니다.', hint: '타일을 집으면 자동으로 타일 배치 도구로 바뀝니다.', icon: Pipette },
   eraser: { title: '지우개', description: '타일이나 객체를 클릭 또는 드래그해 지웁니다.', hint: 'Alt를 누르면 격자선을 지울 수 있어요.', icon: Eraser },
   text: { title: '글자', description: '글자를 넣을 위치를 클릭한 뒤 바로 입력합니다.', hint: '입력 후 오른쪽 선택 항목에서 크기·색·회전을 바꿀 수 있어요.', icon: Type },
@@ -450,6 +451,58 @@ export default function PalettePanel() {
             <div className={styles.trackGrid}>
               {TRACK_PRESETS.map((preset) => <TrackPresetTile key={preset.id} preset={preset} onSelect={handleTrackSelect} />)}
             </div>
+          </div>
+        </>
+      )
+    }
+
+    if (activeTool === 'lineDraw') {
+      const help = TOOL_HELP.lineDraw!
+      const LineIcon = help.icon
+      // 공식 playbot 말판은 경계 노드마다 진입로가 달려 있습니다. 그걸 하나씩 클릭하면
+      // A4 5×4만 해도 18번, A0 23×16이면 78번이라 일괄 버튼을 함께 둡니다(FR-2.4).
+      const stubCount = doc ? doc.stubs.length : 0
+      const fullCount = doc ? (doc.board.cols + doc.board.rows) * 2 : 0
+      return (
+        <>
+          <div className={styles.helpCard}>
+            <span className={styles.helpIcon}><LineIcon size={28} /></span>
+            <h2 className="t-h2">{help.title}</h2>
+            <p className="t-body">{help.description}</p>
+            <p className={`${styles.contextHint} t-caption`}>{help.hint}</p>
+          </div>
+          <div className={styles.contextSection}>
+            <h3 className="t-label">경계 진입로</h3>
+            <div className={styles.stubActions}>
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={!doc || stubCount >= fullCount}
+                onClick={() => {
+                  const current = useEditorStore.getState().doc
+                  if (!current) return
+                  useEditorStore.getState().commitDoc({
+                    ...current,
+                    stubs: allBoundaryStubs(current.board.cols, current.board.rows),
+                  })
+                }}
+              >
+                경계 전체에 넣기
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={!doc || stubCount === 0}
+                onClick={() => {
+                  const current = useEditorStore.getState().doc
+                  if (!current) return
+                  useEditorStore.getState().commitDoc({ ...current, stubs: [] })
+                }}
+              >
+                모두 빼기
+              </Button>
+            </div>
+            <p className={`${styles.contextHint} t-caption`}>지금 {stubCount}개 놓여 있습니다.</p>
           </div>
         </>
       )

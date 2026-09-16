@@ -32,12 +32,15 @@ import {
   clampCellAtMm,
   edgeBetween,
   interpolateMmPoints,
+  isInsideBoard,
   nearestEdgeToPoint,
   nearestNode,
   setEdge,
+  stubAtPoint,
   toggleEdge,
   type CellCoord,
 } from './gridMath'
+import { setStub, toggleStub } from '@/lib/model/stubs'
 
 /** 지금 진행 중인 제스처의 종류. 스포이드(I)·선택(V)은 문서를 바꾸지 않아 제스처로
  *  치지 않습니다(null로 둠 — 실행취소 대상이 아님). */
@@ -557,14 +560,32 @@ export class ToolController {
       const sy = e.clientY - rect.top
       const mapPt = this.viewport.screenToMap(sx, sy)
 
-      // L 도구: 드래그 없이 그냥 클릭했으면 가장 가까운 엣지 하나만 토글합니다(FR-2.2).
+      // L 도구: 드래그 없이 그냥 클릭했을 때.
+      //
+      // 격자 **바깥**을 찍었으면 경계 진입로를 토글하고(FR-2.4), 안쪽이면 가장 가까운
+      // 엣지를 토글합니다(FR-2.2). 진입로도 결국 "노드에서 뻗어 나가는 격자선"이라
+      // 도구를 따로 만들지 않고 L 하나에 얹었습니다 — 도구 레일이 이미 11개라
+      // 12번째를 늘리면 첫 화면이 그만큼 더 복잡해집니다(NFR-10).
+      // Alt를 누르고 찍으면 지우기입니다(Alt+드래그가 이미 지우기라 같은 규칙).
       if (gestureKind === 'lineDraw' && !this.dragMoved) {
-        const nearest = nearestEdgeToPoint(mapPt.mx, mapPt.my, doc.board.cols, doc.board.rows, doc.board.pitch)
-        if (nearest) {
-          const fresh = this.getDoc()
-          if (fresh) {
-            const nextEdges = toggleEdge(fresh.edges, nearest.kind, nearest.c, nearest.r)
-            if (nextEdges !== fresh.edges) this.commitDocChange({ ...fresh, edges: nextEdges })
+        const stub = stubAtPoint(mapPt.mx, mapPt.my, doc.board.cols, doc.board.rows, doc.board.pitch)
+        const fresh = this.getDoc()
+        if (fresh) {
+          if (stub) {
+            const nextStubs = this.gestureAlt ? setStub(fresh.stubs, stub, false) : toggleStub(fresh.stubs, stub)
+            if (nextStubs !== fresh.stubs) this.commitDocChange({ ...fresh, stubs: nextStubs })
+          } else if (isInsideBoard(mapPt.mx, mapPt.my, doc.board.cols, doc.board.rows, doc.board.pitch)) {
+            // 격자 안쪽일 때만 엣지를 토글합니다.
+            //
+            // nearestEdgeToPoint는 범위 검사를 하지 않아서, 종이에서 한참 떨어진 빈 곳을
+            // 클릭해도 "가장 가까운" 엣지를 찾아 지워 버립니다. 팬을 하려다 살짝 클릭만
+            // 되었을 때 엉뚱한 격자선이 사라지는 일이 실제로 생깁니다(FR-2.2는 "엣지 단건
+            // 클릭 토글"이지 "아무 데나 클릭해도 토글"이 아닙니다).
+            const nearest = nearestEdgeToPoint(mapPt.mx, mapPt.my, doc.board.cols, doc.board.rows, doc.board.pitch)
+            if (nearest) {
+              const nextEdges = toggleEdge(fresh.edges, nearest.kind, nearest.c, nearest.r)
+              if (nextEdges !== fresh.edges) this.commitDocChange({ ...fresh, edges: nextEdges })
+            }
           }
         }
       }

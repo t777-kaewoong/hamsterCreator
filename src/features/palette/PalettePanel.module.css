@@ -430,3 +430,12 @@
     padding-inline: 8px;
   }
 }
+
+/* 경계 진입로 일괄 버튼 두 개를 나란히 둡니다(FR-2.4).
+   폭이 좁아지면 자연스럽게 줄바꿈되도록 wrap을 켭니다 — 팔레트는 접히거나
+   화면 폭에 따라 좁아질 수 있어 고정 2열로 두면 버튼 글자가 잘립니다. */
+.stubActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
