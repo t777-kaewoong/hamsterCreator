@@ -6,15 +6,22 @@
 // 다른 작업자가 이 작업과 동시에 손대고 있어서, "지금 어느 화면인가" 같은 이 작업만의
 // 상태를 그 파일에 얹으면 서로의 변경이 충돌합니다. 화면 전환은 App 컴포넌트 하나에서만
 // 쓰는 값이라 굳이 전역 스토어에 둘 이유도 없습니다 — useState로 충분합니다.
-import { useEffect, useState } from 'react'
+import { Suspense, lazy, useEffect, useState } from 'react'
 import { useEditorStore } from '@/features/editor/editorStore'
 import { adoptDraftSession, beginDraftSession, flushDraft } from '@/lib/storage/draft'
 import EditorLayout from '@/features/editor/EditorLayout'
 import StartScreen from '@/features/start/StartScreen'
-import CatalogPage from '@/features/catalog/CatalogPage'
+// 개발용 컴포넌트 카탈로그는 lazy로 따로 떼어냅니다.
+// 정적으로 import하면 배포 번들 안에 카탈로그 화면 코드가 통째로 들어가서,
+// 아무도 열 수 없는 화면 때문에 첫 로딩 용량만 늘어납니다(NFR-2).
+// lazy는 별도 파일로 나뉘어, 실제로 ?catalog 를 열 때만 내려받습니다.
+const CatalogPage = lazy(() => import('@/features/catalog/CatalogPage'))
 import type { MapDoc } from '@/lib/model/types'
 
+/** 주소에 ?catalog 가 붙었는지. 개발 빌드에서만 참이 될 수 있습니다 —
+ *  배포본에서는 주소를 직접 쳐도 카탈로그가 열리지 않습니다(개발자용 화면이라). */
 function isCatalogRoute(): boolean {
+  if (!import.meta.env.DEV) return false
   return new URLSearchParams(window.location.search).has('catalog')
 }
 
@@ -71,7 +78,13 @@ export default function App() {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload)
   }, [])
 
-  if (showCatalog) return <CatalogPage />
+  if (showCatalog) {
+    return (
+      <Suspense fallback={null}>
+        <CatalogPage />
+      </Suspense>
+    )
+  }
   if (screen === 'start') return <StartScreen onOpen={openDoc} />
   return <EditorLayout onBack={backToStart} />
 }

@@ -14,10 +14,13 @@ permissions:
   pages: write
   id-token: write
 
-# 배포가 겹쳐 실행되면 이전 배포를 취소하고 최신 것만 반영합니다.
+# 배포가 겹쳐 실행되면 한 줄로 세워 차례대로 처리합니다.
+# cancel-in-progress를 true로 두면 연달아 푸시했을 때 앞 배포가 **중간에** 끊깁니다.
+# GitHub Pages는 배포 도중 취소되면 사이트가 반쯤 올라간 상태로 남을 수 있어서,
+# 공식 Pages 예시도 false를 권합니다. 어차피 마지막 것이 최종 결과가 됩니다.
 concurrency:
   group: pages
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   build:

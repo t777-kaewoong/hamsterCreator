@@ -8,7 +8,7 @@ import { fileURLToPath, URL } from 'node:url'
 const isSingleFile = process.env.SINGLE_FILE === '1'
 
 // https://vite.dev/config/
-export default defineConfig(({ command }) => ({
+export default defineConfig(({ command, isPreview }) => ({
   // 앱이 서빙될 기준 경로. 상황마다 달라야 해서 세 갈래로 나눕니다.
   // - 개발 서버(npm run dev)     : '/' — 주소창에 http://localhost:5173 만 치면 바로 열립니다.
   //   개발 중에 하위 경로를 쓸 이유가 전혀 없는데(배포 주소와 무관), '/hamsterCreator/'로
@@ -16,7 +16,13 @@ export default defineConfig(({ command }) => ({
   // - 일반 빌드(GitHub Pages)     : '/hamsterCreator/' — 저장소 이름이 곧 하위 경로입니다.
   //   ※ 저장소 이름을 바꾸면 이 값도 반드시 같이 바꿔야 합니다.
   // - 단일 HTML 대피로 빌드       : './' — file:// 로 직접 열어야 하므로 상대 경로.
-  base: command === 'serve' ? '/' : isSingleFile ? './' : '/hamsterCreator/',
+  //
+  // ※ isPreview를 함께 보는 이유: `npm run preview`(배포 전에 빌드 결과를 확인하는 명령)에도
+  //   vite는 command로 'serve'를 넘깁니다. 그래서 command만 보면 preview가 base를 '/'로 잡는데,
+  //   정작 dist/index.html 안의 자산 주소는 '/hamsterCreator/...'로 구워져 있어 전부 404가 나고
+  //   흰 화면만 보입니다(실제로 겪음). 배포 직전 확인용 명령이 배포본을 못 여는 셈이라 분기를 나눕니다.
+  //   preview는 http://localhost:4173/hamsterCreator/ 로 열어야 합니다.
+  base: command === 'serve' && !isPreview ? '/' : isSingleFile ? './' : '/hamsterCreator/',
 
   plugins: [
     react(),

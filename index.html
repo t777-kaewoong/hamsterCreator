@@ -3,7 +3,30 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!--
+      검색엔진에 노출하지 않기 위한 표시입니다(교사 개인용 도구라 공개 검색 대상이 아님).
+
+      [robots.txt 파일을 따로 두지 않는 이유]
+      robots.txt는 도메인 최상위(t777-kaewoong.github.io/robots.txt)에서만 읽힙니다.
+      이 앱은 /hamsterCreator/ 하위 경로에 배포되므로 거기에 robots.txt를 넣어도 크롤러가
+      아예 읽지 않습니다. 반면 이 메타 태그는 페이지 단위로 확실히 동작합니다.
+      또 robots.txt로 접근을 막으면 크롤러가 페이지를 못 읽어서 이 noindex 표시도 못 보게 되어,
+      다른 곳에 링크가 걸리면 주소만 검색 결과에 남을 수 있습니다 — 막는 것보다 읽게 하고
+      "색인하지 마라"고 알려주는 쪽이 확실합니다.
+    -->
     <meta name="robots" content="noindex, nofollow, noarchive" />
+    <!--
+      탭·즐겨찾기 아이콘. 말판의 실제 모습(굵은 검은 격자선)을 그대로 단순화했습니다.
+      파일로 두지 않고 data URI로 넣은 이유: public/ 에 두면 USB로 들고 다니는 단일 HTML
+      대피로 빌드에서 파일이 따로 떨어져 나가 "한 파일" 약속이 깨집니다. 여기 인라인하면
+      일반 빌드와 대피로 빌드 양쪽에서 추가 요청 없이 똑같이 동작합니다.
+      (#은 주소에서 특별한 뜻이라 %23으로 적어야 합니다)
+    -->
+    <link
+      rel="icon"
+      type="image/svg+xml"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23ffffff'/%3E%3Cg stroke='%23111111' stroke-width='3.5'%3E%3Cpath d='M11 4v24M21 4v24M4 11h24M4 21h24'/%3E%3C/g%3E%3C/svg%3E"
+    />
     <title>햄스터S 말판 제작</title>
   </head>
   <body>

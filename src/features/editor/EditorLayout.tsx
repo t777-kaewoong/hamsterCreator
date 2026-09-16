@@ -133,10 +133,15 @@ export default function EditorLayout({ onBack }: EditorLayoutProps) {
             </Tooltip>
           </div>
 
-          {/* 개발용: 토큰·컴포넌트 카탈로그 화면으로 이동. 눈에 띄지 않도록 캔버스 구석에 작게 둡니다. */}
-          <a className={`${styles.devLink} t-caption`} href="?catalog">
-            컴포넌트 카탈로그 (개발용)
-          </a>
+          {/* 개발용: 토큰·컴포넌트 카탈로그 화면으로 이동. 눈에 띄지 않도록 캔버스 구석에 작게 둡니다.
+              배포 빌드에서는 아예 렌더하지 않습니다 — 공개 주소로 쓰는 앱에 개발자용 링크가
+              보이면 수업 중에 누가 눌러 보게 됩니다. import.meta.env.DEV는 Vite가 빌드할 때
+              false로 치환하므로, 이 블록과 CatalogPage가 배포 번들에서 통째로 빠집니다. */}
+          {import.meta.env.DEV && (
+            <a className={`${styles.devLink} t-caption`} href="?catalog">
+              컴포넌트 카탈로그 (개발용)
+            </a>
+          )}
         </div>
 
         <div className={`${styles.inspectorArea} ${inspectorCollapsed ? styles.collapsed : ''}`}>
