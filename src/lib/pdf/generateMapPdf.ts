@@ -6,6 +6,7 @@ import {
   appendBezierCurve,
   clip,
   closePath,
+  degrees,
   endPath,
   fill,
   lineTo,
@@ -21,7 +22,9 @@ import {
   setLineJoin,
   setLineWidth,
   setStrokingRgbColor,
+  setTextRenderingMode,
   stroke,
+  TextRenderingMode,
   translate,
 } from 'pdf-lib'
 import type { PDFDocument as PdfDocument, PDFFont, PDFImage, PDFPage } from 'pdf-lib'
@@ -226,7 +229,9 @@ async function drawCellGroup(context: RenderContext, aboveGrid: boolean): Promis
   for (let index = 0; index < context.doc.cells.length; index++) {
     const cell = context.doc.cells[index]
     if (!cell) continue
-    const isObject = getTile(cell.art)?.kind === 'object' || Boolean(getIcon(cell.art))
+    // 선 위에 얹을지 여부는 타일별 aboveLine 값이 정합니다(catalog.ts 주석 참고).
+    // 인쇄용 아이콘 8종은 전부 낱개 오브젝트라 항상 선 위입니다.
+    const isObject = getTile(cell.art)?.aboveLine ?? Boolean(getIcon(cell.art))
     if (isObject !== aboveGrid) continue
     const image = await imageFor(context, cell.art)
     drawTransformedImage(context, image, (index % cols) * pitch, Math.floor(index / cols) * pitch, pitch, pitch, cell.rot, cell.flip)
@@ -355,13 +360,40 @@ async function drawProps(context: RenderContext): Promise<void> {
   }
 }
 
-function drawCenteredText(context: RenderContext, label: Label): void {
+/**
+ * 라벨 하나를 지정한 mm 좌표 중앙에 그립니다.
+ *
+ * haloMm을 주면 글자 뒤에 그 두께의 흰 후광을 먼저 깔고 그 위에 본 글자를 얹습니다.
+ * 검은 격자선 위에 걸치는 글자(출발·도착 이름표)가 안 보이는 걸 막는 용도입니다.
+ * 텍스트 렌더링 모드 1(Outline)로 한 번 긋고 모드 0(Fill)로 되돌린 뒤 다시 그리는 방식이라
+ * 래스터화 없이 벡터로 남습니다(FR-6.11의 취지와 같음).
+ */
+function drawCenteredText(context: RenderContext, label: Label, haloMm = 0): void {
   if (!label.text) return
   const size = pt(label.size)
   const width = context.font.widthOfTextAtSize(label.text, size)
   const height = context.font.heightAtSize(size, { descender: true })
   const center = mapPoint(context.layout, [label.x, label.y])
   context.page.pushOperators(pushGraphicsState(), translate(center.x, center.y), rotateDegrees(-label.rot))
+
+  if (haloMm > 0) {
+    context.page.pushOperators(
+      setTextRenderingMode(TextRenderingMode.Outline),
+      setStrokingRgbColor(1, 1, 1),
+      setLineWidth(pt(haloMm)),
+      setLineJoin(LineJoinStyle.Round),
+    )
+    context.page.drawText(label.text, {
+      x: -width / 2,
+      y: -height / 2,
+      size,
+      font: context.font,
+      color: rgb(1, 1, 1),
+    })
+    // 다음 글자가 외곽선 모드로 새어 나가지 않도록 반드시 되돌립니다.
+    context.page.pushOperators(setTextRenderingMode(TextRenderingMode.Fill))
+  }
+
   context.page.drawText(label.text, {
     x: -width / 2,
     y: -height / 2,
@@ -383,8 +415,17 @@ function fillPolygon(context: RenderContext, points: Point[]): void {
   context.page.pushOperators(closePath(), fill(), popGraphicsState())
 }
 
+/** 마커 이름표. 검은 격자선 위에 걸쳐도 읽히도록 흰 후광을 깔고 검은 글자를 얹습니다.
+ *  두께 1.5mm는 화면(drawBoard.ts의 MARKER_CAPTION_HALO_MM)과 같은 값입니다 —
+ *  한쪽만 바꾸면 화면과 인쇄물이 달라 보이므로 항상 같이 맞추세요. */
+const MARKER_CAPTION_HALO_MM = 1.5
+
 function drawMarkerCaption(context: RenderContext, text: string, xMm: number, yMm: number): void {
-  drawCenteredText(context, { text, x: xMm, y: yMm, rot: 0, size: 6, color: '#111111', onLine: false })
+  drawCenteredText(
+    context,
+    { text, x: xMm, y: yMm, rot: 0, size: 6, color: '#111111', onLine: false },
+    MARKER_CAPTION_HALO_MM,
+  )
 }
 
 function drawMarkers(context: RenderContext): void {
@@ -429,31 +470,135 @@ function drawMarkers(context: RenderContext): void {
   })
 }
 
+/**
+ * 종이 가장자리에서 이만큼 안쪽이어야 프린터가 확실히 찍어 줍니다(mm).
+ *
+ * [왜 8mm인가 — 2026-09-16]
+ * 예전에는 50mm 눈금자를 종이 아래 끝에서 1.4mm 지점에(눈금 0.7~2.7mm, "50 mm" 글자 0.65mm),
+ * "실제 크기로 인쇄하세요" 안내를 위 끝에서 3.5mm 지점에 뒀습니다. 그런데 학교에서 흔히 쓰는
+ * 레이저 복합기·잉크젯은 A4 상하 4.2~5mm를 아예 인쇄하지 못합니다(테두리 없는 인쇄 미지원).
+ * 그래서 둘 다 종이에 안 찍혔습니다 — 자로 재라고 넣은 눈금자가 정작 인쇄물에 없었던 겁니다
+ * (S2 "피치 50mm ±0.5mm 실측"을 할 수단이 사라짐). 8mm면 위 기종들을 모두 넘깁니다.
+ */
+const SAFE_PRINT_EDGE_MM = 8
+
+/**
+ * 안내 요소를 넣으려면 여백 띠가 최소 이만큼은 돼야 합니다(mm).
+ * SAFE_PRINT_EDGE_MM(8) + 눈금자·글자가 차지하는 두께(약 5.4) + 여유.
+ */
+const GUIDE_MIN_BAND_MM = 14
+
+/**
+ * 안내 요소를 가로로 눕힐지 세로로 세울지 정합니다.
+ *
+ * 맵은 항상 용지 한가운데 놓이므로(paperLayout / tiledLayout) 좌우 여백 = offsetXmm,
+ * 상하 여백 = offsetYmm 입니다. 칸이 50mm이고 용지 규격은 50의 배수가 아니라서,
+ * 두 축 중 한쪽에는 반드시 큰 자투리가 남습니다. 그 넓은 쪽 띠에 넣으면 맵을 조금도
+ * 가리지 않고 인쇄 가능 영역 안에 들어갑니다.
+ *   예) A4 가로 5×4 → 좌우 23.5mm / 상하 5mm  → 세로(좌우 띠)
+ *       A4 세로 4×5 → 좌우 5mm / 상하 23.5mm → 가로(상하 띠)
+ * 둘 다 좁은 드문 경우에만 가로로 두되 흰 바탕을 깔아 맵 위에 겹칩니다.
+ */
+function guidePlacement(layout: Layout): { vertical: boolean; plate: boolean } {
+  if (layout.offsetYmm >= GUIDE_MIN_BAND_MM) return { vertical: false, plate: false }
+  if (layout.offsetXmm >= GUIDE_MIN_BAND_MM) return { vertical: true, plate: false }
+  return { vertical: false, plate: true }
+}
+
 function drawPageGuides(context: RenderContext, pageLabel?: string): void {
   const { page, font, layout, doc } = context
+  const { vertical, plate } = guidePlacement(layout)
   const noticeSize = pt(2.4)
   const noticeWidth = font.widthOfTextAtSize(PRINT_NOTICE, noticeSize)
+  const black = rgb(0, 0, 0)
+
+  /** 맵 위에 겹칠 수밖에 없을 때만 까는 흰 바탕. 겹치지 않는 경우에는 아무것도 그리지 않습니다. */
+  const backing = (xMm: number, yMm: number, wMm: number, hMm: number) => {
+    if (!plate) return
+    page.drawRectangle({ x: pt(xMm), y: pt(yMm), width: pt(wMm), height: pt(hMm), color: rgb(1, 1, 1), opacity: 0.9 })
+  }
+
+  if (vertical) {
+    // ── 안내 문구: 오른쪽 띠에 90° 세워서 ──────────────────────────────
+    // degrees(90)이면 글자가 위로 진행하고 글자 높이는 x가 작아지는 쪽으로 자랍니다.
+    // 그래서 기준 x를 띠의 오른쪽 끝에 두면 글자가 통째로 띠 안에 들어옵니다.
+    page.drawText(PRINT_NOTICE, {
+      x: pt(layout.pageWidthMm - SAFE_PRINT_EDGE_MM),
+      y: (pt(layout.pageHeightMm) - noticeWidth) / 2,
+      size: noticeSize,
+      font,
+      color: black,
+      rotate: degrees(90),
+    })
+    if (pageLabel) {
+      page.drawText(pageLabel, {
+        x: pt(layout.pageWidthMm - SAFE_PRINT_EDGE_MM),
+        y: pt(SAFE_PRINT_EDGE_MM),
+        size: pt(2.4),
+        font,
+        color: black,
+        rotate: degrees(90),
+      })
+    }
+
+    if (!doc.print.scaleRuler) return
+    // ── 50mm 눈금자: 왼쪽 띠에 세로로 ─────────────────────────────────
+    const x = pt(SAFE_PRINT_EDGE_MM + 1.5)
+    const startY = (pt(layout.pageHeightMm) - pt(50)) / 2
+    const endY = startY + pt(50)
+    page.drawLine({ start: { x, y: startY }, end: { x, y: endY }, thickness: pt(0.3), color: black })
+    for (const y of [startY, endY]) {
+      page.drawLine({
+        start: { x: pt(SAFE_PRINT_EDGE_MM), y },
+        end: { x: pt(SAFE_PRINT_EDGE_MM + 3), y },
+        thickness: pt(0.3),
+        color: black,
+      })
+    }
+    page.drawText('50 mm', {
+      x: pt(SAFE_PRINT_EDGE_MM + 5.4),
+      y: endY + pt(2),
+      size: pt(2.2),
+      font,
+      color: black,
+      rotate: degrees(90),
+    })
+    return
+  }
+
+  // ── 안내 문구: 위쪽 띠에 가로로 ────────────────────────────────────
+  const noticeBaselineMm = layout.pageHeightMm - SAFE_PRINT_EDGE_MM - 2.4
+  backing(SAFE_PRINT_EDGE_MM, noticeBaselineMm - 0.8, layout.pageWidthMm - SAFE_PRINT_EDGE_MM * 2, 4)
   page.drawText(PRINT_NOTICE, {
     x: (pt(layout.pageWidthMm) - noticeWidth) / 2,
-    y: pt(layout.pageHeightMm - 3.5),
+    y: pt(noticeBaselineMm),
     size: noticeSize,
     font,
-    color: rgb(0, 0, 0),
+    color: black,
   })
 
   if (pageLabel) {
-    page.drawText(pageLabel, { x: pt(4), y: pt(layout.pageHeightMm - 3.5), size: pt(2.4), font, color: rgb(0, 0, 0) })
+    page.drawText(pageLabel, { x: pt(SAFE_PRINT_EDGE_MM), y: pt(noticeBaselineMm), size: pt(2.4), font, color: black })
   }
 
   if (!doc.print.scaleRuler) return
-  const startX = pt(layout.offsetXmm)
+  // ── 50mm 눈금자: 아래쪽 띠에 가로로 ────────────────────────────────
+  // 맵 왼쪽 끝에 맞추되, 그 위치가 인쇄 불가 영역이면 안쪽으로 당깁니다.
+  const startXmm = Math.max(layout.offsetXmm, SAFE_PRINT_EDGE_MM)
+  const startX = pt(startXmm)
   const endX = startX + pt(50)
-  const y = pt(1.4)
-  page.drawLine({ start: { x: startX, y }, end: { x: endX, y }, thickness: pt(0.3), color: rgb(0, 0, 0) })
+  const y = pt(SAFE_PRINT_EDGE_MM + 1.5)
+  backing(startXmm - 2, SAFE_PRINT_EDGE_MM - 1, 50 + 16, 5.5)
+  page.drawLine({ start: { x: startX, y }, end: { x: endX, y }, thickness: pt(0.3), color: black })
   for (const x of [startX, endX]) {
-    page.drawLine({ start: { x, y: pt(0.7) }, end: { x, y: pt(2.7) }, thickness: pt(0.3), color: rgb(0, 0, 0) })
+    page.drawLine({
+      start: { x, y: pt(SAFE_PRINT_EDGE_MM) },
+      end: { x, y: pt(SAFE_PRINT_EDGE_MM + 3) },
+      thickness: pt(0.3),
+      color: black,
+    })
   }
-  page.drawText('50 mm', { x: endX + pt(2), y: pt(0.65), size: pt(2.2), font, color: rgb(0, 0, 0) })
+  page.drawText('50 mm', { x: endX + pt(2), y: pt(SAFE_PRINT_EDGE_MM + 0.4), size: pt(2.2), font, color: black })
 }
 
 async function drawMapContent(context: RenderContext): Promise<void> {
@@ -488,14 +633,66 @@ function drawAbsolutePolygon(page: PDFPage, points: Array<{ x: number; y: number
   page.pushOperators(closePath(), fill(), popGraphicsState())
 }
 
+/**
+ * 재단 마크가 종이 끝에서 이만큼은 떨어져 있어야 프린터가 찍어 줍니다(mm).
+ * 눈금자(SAFE_PRINT_EDGE_MM = 8)보다 느슨하게 잡았습니다 — 눈금자는 자를 대고 재야 해서
+ * 넉넉해야 하지만, 재단 마크는 가위를 맞출 수 있을 만큼만 보이면 되기 때문입니다.
+ */
+const MARK_SAFE_EDGE_MM = 6
+/** 여백이 넉넉할 때 재단 마크가 재단선 바깥으로 뻗는 길이(mm). 원래 값입니다. */
+const MARK_OUTWARD_MM = 3
+/** 바깥에 자리가 없을 때 안쪽으로 뒤집어 그리는 길이(mm). */
+const MARK_INWARD_MM = 1.5
+/** 변 중앙 정렬 삼각 마크의 밑변 절반 길이(mm). 높이만 여백에 맞춰 조정합니다. */
+const MARK_TRIANGLE_HALF_MM = 2.2
+
+/**
+ * 한쪽 변의 재단 마크를 얼마나, 어느 방향으로 그릴지 정합니다.
+ *
+ * [2026-09-16 — 상하 마크가 인쇄 불가 영역에 찍히던 문제]
+ * 원래는 항상 재단선 바깥으로 3mm를 뻗었습니다. 그런데 A4 가로 5×4처럼 상하 여백이
+ * 5mm뿐인 시트에서는 그 마크가 종이 끝에서 2mm 지점에 놓여, 프린터가 아예 인쇄하지
+ * 못하는 구간(보통 4.2~5mm)에 들어갔습니다. 재단선 점선 자체는 5mm 지점이라 살아남지만
+ * 모서리 마크와 정렬 삼각형이 통째로 사라졌습니다.
+ *
+ * 그래서 바깥 여백이 모자라면 길이를 줄이고, 그래도 자리가 없으면 **안쪽으로 뒤집어** 그립니다.
+ * 안쪽 마크도 재단선 모서리를 똑같이 가리키므로 가위를 맞추는 데 지장이 없고,
+ * 격자선은 재단선에서 21mm 안쪽부터 시작하므로(칸 중심 25mm − 선폭 절반 4mm) 선을 건드리지 않습니다.
+ * 다만 그 모서리 칸에 아트 타일이 깔려 있으면 마크가 그림 위에 겹쳐 보입니다.
+ */
+function markReach(marginMm: number): { lengthPt: number; inward: boolean } {
+  const room = marginMm - MARK_SAFE_EDGE_MM
+  if (room >= 1.2) return { lengthPt: pt(Math.min(MARK_OUTWARD_MM, room)), inward: false }
+  return { lengthPt: pt(MARK_INWARD_MM), inward: true }
+}
+
+/** markReach 결과를 "바깥 = 양수, 안쪽 = 음수"인 오프셋으로 바꿉니다. */
+function markOffset(reach: { lengthPt: number; inward: boolean }): number {
+  return reach.inward ? -reach.lengthPt : reach.lengthPt
+}
+
+/** 정렬 삼각형의 높이. 마크 길이를 넘지 않게 잘라서 같은 방향으로 맞춥니다. */
+function triangleHeight(reach: { lengthPt: number; inward: boolean }): number {
+  const height = Math.min(pt(MARK_TRIANGLE_HALF_MM), reach.lengthPt)
+  return reach.inward ? -height : height
+}
+
 function drawTileMarks(context: RenderContext, plan: PrintPlanOption, region: TileRegion): void {
   const { page, layout, doc, font } = context
   const left = pt(layout.offsetXmm)
   const right = left + pt(region.cols * doc.board.pitch)
   const top = pt(layout.pageHeightMm - layout.offsetYmm)
   const bottom = top - pt(region.rows * doc.board.pitch)
-  const mark = pt(3)
   const thin = pt(0.25)
+
+  // 네 변의 실제 여백을 따로 잽니다. 겹치기(overlap) 이음매를 쓰면 맵이 한쪽으로만
+  // 넓어져서 좌우·상하 여백이 서로 달라지기 때문입니다.
+  const widthMm = region.cols * doc.board.pitch
+  const heightMm = region.rows * doc.board.pitch
+  const reachTop = markReach(layout.offsetYmm)
+  const reachBottom = markReach(layout.pageHeightMm - layout.offsetYmm - heightMm)
+  const reachLeft = markReach(layout.offsetXmm)
+  const reachRight = markReach(layout.pageWidthMm - layout.offsetXmm - widthMm)
 
   if (doc.print.cropMarks) {
     const trimLines = [
@@ -508,35 +705,48 @@ function drawTileMarks(context: RenderContext, plan: PrintPlanOption, region: Ti
       page.drawLine({ start, end, thickness: thin, color: rgb(0.31, 0.275, 0.898), dashArray: [pt(1.5), pt(1)] })
     }
 
+    // 모서리 재단 마크. 여백이 있으면 바깥으로, 없으면 안쪽으로 그립니다(markReach 주석 참고).
+    const outTop = markOffset(reachTop)
+    const outBottom = markOffset(reachBottom)
+    const outLeft = markOffset(reachLeft)
+    const outRight = markOffset(reachRight)
     for (const x of [left, right]) {
-      page.drawLine({ start: { x, y: bottom - mark }, end: { x, y: bottom }, thickness: thin, color: rgb(0, 0, 0) })
-      page.drawLine({ start: { x, y: top }, end: { x, y: top + mark }, thickness: thin, color: rgb(0, 0, 0) })
+      page.drawLine({ start: { x, y: bottom - outBottom }, end: { x, y: bottom }, thickness: thin, color: rgb(0, 0, 0) })
+      page.drawLine({ start: { x, y: top }, end: { x, y: top + outTop }, thickness: thin, color: rgb(0, 0, 0) })
     }
     for (const y of [bottom, top]) {
-      page.drawLine({ start: { x: left - mark, y }, end: { x: left, y }, thickness: thin, color: rgb(0, 0, 0) })
-      page.drawLine({ start: { x: right, y }, end: { x: right + mark, y }, thickness: thin, color: rgb(0, 0, 0) })
+      page.drawLine({ start: { x: left - outLeft, y }, end: { x: left, y }, thickness: thin, color: rgb(0, 0, 0) })
+      page.drawLine({ start: { x: right, y }, end: { x: right + outRight, y }, thickness: thin, color: rgb(0, 0, 0) })
     }
 
-    const triangle = pt(2.2)
+    // 변 중앙 정렬 삼각 마크(FR-6.4). 꼭짓점은 항상 재단선을 가리키고, 밑변만 여백 쪽으로
+    // 물러납니다. 여백이 없으면 위 마크와 같은 이유로 안쪽을 향해 뒤집힙니다.
+    const half = pt(MARK_TRIANGLE_HALF_MM)
+    const midX = (left + right) / 2
+    const midY = (bottom + top) / 2
+    const hTop = triangleHeight(reachTop)
+    const hBottom = triangleHeight(reachBottom)
+    const hLeft = triangleHeight(reachLeft)
+    const hRight = triangleHeight(reachRight)
     drawAbsolutePolygon(page, [
-      { x: (left + right) / 2 - triangle, y: top + triangle },
-      { x: (left + right) / 2 + triangle, y: top + triangle },
-      { x: (left + right) / 2, y: top },
+      { x: midX - half, y: top + hTop },
+      { x: midX + half, y: top + hTop },
+      { x: midX, y: top },
     ])
     drawAbsolutePolygon(page, [
-      { x: (left + right) / 2 - triangle, y: bottom - triangle },
-      { x: (left + right) / 2 + triangle, y: bottom - triangle },
-      { x: (left + right) / 2, y: bottom },
+      { x: midX - half, y: bottom - hBottom },
+      { x: midX + half, y: bottom - hBottom },
+      { x: midX, y: bottom },
     ])
     drawAbsolutePolygon(page, [
-      { x: left - triangle, y: (bottom + top) / 2 - triangle },
-      { x: left - triangle, y: (bottom + top) / 2 + triangle },
-      { x: left, y: (bottom + top) / 2 },
+      { x: left - hLeft, y: midY - half },
+      { x: left - hLeft, y: midY + half },
+      { x: left, y: midY },
     ])
     drawAbsolutePolygon(page, [
-      { x: right + triangle, y: (bottom + top) / 2 - triangle },
-      { x: right + triangle, y: (bottom + top) / 2 + triangle },
-      { x: right, y: (bottom + top) / 2 },
+      { x: right + hRight, y: midY - half },
+      { x: right + hRight, y: midY + half },
+      { x: right, y: midY },
     ])
   }
 

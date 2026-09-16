@@ -2,7 +2,16 @@
 //
 // 편집 중 500ms 동안 추가 입력이 없으면 localStorage에 지금 맵 상태를 저장해둡니다. 앱을
 // 다시 열었을 때 브라우저가 갑자기 닫혔거나 저장을 깜빡한 경우 복구할 수 있게 하기 위해서입니다.
-// "이번 실행(세션)"마다 초안 하나를 계속 덮어쓰고, 최근 5번의 실행분까지만 남겨둡니다.
+// "지금 편집 중인 문서 하나"마다 초안 슬롯 하나를 계속 덮어쓰고, 최근 5개까지만 남겨둡니다.
+//
+// [2026-09-16 수정 — 맵을 갈아타면 앞 맵 초안이 사라지던 문제]
+// 예전에는 슬롯 id가 "브라우저 페이지 로드 1회당 하나"였습니다. 그래서 한 번 앱을 켠 상태로
+// 맵 A를 편집하다 시작 화면으로 나가 맵 B를 열면, B가 A와 같은 슬롯에 덮어써져서 A의 초안이
+// 통째로 없어졌습니다(실제로 재현했습니다). 수업 준비 중에 말판 여러 개를 오가는 건 이 앱의
+// 일상적인 사용 방식이라 드문 사고가 아니었습니다.
+// 이제는 문서를 새로 열 때마다 beginDraftSession()으로 슬롯을 새로 따고, 초안을 복구해서
+// 연 경우에만 adoptDraftSession(id)으로 원래 슬롯을 이어서 씁니다(복구할 때마다 슬롯이
+// 늘어나 5칸을 금방 밀어내는 걸 막기 위해서입니다).
 //
 // userAssets를 초안에서 빼는 이유: localStorage는 브라우저마다 다르지만 보통 도메인당
 // 약 5MB로 한도가 작습니다(PRD §4.3). 사용자 이미지는 base64라 원본보다 커지고 여러 장이면
@@ -32,8 +41,8 @@ export interface DraftSummary {
   updatedAt: string
 }
 
-// 이번 브라우저 실행(페이지가 로드된 이후) 동안 계속 같은 초안 슬롯에 덮어쓰기 위한 id.
-// 모듈이 다시 로드되면(새로고침·재실행) 새 id가 생기고, 이전 실행의 초안은 목록에 그대로 남습니다.
+// 지금 편집 중인 문서가 쓰는 초안 슬롯 id. 문서를 새로 열 때 beginDraftSession()이
+// 이 값을 비우고, 다음 saveDraft() 호출이 새 id를 하나 만듭니다.
 let sessionDraftId: string | null = null
 function getSessionDraftId(): string {
   if (!sessionDraftId) {
@@ -43,6 +52,42 @@ function getSessionDraftId(): string {
 }
 
 let debounceTimer: number | undefined
+// 아직 디바운스 대기 중이라 localStorage에 안 쓰인 내용. 문서를 갈아타거나 탭을 닫을 때
+// 이걸 먼저 흘려보내지 않으면 "마지막 0.5초 안의 편집"이 통째로 사라집니다.
+let pendingWrite: { id: string; doc: MapDoc } | null = null
+
+/** 대기 중인 초안 쓰기가 있으면 지금 즉시 반영합니다. 없으면 아무 일도 하지 않습니다. */
+export function flushDraft(): void {
+  if (typeof window !== 'undefined') window.clearTimeout(debounceTimer)
+  debounceTimer = undefined
+  const pending = pendingWrite
+  pendingWrite = null
+  if (pending) persistNow(pending.id, pending.doc)
+}
+
+/**
+ * 새 문서를 열기 직전에 부릅니다. 지금까지 편집하던 문서의 마지막 내용을 확실히 남긴 뒤
+ * 슬롯을 새로 따게 만들어서, 새 문서가 이전 문서의 초안을 덮어쓰지 않게 합니다.
+ */
+export function beginDraftSession(): void {
+  flushDraft()
+  sessionDraftId = null
+}
+
+/**
+ * 초안 복구로 문서를 연 경우에 부릅니다. 복구한 그 슬롯을 계속 쓰게 해서, 복구할 때마다
+ * 슬롯이 하나씩 늘어나 최근 5개 자리를 스스로 밀어내는 일을 막습니다.
+ */
+export function adoptDraftSession(id: string): void {
+  flushDraft()
+  sessionDraftId = id
+}
+
+/** 지금 문서가 쓰는 초안 슬롯 id. 아직 한 번도 저장 예약이 없었으면 null.
+ *  파일로 정식 저장을 마친 뒤 clearDraft()에 넘겨 초안을 정리하는 용도입니다. */
+export function currentDraftId(): string | null {
+  return sessionDraftId
+}
 
 /**
  * 지금 맵 상태를 초안으로 저장 예약합니다. 500ms 안에 또 부르면 이전 예약은 취소되고
@@ -56,8 +101,10 @@ export function saveDraft(doc: MapDoc): string {
   if (typeof window === 'undefined') return id
 
   window.clearTimeout(debounceTimer)
+  pendingWrite = { id, doc }
   debounceTimer = window.setTimeout(() => {
     debounceTimer = undefined
+    pendingWrite = null
     persistNow(id, doc)
   }, DEBOUNCE_MS)
 
@@ -79,6 +126,14 @@ export function loadDraft(id: string): MapDoc | null {
 
 /** 초안 하나를 지웁니다. 명시적으로 파일 저장을 마쳤을 때 부르면 됩니다(§4.3). */
 export function clearDraft(id: string): void {
+  // 지금 슬롯을 지우는 경우, 대기 중인 쓰기가 남아 있으면 지운 직후에 되살아납니다.
+  // 그래서 먼저 보류분을 버립니다.
+  if (id === sessionDraftId) {
+    if (typeof window !== 'undefined') window.clearTimeout(debounceTimer)
+    debounceTimer = undefined
+    pendingWrite = null
+    sessionDraftId = null
+  }
   try {
     const remaining = readAll().filter((d) => d.id !== id)
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(remaining))

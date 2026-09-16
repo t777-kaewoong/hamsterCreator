@@ -223,10 +223,17 @@ interface EditorState {
   addUserAsset: (asset: UserAsset) => string | null
 }
 
-// storeKind/canOverwrite는 createMapStore()가 돌려주는 값 중 세션 내내 변하지 않는
-// 두 값만 뽑아 쓰는 것이라, 실제 파일 저장에 쓰는 인스턴스를 따로 만들 필요 없이
-// 스토어 초기화 시점에 딱 한 번만 확인하면 충분합니다.
-const probe = createMapStore()
+/**
+ * 앱 전체가 공유하는 맵 저장소 인스턴스.
+ *
+ * [왜 여기서 딱 하나만 만드는가]
+ * FsaStore는 마지막으로 열거나 저장한 파일의 핸들을 인스턴스 안에 들고 있어야 "저장"이
+ * 대화상자 없이 같은 파일에 덮어써집니다(FR-1.4). 컴포넌트마다 createMapStore()를 새로
+ * 부르면 핸들이 매번 사라져서 저장이 늘 "다른 이름으로 저장"처럼 동작합니다.
+ * 그래서 모듈 수준에서 한 번만 만들고, TopBar·StartScreen이 이 인스턴스를 가져다 씁니다.
+ * storeKind/canOverwrite도 이 인스턴스에서 그대로 읽습니다.
+ */
+export const mapStore = createMapStore()
 
 /** requestFocus가 nonce를 발급할 때 쓰는 전역 카운터. Date.now()는 같은 밀리초 안에
  *  두 번 클릭하면(빠른 더블클릭) 값이 겹칠 수 있어, 항상 1씩 늘어나는 정수 카운터를
@@ -240,8 +247,8 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
   activeShape: 'circle',
   markerMode: 'start',
   markerHeading: 'N',
-  storeKind: probe.kind,
-  canOverwrite: probe.canOverwrite,
+  storeKind: mapStore.kind,
+  canOverwrite: mapStore.canOverwrite,
   saveState: 'saved',
   activeTheme: 'dungeon',
   paletteQuery: '',

@@ -5,6 +5,7 @@
     "theme": "dungeon",
     "themeName": "던전",
     "kind": "object",
+    "aboveLine": true,
     "w": 433,
     "h": 433,
     "bytes": 7025
@@ -15,6 +16,7 @@
     "theme": "dungeon",
     "themeName": "던전",
     "kind": "object",
+    "aboveLine": true,
     "w": 433,
     "h": 433,
     "bytes": 7310
@@ -25,6 +27,7 @@
     "theme": "dungeon",
     "themeName": "던전",
     "kind": "floor",
+    "aboveLine": false,
     "w": 433,
     "h": 433,
     "bytes": 4635
@@ -35,6 +38,7 @@
     "theme": "dungeon",
     "themeName": "던전",
     "kind": "object",
+    "aboveLine": true,
     "w": 433,
     "h": 433,
     "bytes": 25798
@@ -45,6 +49,7 @@
     "theme": "dungeon",
     "themeName": "던전",
     "kind": "floor",
+    "aboveLine": false,
     "w": 433,
     "h": 433,
     "bytes": 4112
@@ -55,6 +60,7 @@
     "theme": "dungeon",
     "themeName": "던전",
     "kind": "floor",
+    "aboveLine": false,
     "w": 433,
     "h": 433,
     "bytes": 3974
@@ -65,6 +71,7 @@
     "theme": "forest",
     "themeName": "숲",
     "kind": "object",
+    "aboveLine": true,
     "w": 433,
     "h": 433,
     "bytes": 12524
@@ -75,6 +82,7 @@
     "theme": "forest",
     "themeName": "숲",
     "kind": "object",
+    "aboveLine": true,
     "w": 433,
     "h": 433,
     "bytes": 27203
@@ -85,6 +93,7 @@
     "theme": "forest",
     "themeName": "숲",
     "kind": "block",
+    "aboveLine": true,
     "w": 433,
     "h": 433,
     "bytes": 10084
@@ -95,6 +104,7 @@
     "theme": "forest",
     "themeName": "숲",
     "kind": "block",
+    "aboveLine": true,
     "w": 433,
     "h": 433,
     "bytes": 11502
@@ -105,6 +115,7 @@
     "theme": "ice",
     "themeName": "얼음",
     "kind": "object",
+    "aboveLine": true,
     "w": 433,
     "h": 433,
     "bytes": 17503
@@ -115,6 +126,7 @@
     "theme": "ice",
     "themeName": "얼음",
     "kind": "object",
+    "aboveLine": true,
     "w": 433,
     "h": 433,
     "bytes": 24595
@@ -125,6 +137,7 @@
     "theme": "ice",
     "themeName": "얼음",
     "kind": "block",
+    "aboveLine": true,
     "w": 433,
     "h": 433,
     "bytes": 17392
@@ -135,6 +148,7 @@
     "theme": "ice",
     "themeName": "얼음",
     "kind": "block",
+    "aboveLine": false,
     "w": 433,
     "h": 433,
     "bytes": 7913
@@ -145,6 +159,7 @@
     "theme": "ice",
     "themeName": "얼음",
     "kind": "block",
+    "aboveLine": false,
     "w": 433,
     "h": 433,
     "bytes": 9185
@@ -155,6 +170,7 @@
     "theme": "ice",
     "themeName": "얼음",
     "kind": "block",
+    "aboveLine": true,
     "w": 433,
     "h": 433,
     "bytes": 18578
@@ -165,6 +181,7 @@
     "theme": "adventure",
     "themeName": "모험",
     "kind": "object",
+    "aboveLine": true,
     "w": 433,
     "h": 433,
     "bytes": 23591
@@ -175,6 +192,7 @@
     "theme": "adventure",
     "themeName": "모험",
     "kind": "object",
+    "aboveLine": true,
     "w": 433,
     "h": 433,
     "bytes": 24181
@@ -185,6 +203,7 @@
     "theme": "adventure",
     "themeName": "모험",
     "kind": "object",
+    "aboveLine": true,
     "w": 433,
     "h": 433,
     "bytes": 2663
@@ -195,6 +214,7 @@
     "theme": "adventure",
     "themeName": "모험",
     "kind": "floor",
+    "aboveLine": false,
     "w": 433,
     "h": 433,
     "bytes": 4122
@@ -205,6 +225,7 @@
     "theme": "adventure",
     "themeName": "모험",
     "kind": "floor",
+    "aboveLine": false,
     "w": 433,
     "h": 433,
     "bytes": 20422
@@ -215,6 +236,7 @@
     "theme": "adventure",
     "themeName": "모험",
     "kind": "object",
+    "aboveLine": true,
     "w": 433,
     "h": 433,
     "bytes": 4995
@@ -225,6 +247,7 @@
     "theme": "adventure",
     "themeName": "모험",
     "kind": "object",
+    "aboveLine": true,
     "w": 433,
     "h": 433,
     "bytes": 13660
@@ -235,6 +258,7 @@
     "theme": "candy",
     "themeName": "사탕",
     "kind": "object",
+    "aboveLine": true,
     "w": 433,
     "h": 433,
     "bytes": 22111
@@ -245,6 +269,7 @@
     "theme": "candy",
     "themeName": "사탕",
     "kind": "object",
+    "aboveLine": true,
     "w": 433,
     "h": 433,
     "bytes": 22847
@@ -255,6 +280,7 @@
     "theme": "candy",
     "themeName": "사탕",
     "kind": "floor",
+    "aboveLine": false,
     "w": 433,
     "h": 433,
     "bytes": 3814
@@ -265,6 +291,7 @@
     "theme": "candy",
     "themeName": "사탕",
     "kind": "object",
+    "aboveLine": true,
     "w": 433,
     "h": 433,
     "bytes": 2844
@@ -275,6 +302,7 @@
     "theme": "candy",
     "themeName": "사탕",
     "kind": "object",
+    "aboveLine": true,
     "w": 433,
     "h": 433,
     "bytes": 4488
@@ -285,6 +313,7 @@
     "theme": "dino",
     "themeName": "공룡",
     "kind": "object",
+    "aboveLine": true,
     "w": 433,
     "h": 433,
     "bytes": 9575
@@ -295,6 +324,7 @@
     "theme": "dino",
     "themeName": "공룡",
     "kind": "object",
+    "aboveLine": true,
     "w": 433,
     "h": 433,
     "bytes": 23086
@@ -305,6 +335,7 @@
     "theme": "dino",
     "themeName": "공룡",
     "kind": "object",
+    "aboveLine": true,
     "w": 433,
     "h": 433,
     "bytes": 24639
@@ -315,6 +346,7 @@
     "theme": "dino",
     "themeName": "공룡",
     "kind": "floor",
+    "aboveLine": false,
     "w": 433,
     "h": 433,
     "bytes": 4996
@@ -325,6 +357,7 @@
     "theme": "dino",
     "themeName": "공룡",
     "kind": "floor",
+    "aboveLine": false,
     "w": 433,
     "h": 433,
     "bytes": 3922
@@ -335,6 +368,7 @@
     "theme": "dino",
     "themeName": "공룡",
     "kind": "block",
+    "aboveLine": true,
     "w": 433,
     "h": 433,
     "bytes": 8882
@@ -345,6 +379,7 @@
     "theme": "dino",
     "themeName": "공룡",
     "kind": "floor",
+    "aboveLine": false,
     "w": 433,
     "h": 433,
     "bytes": 14630

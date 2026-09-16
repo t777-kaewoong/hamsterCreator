@@ -125,7 +125,9 @@ function drawCellArtGroup(
 
   doc.cells.forEach((cell, index) => {
     if (!cell) return
-    const isObject = getTile(cell.art)?.kind === 'object' || Boolean(getIcon(cell.art))
+    // 선 위에 얹을지 여부는 타일별 aboveLine 값이 정합니다(catalog.ts 주석 참고).
+    // 인쇄용 아이콘 8종은 전부 낱개 오브젝트라 항상 선 위입니다.
+    const isObject = getTile(cell.art)?.aboveLine ?? Boolean(getIcon(cell.art))
     if (isObject !== aboveGrid) return
     const bitmap = tileBitmapCache.get(cell.art, doc.userAssets)
     if (!bitmap) return // 아직 디코드 전 — 로드 완료 알림이 두 아트 레이어를 다시 dirty 표시함
@@ -302,7 +304,23 @@ const MARKER_LABEL_SIZE_MM = 6
 const MARKER_COLOR = '#111'
 const MARKER_BACKGROUND = '#fff'
 
-/** 마커 이름표(글자)를 원 바로 아래 중앙에 그립니다. 출발·도착이 이 부분만 공유합니다. */
+/** 마커 이름표(글자)를 원 바로 아래 중앙에 그립니다. 출발·도착이 이 부분만 공유합니다.
+ *
+ *  [2026-09-16 — 검은 선 위 검은 글씨로 안 보이던 문제]
+ *  마커는 항상 노드(=칸 중심)에 놓이고, 세로 격자선(8mm)이 바로 그 아래를 지나갑니다.
+ *  이름표를 원 아래에 두면 그 검은 선 위에 검은 글씨가 찍혀 화면에서도 인쇄물에서도
+ *  전혀 읽을 수 없었습니다(도착지 이름이 통째로 안 보임).
+ *
+ *  FR-4.2의 "선 위 흰 글씨" 모드를 그대로 쓸 수는 없습니다. 그 모드는 글자가 검은 선
+ *  안에 완전히 들어가 있다는 전제인데, 이름표는 "도서관"처럼 8mm 선보다 가로로 넓어서
+ *  절반은 흰 종이 위에 걸칩니다 — 흰 글씨로 하면 이번엔 종이 쪽이 안 보입니다.
+ *  그래서 검은 글자 뒤에 흰 후광(외곽선)을 깔았습니다. 검은 선 위든 흰 종이 위든 똑같이
+ *  읽힙니다. 후광 두께를 1.5mm로 잡은 건 6mm 글자 기준 양옆 0.75mm씩이라 8mm 선을
+ *  가리지 않으면서도 획이 묻히지 않는 값이기 때문입니다(PRD 미규정 — 임의로 정함).
+ *  ※ 후광은 글자 외곽만 덮으므로, 이미 마커 원이 만들어 둔 흰 바탕 말고 격자선을
+ *    추가로 지우지는 않습니다. */
+const MARKER_CAPTION_HALO_MM = 1.5
+
 function drawMarkerCaption(
   ctx: CanvasRenderingContext2D,
   centerX: number,
@@ -311,14 +329,23 @@ function drawMarkerCaption(
   ringWidthPx: number,
   labelSizePx: number,
   text: string,
+  haloPx: number,
 ): void {
   ctx.save()
   ctx.font = `${LABEL_FONT_WEIGHT} ${labelSizePx}px ${LABEL_FONT_FAMILY}`
   ctx.textAlign = 'center'
   ctx.textBaseline = 'hanging'
-  ctx.fillStyle = MARKER_COLOR
   // 원의 테두리 바로 아래(반지름 + 선굵기 절반)에서 시작해 살짝 더 띄웁니다.
-  ctx.fillText(text, centerX, centerY + outerRadiusPx + ringWidthPx / 2 + 2)
+  const y = centerY + outerRadiusPx + ringWidthPx / 2 + 2
+  if (haloPx > 0) {
+    ctx.lineWidth = haloPx
+    ctx.strokeStyle = MARKER_BACKGROUND
+    ctx.lineJoin = 'round'
+    ctx.miterLimit = 2
+    ctx.strokeText(text, centerX, y)
+  }
+  ctx.fillStyle = MARKER_COLOR
+  ctx.fillText(text, centerX, y)
   ctx.restore()
 }
 
@@ -332,6 +359,7 @@ export function drawMarkersLayer(ctx: CanvasRenderingContext2D, viewport: Viewpo
   const innerRadiusPx = viewport.mmToPx(MARKER_INNER_DIAMETER_MM / 2)
   const ringWidthPx = viewport.mmToPx(MARKER_RING_WIDTH_MM)
   const labelSizePx = viewport.mmToPx(MARKER_LABEL_SIZE_MM)
+  const captionHaloPx = viewport.mmToPx(MARKER_CAPTION_HALO_MM)
 
   if (doc.markers.start) {
     const { cell, heading } = doc.markers.start
@@ -370,7 +398,7 @@ export function drawMarkersLayer(ctx: CanvasRenderingContext2D, viewport: Viewpo
     ctx.fill()
     ctx.restore()
 
-    drawMarkerCaption(ctx, p.x, p.y, outerRadiusPx, ringWidthPx, labelSizePx, '출발')
+    drawMarkerCaption(ctx, p.x, p.y, outerRadiusPx, ringWidthPx, labelSizePx, '출발', captionHaloPx)
     ctx.restore()
   }
 
@@ -394,7 +422,7 @@ export function drawMarkersLayer(ctx: CanvasRenderingContext2D, viewport: Viewpo
     ctx.arc(p.x, p.y, innerRadiusPx, 0, Math.PI * 2)
     ctx.stroke()
 
-    drawMarkerCaption(ctx, p.x, p.y, outerRadiusPx, ringWidthPx, labelSizePx, goalNames[index])
+    drawMarkerCaption(ctx, p.x, p.y, outerRadiusPx, ringWidthPx, labelSizePx, goalNames[index], captionHaloPx)
     ctx.restore()
   })
 }

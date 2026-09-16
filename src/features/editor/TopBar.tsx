@@ -5,9 +5,12 @@
 //       (M1-4) 스택이 비어있으면 버튼이 자동으로 비활성화됩니다.
 // 우측: 저장 · 미리보기 · 정답 · 인쇄
 //
-// 이 단계에서는 실행취소/재실행·파일명 편집·뒤로가기만 실제 기능에 연결합니다(그 외
-// 버튼은 토스트만 띄움). PRD §9.16: "실행취소 | 토스트 없음. 상단바 버튼 상태만 갱신" —
-// 그래서 undo()/redo()는 토스트를 띄우지 않고 버튼 disabled 상태만 자연스럽게 바뀝니다.
+// PRD §9.16: "실행취소 | 토스트 없음. 상단바 버튼 상태만 갱신" — 그래서 undo()/redo()는
+// 토스트를 띄우지 않고 버튼 disabled 상태만 자연스럽게 바뀝니다.
+//
+// [2026-09-16] 저장 버튼이 토스트만 띄우고 실제로는 아무 파일도 안 만들던 것을 연결했습니다
+// (FR-1.4/1.5, 둘 다 P0). 저장소 어댑터는 처음부터 있었는데 버튼에만 안 붙어 있어서,
+// 만든 말판을 파일로 남길 방법이 아예 없었습니다. "미리보기"는 아직 연결하지 않았습니다.
 //
 // [뒤로가기(M1-5c)] 시작 화면 ↔ 편집기 전환은 editorStore에 상태를 두지 않고(다른
 // 작업자가 그 파일을 동시에 수정 중이라 손대지 않기로 했습니다) App.tsx의 로컬
@@ -16,12 +19,14 @@
 // 먼저 Modal로 확인을 받습니다(작업 지시: window.confirm 대신 기존 Modal 컴포넌트 재사용).
 import { useEffect, useRef, useState } from 'react'
 import type { KeyboardEvent } from 'react'
-import { ChevronLeft, Save, Undo2, Redo2, Eye, Printer, ListChecks } from 'lucide-react'
+import { ChevronLeft, Save, SaveAll, Undo2, Redo2, Eye, Printer, ListChecks } from 'lucide-react'
 import { Button, Modal, StatusChip, Tooltip, useToast } from '@/components'
 import { PAPER_SIZES } from '@/lib/model/constants'
 import type { MapDoc } from '@/lib/model/types'
 import { downloadSingleSheetPdf } from '@/lib/pdf/generateMapPdf'
-import { useEditorStore } from './editorStore'
+import { UserCancelledError } from '@/lib/storage'
+import { clearDraft, currentDraftId } from '@/lib/storage/draft'
+import { mapStore, useEditorStore } from './editorStore'
 import styles from './TopBar.module.css'
 
 export interface TopBarProps {
@@ -64,22 +69,6 @@ export default function TopBar({ onBack }: TopBarProps) {
   const setPrintPlannerOpen = useEditorStore((s) => s.setPrintPlannerOpen)
   const setAnswerOpen = useEditorStore((s) => s.setAnswerOpen)
 
-  // Ctrl+Z / Ctrl+Shift+Z (맥에서는 Cmd). 도구 레일 단축키(ToolRail.tsx)와 마찬가지로
-  // 입력창에 포커스가 있으면 무시합니다.
-  useEffect(() => {
-    // 이 파일은 위에서 React의 KeyboardEvent<T>를 이미 import했으므로(파일명 입력창용),
-    // 여기서는 window가 실제로 주는 DOM 이벤트 타입임을 globalThis로 명시합니다.
-    function handleKeyDown(e: globalThis.KeyboardEvent) {
-      if (!(e.ctrlKey || e.metaKey)) return
-      if (e.key.toLowerCase() !== 'z') return
-      if (isTypingTarget(document.activeElement)) return
-      e.preventDefault()
-      if (e.shiftKey) redo()
-      else undo()
-    }
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [undo, redo])
 
   const [editingTitle, setEditingTitle] = useState(false)
   const [titleDraft, setTitleDraft] = useState('')
@@ -88,14 +77,74 @@ export default function TopBar({ onBack }: TopBarProps) {
   // 되돌릴 게 없으므로 바로 나갑니다(PRD U7: 확인 모달은 정말 필요할 때만).
   const [confirmBackOpen, setConfirmBackOpen] = useState(false)
   const [isCreatingPdf, setIsCreatingPdf] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
+
+  // Ctrl+Z / Ctrl+Shift+Z (맥에서는 Cmd). 도구 레일 단축키(ToolRail.tsx)와 마찬가지로
+  // 입력창에 포커스가 있으면 무시합니다.
+  useEffect(() => {
+    // 이 파일은 위에서 React의 KeyboardEvent<T>를 이미 import했으므로(파일명 입력창용),
+    // 여기서는 window가 실제로 주는 DOM 이벤트 타입임을 globalThis로 명시합니다.
+    function handleKeyDown(e: globalThis.KeyboardEvent) {
+      if (!(e.ctrlKey || e.metaKey)) return
+      const key = e.key.toLowerCase()
+      // Ctrl+S는 입력창에 포커스가 있어도 받습니다 — 브라우저의 "페이지 저장"이 뜨는 걸
+      // 막아야 하고, 제목을 고치다가 바로 저장하려는 것도 자연스러운 흐름이라서입니다.
+      if (key === 's') {
+        e.preventDefault()
+        void handleSave(e.shiftKey ? 'saveAs' : 'save')
+        return
+      }
+      if (key !== 'z') return
+      if (isTypingTarget(document.activeElement)) return
+      e.preventDefault()
+      if (e.shiftKey) redo()
+      else undo()
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+    // handleSave는 매 렌더마다 새로 만들어지지만 항상 최신 doc을 읽어야 하므로
+    // 의존성에 넣지 않고, 이 effect가 그때그때의 최신 클로저를 쓰도록 둡니다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [undo, redo, doc, isSaving, canOverwrite])
 
   useEffect(() => {
     if (editingTitle) titleInputRef.current?.focus()
   }, [editingTitle])
 
-  // 이번 단계에서 실제로 연결되지 않은 버튼들의 공통 동작.
+  // 아직 연결되지 않은 버튼(미리보기)의 동작.
   function notConnectedYet() {
     show({ message: '다음 단계에서 연결됩니다' })
+  }
+
+  /**
+   * 맵을 파일로 저장합니다(FR-1.4 저장 / FR-1.5 다른 이름으로 저장).
+   *
+   * mode가 'save'면 저장소가 기억해 둔 파일에 그대로 덮어씁니다. 아직 이 세션에서 열거나
+   * 저장한 파일이 없으면 FsaStore가 알아서 '다른 이름으로 저장'으로 넘어갑니다.
+   * File System Access API가 없는 브라우저(DownloadStore)에서는 둘 다 새 내려받기입니다.
+   *
+   * 저장에 성공하면 초안 슬롯을 지웁니다. 파일이라는 더 확실한 사본이 생겼는데 초안까지
+   * 남겨두면, 다음에 앱을 켰을 때 "복구할 초안이 있습니다" 배너가 이미 저장한 맵을 두고
+   * 계속 뜨기 때문입니다(§4.3).
+   */
+  async function handleSave(mode: 'save' | 'saveAs') {
+    if (!doc || isSaving) return
+    setIsSaving(true)
+    try {
+      if (mode === 'saveAs') await mapStore.saveAs(doc)
+      else await mapStore.save(doc)
+      setSaveState('saved')
+      const draftId = currentDraftId()
+      if (draftId) clearDraft(draftId)
+      show({ message: canOverwrite ? '저장했습니다' : '파일을 내려받았습니다' })
+    } catch (err) {
+      // 대화상자를 그냥 닫은 것은 실패가 아니라 취소입니다 — 아무것도 알리지 않습니다.
+      if (err instanceof UserCancelledError) return
+      const message = err instanceof Error ? err.message : '저장하지 못했습니다'
+      show({ message, tone: 'danger' })
+    } finally {
+      setIsSaving(false)
+    }
   }
 
   async function handlePrint() {
@@ -212,9 +261,32 @@ export default function TopBar({ onBack }: TopBarProps) {
       </div>
 
       <div className={styles.rightGroup}>
-        <Button variant="secondary" icon={<Save size={18} />} onClick={notConnectedYet}>
-          {canOverwrite ? '저장' : '내려받기'}
-        </Button>
+        <Tooltip content={canOverwrite ? '저장' : '내려받기'} shortcut="Ctrl+S" placement="bottom">
+          <Button
+            variant="secondary"
+            icon={<Save size={18} />}
+            onClick={() => void handleSave('save')}
+            disabled={!doc || isSaving}
+            aria-busy={isSaving}
+          >
+            {canOverwrite ? '저장' : '내려받기'}
+          </Button>
+        </Tooltip>
+
+        {/* 다른 이름으로 저장(FR-1.5). 덮어쓰기가 되는 브라우저에서만 의미가 있습니다 —
+            내려받기 방식에서는 "저장"도 어차피 매번 새 파일이라 버튼이 둘이면 헷갈립니다.
+            글자 없이 아이콘만 둔 건 기본 화면의 읽을거리를 늘리지 않기 위해서입니다(NFR-10). */}
+        {canOverwrite && (
+          <Tooltip content="다른 이름으로 저장" shortcut="Ctrl+Shift+S" placement="bottom">
+            <Button
+              variant="icon"
+              icon={<SaveAll size={18} />}
+              aria-label="다른 이름으로 저장"
+              onClick={() => void handleSave('saveAs')}
+              disabled={!doc || isSaving}
+            />
+          </Tooltip>
+        )}
 
         <span className={styles.divider} aria-hidden="true" />
 

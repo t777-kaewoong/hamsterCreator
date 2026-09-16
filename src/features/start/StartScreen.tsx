@@ -11,6 +11,8 @@ import type { MapDoc } from '@/lib/model/types'
 import { parseMap } from '@/lib/model/serialize'
 import { clearDraft, isDraftAvailable, listDrafts, loadDraft } from '@/lib/storage/draft'
 import type { DraftSummary } from '@/lib/storage/draft'
+import { mapStore } from '@/features/editor/editorStore'
+import { UserCancelledError } from '@/lib/storage'
 import { START_PRESETS } from './presets'
 import { renderMapThumbnail } from './thumbnail'
 import { tileBitmapCache } from '@/features/canvas/tileBitmaps'
@@ -25,8 +27,9 @@ const THUMB_CSS_H = 112
 
 export interface StartScreenProps {
   /** 프리셋 클릭 / 파일 열기 / 초안 복구로 문서가 정해졌을 때 호출됩니다.
-   *  이 콜백을 받은 쪽(App.tsx)이 편집기 화면으로 전환합니다. */
-  onOpen: (doc: MapDoc) => void
+   *  이 콜백을 받은 쪽(App.tsx)이 편집기 화면으로 전환합니다.
+   *  fromDraftId를 넘기면 "그 초안 슬롯을 이어서 쓴다"는 뜻입니다(초안 복구 경로 전용). */
+  onOpen: (doc: MapDoc, fromDraftId?: string) => void
 }
 
 export default function StartScreen({ onOpen }: StartScreenProps) {
@@ -83,7 +86,9 @@ export default function StartScreen({ onOpen }: StartScreenProps) {
       setLatestDraft(null)
       return
     }
-    onOpen(doc)
+    // 복구한 초안은 원래 슬롯을 그대로 이어 씁니다 — 복구할 때마다 슬롯이 늘어나면
+    // 최근 5개 자리를 스스로 밀어내서 다른 초안이 사라집니다(draft.ts 주석 참고).
+    onOpen(doc, latestDraft.id)
   }
 
   function handleDiscardDraft() {
@@ -92,8 +97,30 @@ export default function StartScreen({ onOpen }: StartScreenProps) {
     setLatestDraft(null)
   }
 
-  function openFilePicker() {
-    fileInputRef.current?.click()
+  /**
+   * 파일 열기.
+   *
+   * [왜 <input type="file">이 아니라 저장소를 먼저 쓰는가]
+   * File System Access API를 쓸 수 있는 브라우저(크롬·엣지)에서는 mapStore.open()으로
+   * 열어야 그 파일의 핸들이 저장소 안에 남습니다. 그래야 나중에 "저장"이 대화상자 없이
+   * 바로 그 파일에 덮어써집니다(FR-1.4). <input type="file">로 열면 내용만 읽고 핸들이
+   * 없어서, 편집 후 저장할 때마다 위치를 다시 골라야 합니다.
+   * 지원하지 않는 브라우저에서는 기존 <input type="file">로 그대로 내려갑니다.
+   */
+  async function openFilePicker() {
+    if (!mapStore.canOverwrite) {
+      fileInputRef.current?.click()
+      return
+    }
+    try {
+      const doc = await mapStore.open()
+      onOpen(doc)
+    } catch (err) {
+      // 대화상자를 그냥 닫은 것은 실패가 아니라 취소입니다 — 아무것도 알리지 않습니다.
+      if (err instanceof UserCancelledError) return
+      const message = err instanceof Error ? err.message : '파일을 열지 못했습니다.'
+      showToast({ message, tone: 'danger' })
+    }
   }
 
   async function handleFile(file: File) {
@@ -191,7 +218,7 @@ export default function StartScreen({ onOpen }: StartScreenProps) {
         <button
           type="button"
           className={`${styles.dropzone} ${dragActive ? styles.dropzoneActive : ''}`}
-          onClick={openFilePicker}
+          onClick={() => void openFilePicker()}
         >
           <Upload size={24} />
           <span className="t-body">.hsmap.json 파일을 여기에 놓기</span>
