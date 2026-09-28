@@ -14,30 +14,41 @@
   min-height: 0;
 }
 
-/* 현재 도구 이름과 짧은 사용법은 어떤 도구를 눌러도 즉시 보입니다. */
-.contextHeader,
-.contextHeaderInner {
+/* 현재 도구 이름과 짧은 사용법은 어떤 도구를 눌러도 같은 자리(패널 맨 위)에 보입니다.
+   아이콘 칩 36px + 제목/설명. 세로 가운데 정렬 금지(docs/04 §3.6). */
+.toolHeader {
+  flex-shrink: 0;
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  gap: var(--sp-3);
+  align-items: start;
+  padding: var(--sp-4) var(--sp-4) var(--sp-3);
+}
+
+.toolHeaderIcon {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--r-md);
+  background: var(--c-primary-soft);
+  color: var(--c-primary);
+}
+
+.toolHeaderText {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-1);
+  gap: 2px;
+  min-width: 0;
 }
 
-.contextHeader {
-  padding: var(--sp-4) var(--sp-4) var(--sp-2);
-}
-
-.contextHeader h2,
-.contextHeader p,
-.contextHeaderInner h2,
-.contextHeaderInner p,
-.contextSection h3,
-.helpCard h2,
-.helpCard p {
+.toolHeaderText h2,
+.toolHeaderText p,
+.contextSection h3 {
   margin: 0;
 }
 
-.contextHeader p,
-.contextHeaderInner p {
+.toolHeaderText p {
   color: var(--c-text-2);
   line-height: 1.45;
 }
@@ -77,7 +88,7 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: var(--sp-4);
+  padding: 0 var(--sp-4) var(--sp-4);
 }
 
 .choiceGrid,
@@ -85,7 +96,6 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--sp-2);
-  margin-top: var(--sp-4);
 }
 
 .directionGrid {
@@ -165,29 +175,9 @@
   line-height: 1.5;
 }
 
-.helpCard {
-  min-height: 240px;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  justify-content: center;
-  gap: var(--sp-2);
-}
-
-.helpIcon {
-  width: 52px;
-  height: 52px;
-  display: grid;
-  place-items: center;
-  margin-bottom: var(--sp-2);
-  border-radius: var(--r-lg);
-  background: var(--c-primary-soft);
-  color: var(--c-primary);
-}
-
-.helpCard > p:not(.contextHint) {
-  color: var(--c-text-2);
-  line-height: 1.55;
+/* 머리글 바로 아래에 오는 도움말 상자는 위 여백을 없앱니다(머리글 아래 12px로 충분). */
+.contextHintFirst {
+  margin-top: 0;
 }
 
 /* 타일 그리드만 세로 스크롤됩니다(PRD "그리드는 세로 스크롤"). */

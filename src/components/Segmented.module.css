@@ -40,3 +40,15 @@
   box-shadow: var(--e1);
   color: var(--c-text);
 }
+
+/* 인스펙터처럼 행의 컨트롤 열을 꽉 채워야 할 때(docs/04 §3.5).
+   항목을 글자 길이와 무관하게 똑같이 나누고, 최소 64px 규칙은 풉니다 —
+   회전 0°/90°/180°/270° 네 칸이 196px 컨트롤 열에 들어가야 하기 때문입니다. */
+.fullWidth {
+  display: flex;
+  width: 100%;
+}
+.fullWidth .item {
+  flex: 1 1 0;
+  min-width: 0;
+}

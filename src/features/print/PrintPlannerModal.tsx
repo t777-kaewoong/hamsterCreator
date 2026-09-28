@@ -77,6 +77,7 @@ export default function PrintPlannerModal() {
   const [overlap, setOverlap] = useState('5')
   const [creating, setCreating] = useState(false)
   const wasOpenRef = useRef(false)
+  const optionListRef = useRef<HTMLDivElement>(null)
 
   const options = useMemo(() => doc ? createPrintPlanOptions(doc, sort) : [], [doc, sort])
   const selected = options.find((option) => option.id === selectedId) ?? options[0]
@@ -84,7 +85,11 @@ export default function PrintPlannerModal() {
 
   useEffect(() => {
     if (open && !wasOpenRef.current && doc) {
-      setSelectedId('')
+      // 처음에는 지금 편집 중인 용지(캔버스에 종이 경계로 보이던 그 계획)를 골라 둡니다.
+      // A4를 이어 붙여 만든 맵인데 "장수 최소" 1순위라는 이유로 B3가 먼저 골라져 있으면,
+      // 교사가 화면에서 본 종이 나눔과 PDF가 달라집니다(2026-09-28). 다른 용지는 목록에서
+      // 여전히 고를 수 있고, "추천" 표시도 그대로 1순위에 붙습니다.
+      setSelectedId(`${doc.print.sheet}-${doc.print.orientation}`)
       setInputMode('grid')
       setFirstDraft(String(doc.board.cols))
       setSecondDraft(String(doc.board.rows))
@@ -97,6 +102,15 @@ export default function PrintPlannerModal() {
   useEffect(() => {
     if (options.length > 0 && !options.some((option) => option.id === selectedId)) setSelectedId(options[0].id)
   }, [options, selectedId])
+
+  // 골라 둔 "지금 용지" 카드가 목록 아래쪽에 있으면 열자마자 보이도록 스크롤합니다.
+  useEffect(() => {
+    if (!open) return
+    const frame = requestAnimationFrame(() => {
+      optionListRef.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest' })
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [open, selectedId])
 
   if (!doc || !selected) return null
 
@@ -208,9 +222,10 @@ export default function PrintPlannerModal() {
         </div>
 
         <div className={styles.main}>
-          <div className={styles.optionList} role="listbox" aria-label="용지 출력 계획">
+          <div ref={optionListRef} className={styles.optionList} role="listbox" aria-label="용지 출력 계획">
             {options.map((option, index) => {
               const active = option.id === selected.id
+              const isCurrentPaper = option.id === `${doc.print.sheet}-${doc.print.orientation}`
               return (
                 <button
                   key={option.id}
@@ -228,6 +243,7 @@ export default function PrintPlannerModal() {
                     </span>
                     <span className="t-caption">이음매 {option.seams}곳 · 낭비 {option.wasteCells}칸</span>
                     <span className={styles.chips}>
+                      {isCurrentPaper && <span className={styles.currentChip}>편집 중인 용지</span>}
                       {option.wasteCells === 0 && <span className={styles.okChip}><Check size={12} />딱 맞음</span>}
                       {option.seams === 0 && <span className={styles.okChip}><Check size={12} />이음매 없음</span>}
                       {option.curveCrossings > 0 && <span className={styles.warnChip}><AlertTriangle size={12} />곡선 교차 {option.curveCrossings}</span>}

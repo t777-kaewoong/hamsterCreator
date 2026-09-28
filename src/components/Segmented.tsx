@@ -21,13 +21,15 @@ export interface SegmentedProps {
   onChange: (value: string) => void
   /** 스크린리더용 그룹 이름 (예: "이음매 방식") */
   'aria-label'?: string
+  /** true면 부모 폭을 꽉 채우고 항목을 똑같이 나눕니다(인스펙터 행 정렬용). */
+  fullWidth?: boolean
 }
 
 /**
  * 세그먼트 컨트롤.
  * <Segmented options={[{value:'h',label:'가로'},{value:'v',label:'세로'}]} value={dir} onChange={setDir} />
  */
-export default function Segmented({ options, value, onChange, 'aria-label': ariaLabel }: SegmentedProps) {
+export default function Segmented({ options, value, onChange, 'aria-label': ariaLabel, fullWidth = false }: SegmentedProps) {
   // 화살표 키로 이동한 뒤 포커스를 옮기려면 각 항목이 고유한 id를 가져야 합니다.
   // 같은 화면에 세그먼트가 여러 개 있어도 겹치지 않도록 useId로 그룹별 접두어를 만듭니다.
   const groupId = useId()
@@ -49,7 +51,7 @@ export default function Segmented({ options, value, onChange, 'aria-label': aria
   }
 
   return (
-    <div className={styles.track} role="radiogroup" aria-label={ariaLabel} onKeyDown={handleKeyDown}>
+    <div className={`${styles.track} ${fullWidth ? styles.fullWidth : ''}`} role="radiogroup" aria-label={ariaLabel} onKeyDown={handleKeyDown}>
       {options.map((option) => {
         const selected = option.value === value
         return (

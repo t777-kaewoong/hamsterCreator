@@ -14,6 +14,10 @@
   display: flex;
   align-items: center;
   padding: 6px 10px; /* PRD §9.7 고정 여백 */
+  /* width: max-content가 없으면 절대 위치 풍선의 폭이 감싼 버튼(도구 레일은 40px) 기준으로
+     줄어들어 "타/일/배/치"처럼 한 글자씩 꺾입니다(2026-09-28 후기). 글자 폭만큼 넓히되
+     max-width에서만 줄바꿈합니다. */
+  width: max-content;
   max-width: 240px; /* 긴 설명이 화면을 가로지르지 않도록(PRD 미명시, 임의 지정) */
   background: var(--c-text);
   border-radius: var(--r-sm);

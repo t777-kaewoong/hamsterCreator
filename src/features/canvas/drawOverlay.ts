@@ -15,6 +15,8 @@ import { tileBitmapCache } from './tileBitmaps'
 import { MARKER_OUTER_DIAMETER_MM, nodeCenterMm } from './drawBoard'
 import type { OverlayState } from './toolInteractions'
 import { drawStrokePath, splineControlHandles } from './strokeGeometry'
+import { findPrintPlan } from '@/lib/print/plan'
+import type { PrintPlanOption } from '@/lib/print/plan'
 
 type Tokens = Record<TokenName, string>
 
@@ -40,6 +42,77 @@ function tracePillPath(ctx: CanvasRenderingContext2D, x: number, y: number, w: n
   ctx.closePath()
 }
 
+/** 종이 번호 배지 글자. 칩과 같은 micro 타이포입니다. */
+const SHEET_BADGE_FONT = CHIP_FONT
+/** 종이 번호 배지 높이(px)와 종이 모서리에서 떨어진 거리(px). docs/04 §3.3
+ *  번호는 PDF 머리글·출력 계획기와 같은 "행-열" 코드(1-1, 1-2 …)를 씁니다 — 화면에서 본
+ *  번호와 인쇄된 종이의 번호가 같아야 조립할 때 헷갈리지 않습니다. */
+const SHEET_BADGE_H_PX = 18
+const SHEET_BADGE_INSET_PX = 6
+
+/**
+ * 인쇄 계획은 곡선 교차를 따지느라 계산이 가볍지 않은데, 이 레이어는 마우스가 움직일
+ * 때마다 다시 그려집니다. 문서 객체가 바뀔 때만 다시 계산하도록 문서별로 기억합니다
+ * (문서는 불변 객체로 교체되므로 같은 객체면 결과도 같습니다).
+ */
+const planCache = new WeakMap<MapDoc, PrintPlanOption | null>()
+function cachedPlan(doc: MapDoc): PrintPlanOption | null {
+  if (!planCache.has(doc)) planCache.set(doc, findPrintPlan(doc))
+  return planCache.get(doc) ?? null
+}
+
+/**
+ * 종이 경계(파선)와 종이 번호(docs/04 §3.3).
+ *
+ * 출력 계획기와 **같은 함수(findPrintPlan)**로 절단 위치를 구합니다. 화면에서 따로
+ * "5칸마다" 식으로 계산하면, 곡선을 피하려고 계획기가 절단 위치를 옮겼을 때 화면과
+ * 실제 PDF가 어긋나기 때문입니다. 한 장에 들어가는 맵이면 아무것도 그리지 않습니다.
+ */
+function drawSheetSeams(ctx: CanvasRenderingContext2D, viewport: Viewport, doc: MapDoc, tokens: Tokens): void {
+  const plan = cachedPlan(doc)
+  if (!plan || plan.sheets <= 1) return
+  const { pitch, cols, rows } = doc.board
+  const topLeft = viewport.mapToScreen(0, 0)
+  const bottomRight = viewport.mapToScreen(cols * pitch, rows * pitch)
+
+  ctx.save()
+  ctx.strokeStyle = tokens['--c-seam']
+  ctx.lineWidth = 2
+  ctx.setLineDash([8, 6])
+  for (const cut of plan.columnCuts) {
+    const x = viewport.mapToScreen(cut * pitch, 0).x
+    ctx.beginPath()
+    ctx.moveTo(x, topLeft.y)
+    ctx.lineTo(x, bottomRight.y)
+    ctx.stroke()
+  }
+  for (const cut of plan.rowCuts) {
+    const y = viewport.mapToScreen(0, cut * pitch).y
+    ctx.beginPath()
+    ctx.moveTo(topLeft.x, y)
+    ctx.lineTo(bottomRight.x, y)
+    ctx.stroke()
+  }
+  ctx.setLineDash([])
+
+  ctx.font = SHEET_BADGE_FONT
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  for (const region of plan.regions) {
+    const code = `${region.row + 1}-${region.column + 1}`
+    const corner = viewport.mapToScreen(region.startCol * pitch, region.startRow * pitch)
+    const w = Math.ceil(ctx.measureText(code).width) + 12
+    const x = corner.x + SHEET_BADGE_INSET_PX
+    const y = corner.y + SHEET_BADGE_INSET_PX
+    ctx.fillStyle = tokens['--c-seam']
+    tracePillPath(ctx, x, y, w, SHEET_BADGE_H_PX, SHEET_BADGE_H_PX / 2)
+    ctx.fill()
+    ctx.fillStyle = tokens['--c-text-inverse']
+    ctx.fillText(code, x + w / 2, y + SHEET_BADGE_H_PX / 2 + 0.5)
+  }
+  ctx.restore()
+}
+
 export function drawOverlayLayer(
   ctx: CanvasRenderingContext2D,
   viewport: Viewport,
@@ -63,6 +136,8 @@ export function drawOverlayLayer(
     ctx.fillText('왼쪽에서 타일을 골라 칠해 보세요', center.x, center.y)
     ctx.restore()
   }
+
+  drawSheetSeams(ctx, viewport, doc, tokens)
 
   // ① 셀 호버 — 타일·지우개 도구에서 지금 가리키고 있는 칸을 옅게 채웁니다.
   if (overlay.hoverCell) {

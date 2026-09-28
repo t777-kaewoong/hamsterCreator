@@ -23,12 +23,14 @@ import {
   MapPin,
   Minus,
   MousePointer2,
+  PaintBucket,
   PenTool,
   Pencil,
   Pipette,
   RectangleHorizontal,
   Search,
   SquareRoundCorner,
+  Stamp,
   Type,
   Upload,
 } from 'lucide-react'
@@ -76,7 +78,17 @@ const DIRECTIONS: { id: Direction; label: string; icon: LucideIcon }[] = [
   { id: 'W', label: '왼쪽', icon: ArrowLeft },
 ]
 
-const TOOL_HELP: Partial<Record<ToolId, { title: string; description: string; hint: string; icon: LucideIcon }>> = {
+/**
+ * 도구별 머리글·도움말(docs/04 §3.6). 모든 도구가 이 표 하나로 같은 위치·같은 모양의 머리글을
+ * 그립니다. 예전에는 도구마다 머리글 모양이 달라(큰 아이콘 카드가 세로 가운데에 뜨거나, 아이콘
+ * 없는 제목만 있거나) 도구를 바꿀 때마다 글자 위치가 튀었습니다.
+ * hint는 선택 사항이며, 있으면 패널 아래쪽 회색 상자에 들어갑니다.
+ */
+const TOOL_HELP: Record<ToolId, { title: string; description: string; hint?: string; icon: LucideIcon }> = {
+  stamp: { title: '타일 배치', description: '타일을 고른 뒤 칸을 클릭하거나 드래그하세요.', icon: Stamp },
+  fill: { title: '영역 채우기', description: '타일을 고른 뒤 채울 범위를 드래그하세요.', icon: PaintBucket },
+  marker: { title: '출발·도착', description: '종류를 고른 뒤 원하는 격자점을 클릭하세요.', icon: Flag },
+  shape: { title: '도형', description: '도형을 고르고 캔버스에서 드래그해 크기를 정하세요.', icon: Circle },
   select: { title: '선택', description: '캔버스의 타일·글자·도형을 선택합니다.', hint: '선택한 항목은 오른쪽에서 수정하거나 Delete로 지울 수 있어요.', icon: MousePointer2 },
   lineDraw: { title: '격자선 긋기', description: '격자점 사이를 드래그해 길을 연결합니다.', hint: '격자 바깥을 클릭하면 경계 진입로가 생깁니다. Alt는 지우기.', icon: Grid3x3 },
   eyedropper: { title: '타일 집기', description: '캔버스에 놓인 타일을 클릭해 같은 타일을 가져옵니다.', hint: '타일을 집으면 자동으로 타일 배치 도구로 바뀝니다.', icon: Pipette },
@@ -310,16 +322,13 @@ export default function PalettePanel() {
     if (lastKey) setStampTile(`asset:${lastKey}`)
   }
 
+  const header = TOOL_HELP[activeTool]
+
   return (
     <div className={styles.panel}>
+      <ToolHeader icon={header.icon} title={header.title} description={header.description} />
       {showsAssets ? (
         <>
-          <div className={styles.contextHeader}>
-            <h2 className="t-h2">{activeTool === 'fill' ? '영역 채우기' : '타일 배치'}</h2>
-            <p className="t-caption">
-              {activeTool === 'fill' ? '타일을 고른 뒤 채울 범위를 드래그하세요.' : '타일을 고른 뒤 칸을 클릭하거나 드래그하세요.'}
-            </p>
-          </div>
           <div className={styles.searchRow}>
             <Input
               icon={<Search size={16} />}
@@ -385,10 +394,6 @@ export default function PalettePanel() {
     if (activeTool === 'marker') {
       return (
         <>
-          <div className={styles.contextHeaderInner}>
-            <h2 className="t-h2">출발·도착</h2>
-            <p className="t-caption">종류를 고른 뒤 원하는 격자점을 클릭하세요.</p>
-          </div>
           <div className={styles.choiceGrid} role="group" aria-label="마커 종류">
             <ContextChoice icon={Flag} label="출발지" selected={markerMode === 'start'} onClick={() => setMarkerMode('start')} />
             <ContextChoice icon={MapPin} label="도착지" selected={markerMode === 'goal'} onClick={() => setMarkerMode('goal')} />
@@ -437,10 +442,6 @@ export default function PalettePanel() {
     if (activeTool === 'shape') {
       return (
         <>
-          <div className={styles.contextHeaderInner}>
-            <h2 className="t-h2">도형</h2>
-            <p className="t-caption">도형을 고르고 캔버스에서 드래그해 크기를 정하세요.</p>
-          </div>
           <div className={styles.choiceGrid} role="group" aria-label="도형 종류">
             {SHAPES.map((shape) => (
               <ContextChoice key={shape.id} icon={shape.icon} label={shape.label} selected={activeShape === shape.id} onClick={() => setShape(shape.id)} />
@@ -457,20 +458,13 @@ export default function PalettePanel() {
     }
 
     if (activeTool === 'lineDraw') {
-      const help = TOOL_HELP.lineDraw!
-      const LineIcon = help.icon
       // 공식 playbot 말판은 경계 노드마다 진입로가 달려 있습니다. 그걸 하나씩 클릭하면
       // A4 5×4만 해도 18번, A0 23×16이면 78번이라 일괄 버튼을 함께 둡니다(FR-2.4).
       const stubCount = doc ? doc.stubs.length : 0
       const fullCount = doc ? (doc.board.cols + doc.board.rows) * 2 : 0
       return (
         <>
-          <div className={styles.helpCard}>
-            <span className={styles.helpIcon}><LineIcon size={28} /></span>
-            <h2 className="t-h2">{help.title}</h2>
-            <p className="t-body">{help.description}</p>
-            <p className={`${styles.contextHint} t-caption`}>{help.hint}</p>
-          </div>
+          <p className={`${styles.contextHint} ${styles.contextHintFirst} t-caption`}>{TOOL_HELP.lineDraw.hint}</p>
           <div className={styles.contextSection}>
             <h3 className="t-label">경계 진입로</h3>
             <div className={styles.stubActions}>
@@ -509,16 +503,8 @@ export default function PalettePanel() {
     }
 
     const help = TOOL_HELP[activeTool]
-    if (!help) return null
-    const Icon = help.icon
-    return (
-      <div className={styles.helpCard}>
-        <span className={styles.helpIcon}><Icon size={28} /></span>
-        <h2 className="t-h2">{help.title}</h2>
-        <p className="t-body">{help.description}</p>
-        <p className={`${styles.contextHint} t-caption`}>{help.hint}</p>
-      </div>
-    )
+    if (!help.hint) return null
+    return <p className={`${styles.contextHint} ${styles.contextHintFirst} t-caption`}>{help.hint}</p>
   }
 
   function renderGridContent() {
@@ -623,6 +609,21 @@ export default function PalettePanel() {
       </div>
     )
   }
+}
+
+/** 모든 도구 공통 머리글: 아이콘 칩 36px + 제목 + 설명 한 줄(docs/04 §3.6). 항상 패널 맨 위. */
+function ToolHeader({ icon: Icon, title, description }: { icon: LucideIcon; title: string; description: string }) {
+  return (
+    <div className={styles.toolHeader}>
+      <span className={styles.toolHeaderIcon} aria-hidden="true">
+        <Icon size={20} />
+      </span>
+      <div className={styles.toolHeaderText}>
+        <h2 className="t-h2">{title}</h2>
+        <p className="t-caption">{description}</p>
+      </div>
+    </div>
+  )
 }
 
 function ContextChoice({

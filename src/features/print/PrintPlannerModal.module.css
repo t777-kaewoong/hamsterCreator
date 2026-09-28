@@ -83,6 +83,7 @@
 .optionTitle { display: flex; align-items: center; gap: var(--sp-2); color: var(--c-text); }
 .countBadge { padding: 2px 7px; border-radius: var(--r-pill); background: var(--c-primary-soft); color: var(--c-primary); }
 .chips { min-height: 18px; display: flex; flex-wrap: wrap; gap: var(--sp-1); }
+.currentChip { display: inline-flex; align-items: center; padding: 2px 6px; border-radius: var(--r-pill); font-size: 11px; line-height: 14px; color: var(--c-primary); background: var(--c-primary-soft); }
 .okChip, .warnChip { display: inline-flex; align-items: center; gap: 3px; padding: 2px 6px; border-radius: var(--r-pill); font-size: 11px; line-height: 14px; }
 .okChip { color: var(--c-ok); background: #ECFDF5; }
 .warnChip { color: var(--c-warn); background: var(--c-warn-soft); }

@@ -163,3 +163,79 @@
   text-align: center;
   outline: none;
 }
+
+/* ── 종이 붙이기·떼기 알약 (docs/04 §3.2) ─────────────────────────────
+   위치(left/top)는 CanvasViewport.positionSheetPills()가 매 프레임 직접 넣습니다.
+   여기서는 "기준점에서 어느 쪽으로 펼칠지"만 transform으로 정합니다.
+   두께 32px(버튼 28 + 안쪽 2×2)는 CanvasViewport.tsx의 SHEET_PILL_THICKNESS_PX와 같아야
+   합니다 — 다르면 맞춤 직후 알약이 숨거나 잘립니다. */
+.sheetPill {
+  position: absolute;
+  z-index: 2;
+  visibility: hidden; /* 첫 위치 계산 전에 (0,0)에서 번쩍이지 않도록 */
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 32px;
+  padding: 2px;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border-strong);
+  border-radius: var(--r-pill);
+  box-shadow: var(--e1);
+}
+.sheetPill[data-side='top'] {
+  transform: translate(-50%, -100%);
+}
+.sheetPill[data-side='bottom'] {
+  transform: translate(-50%, 0);
+}
+/* 좌우 변은 세로 알약. column-reverse라서 + 가 위, − 가 아래에 옵니다. */
+.sheetPillVertical {
+  flex-direction: column-reverse;
+  width: 32px;
+  height: auto;
+}
+.sheetPill[data-side='left'] {
+  transform: translate(-100%, -50%);
+}
+.sheetPill[data-side='right'] {
+  transform: translate(0, -50%);
+}
+
+.sheetPillLabel {
+  padding: 0 4px;
+  color: var(--c-text-2);
+  white-space: nowrap;
+  user-select: none;
+}
+.sheetPillVertical .sheetPillLabel {
+  padding: 2px 0;
+}
+
+.sheetButton {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: var(--r-pill);
+  background: transparent;
+  color: var(--c-text-2);
+  cursor: pointer;
+  transition:
+    background-color var(--t-fast),
+    color var(--t-fast);
+}
+.sheetButton:not(:disabled):hover {
+  background: var(--c-primary-soft);
+  color: var(--c-primary);
+}
+.sheetButton:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+/* 붙이기가 주 동작이라 강조색으로 한 번 더 구분합니다. */
+.sheetButtonAdd {
+  color: var(--c-primary);
+}

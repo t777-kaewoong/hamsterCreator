@@ -186,7 +186,7 @@ export default function StartScreen({ onOpen }: StartScreenProps) {
 
       <div className={styles.content}>
         <h1 className={`${styles.title} t-display`}>햄스터S 말판 만들기</h1>
-        <p className={`${styles.subtitle} t-body`}>프리셋을 고르거나 파일을 열어 바로 시작하세요</p>
+        <p className={`${styles.subtitle} t-body`}>프리셋을 고르세요. 만들다가 종이를 이어 붙이거나 뗄 수 있어요</p>
 
         <div className={styles.presetGrid}>
           {START_PRESETS.map((preset) => (

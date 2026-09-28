@@ -13,8 +13,11 @@
 // 어떤 도구를 고르고 있든 항상 동작해야 하므로, 팬 여부를 먼저 가려낸 뒤에만 도구로
 // 넘깁니다.
 import { useEffect, useRef, useState } from 'react'
-import { Maximize2, ZoomIn, ZoomOut } from 'lucide-react'
-import { Tooltip } from '@/components'
+import { Maximize2, Minus, Plus, ZoomIn, ZoomOut } from 'lucide-react'
+import { Tooltip, useToast } from '@/components'
+import { extendMapDoc } from '@/lib/model/resize'
+import type { MapSide } from '@/lib/model/resize'
+import { sheetCapacity } from '@/lib/print/sheet'
 import { useEditorStore } from '@/features/editor/editorStore'
 import type { ToolId } from '@/features/editor/editorStore'
 import type { MapDoc } from '@/lib/model/types'
@@ -52,6 +55,38 @@ const MINIMAP_WIDTH_PX = 160
  *  보입니다. <canvas>에는 CSS 애니메이션을 못 써서 이렇게 고정 간격 타이머로 토글합니다. */
 const FOCUS_BLINK_TOTAL_MS = 600
 const FOCUS_BLINK_STEP_MS = 100
+
+// ── 종이 붙이기·떼기 알약 (docs/04 §3.2) ────────────────────────────────
+const SHEET_SIDES: MapSide[] = ['top', 'right', 'bottom', 'left']
+const SIDE_WORD: Record<MapSide, string> = { top: '위쪽', right: '오른쪽', bottom: '아래쪽', left: '왼쪽' }
+/** 툴팁은 종이 쪽을 향해 띄웁니다. 바깥쪽으로 띄우면 캔버스 가장자리에서 잘립니다. */
+const SIDE_TOOLTIP: Record<MapSide, 'top' | 'bottom' | 'left' | 'right'> = {
+  top: 'bottom',
+  right: 'left',
+  bottom: 'top',
+  left: 'right',
+}
+/** 알약 두께(px, 버튼 28 + 안쪽 여백 2×2). 맞춤 여백 48px(viewport.ts FIT_MARGIN_PX) 안에
+ *  간격·가장자리 여백과 함께 들어가야 맞춤 직후에도 보입니다: 6 + 32 + 4 = 42 ≤ 48. */
+const SHEET_PILL_THICKNESS_PX = 32
+/** 알약과 종이 가장자리 사이 간격(px). */
+const SHEET_PILL_GAP_PX = 6
+/** 알약이 캔버스 가장자리에 붙어 잘리지 않도록 남기는 최소 여백(px). */
+const SHEET_PILL_EDGE_PX = 4
+
+/**
+ * 한 변에서 종이 한 장을 붙이거나 뗄 때 몇 칸이 바뀌는지.
+ * 붙이기는 항상 용지 한 장 폭(A4 가로면 가로 5칸·세로 4칸)입니다.
+ * 떼기는 그 변 끝의 마지막 종이만큼입니다. 8칸이면 5+3으로 나뉘므로 3칸, 10칸이면 5칸.
+ */
+function sheetStepInfo(doc: MapDoc, side: MapSide): { addAmount: number; removeAmount: number; canRemove: boolean } {
+  const cap = sheetCapacity(doc)
+  const horizontal = side === 'left' || side === 'right'
+  const size = horizontal ? doc.board.cols : doc.board.rows
+  const per = horizontal ? cap.cols : cap.rows
+  const removeAmount = size % per || per
+  return { addAmount: per, removeAmount, canRemove: size - removeAmount >= 1 }
+}
 
 /** 지금 포커스가 글자 입력 요소에 있는지. 이럴 때는 Space나 도구 단축키를 눌러도
  *  팬/도구 전환으로 새지 않아야 합니다(예: 파일명 입력 중 스페이스는 그냥 띄어쓰기). */
@@ -121,6 +156,11 @@ export default function CanvasViewport() {
   const engineRef = useRef<{ scheduleAll: () => void; syncUiState: () => void; maybeFitOnce: () => void } | null>(
     null,
   )
+
+  // 종이 붙이기 알약 4개. 팬·줌마다 React 리렌더 없이 style만 바꿔 종이 가장자리를 따라가게
+  // 합니다(positionSheetPills). 팬은 매 프레임 일어나므로 state로 두면 버벅입니다.
+  const sideControlRefs = useRef<Record<MapSide, HTMLDivElement | null>>({ top: null, right: null, bottom: null, left: null })
+  const { show: showToast } = useToast()
 
   // 화면에 표시할 값만 React state로 둡니다(줌 클러스터 배율 숫자, 미니맵 표시 여부).
   // 팬은 이 값들을 바꾸지 않으므로 팬 중에는 리렌더가 일어나지 않습니다.
@@ -339,6 +379,7 @@ export default function CanvasViewport() {
         rulerRafPending = false
         drawRulers()
         drawMinimapCanvas()
+        positionSheetPills()
       })
     }
 
@@ -436,6 +477,11 @@ export default function CanvasViewport() {
     }
 
     function handlePointerDown(e: PointerEvent) {
+      // 캔버스 위에 떠 있는 버튼(줌 클러스터·종이 붙이기 알약)을 누른 것은 도구 입력이
+      // 아닙니다. 여기서 걸러내지 않으면 버튼 아래 칸에 타일이 찍히고, 포인터 캡처가
+      // 버튼의 click까지 가로챕니다. React의 stopPropagation은 이 네이티브 리스너보다
+      // 늦게 돌아서 막지 못하므로 data 속성으로 직접 판별합니다.
+      if (e.target instanceof Element && e.target.closest('[data-canvas-ui]')) return
       const isMiddleButton = e.button === 1
       const isSpaceDrag = e.button === 0 && isSpaceDownRef.current
       if (isMiddleButton || isSpaceDrag) {
@@ -690,8 +736,59 @@ export default function CanvasViewport() {
     }
   }
 
+  /**
+   * 종이 붙이기 알약을 종이 네 변의 가운데에 붙입니다(docs/04 §3.2).
+   * 확대해서 종이 일부만 보일 때는 "보이는 구간"의 가운데에 두고, 그 변 자체가 화면 밖이면
+   * 숨깁니다. 이 함수는 ref만 읽으므로 마운트 effect 안의 옛 클로저에서 불려도 안전합니다.
+   */
+  function positionSheetPills() {
+    const currentDoc = useEditorStore.getState().doc
+    const { width, height } = bodySizeRef.current
+    if (!currentDoc || width <= 0 || height <= 0) return
+    const vp = viewportRef.current
+    const { wMm, hMm } = mapSizeMm(currentDoc)
+    const tl = vp.mapToScreen(0, 0)
+    const br = vp.mapToScreen(wMm, hMm)
+    const midX = (Math.max(tl.x, 0) + Math.min(br.x, width)) / 2
+    const midY = (Math.max(tl.y, 0) + Math.min(br.y, height)) / 2
+    const T = SHEET_PILL_THICKNESS_PX
+    const anchors: Record<MapSide, { x: number; y: number; visible: boolean }> = {
+      top: { x: midX, y: tl.y - SHEET_PILL_GAP_PX, visible: tl.y - SHEET_PILL_GAP_PX - T >= SHEET_PILL_EDGE_PX },
+      bottom: { x: midX, y: br.y + SHEET_PILL_GAP_PX, visible: br.y + SHEET_PILL_GAP_PX + T <= height - SHEET_PILL_EDGE_PX },
+      left: { x: tl.x - SHEET_PILL_GAP_PX, y: midY, visible: tl.x - SHEET_PILL_GAP_PX - T >= SHEET_PILL_EDGE_PX },
+      right: { x: br.x + SHEET_PILL_GAP_PX, y: midY, visible: br.x + SHEET_PILL_GAP_PX + T <= width - SHEET_PILL_EDGE_PX },
+    }
+    for (const side of SHEET_SIDES) {
+      const el = sideControlRefs.current[side]
+      if (!el) continue
+      const anchor = anchors[side]
+      el.style.left = `${anchor.x}px`
+      el.style.top = `${anchor.y}px`
+      el.style.visibility = anchor.visible ? 'visible' : 'hidden'
+    }
+  }
+
+  /**
+   * 한 변에 종이 한 장을 붙이거나(+1) 뗍니다(−1). 실행취소 한 단계로 묶이고, 끝나면
+   * 새 크기가 한눈에 보이도록 화면 맞춤을 합니다. 칸 인덱스가 바뀌므로 선택은 풉니다.
+   */
+  function handleSheetStep(side: MapSide, direction: 1 | -1) {
+    const currentDoc = useEditorStore.getState().doc
+    if (!currentDoc) return
+    const info = sheetStepInfo(currentDoc, side)
+    if (direction < 0 && !info.canRemove) return
+    const next = extendMapDoc(currentDoc, side, direction > 0 ? info.addAmount : -info.removeAmount)
+    if (next === currentDoc) return
+    useEditorStore.getState().setSelection(null)
+    useEditorStore.getState().commitDoc(next)
+    handleFit()
+    if (direction < 0) showToast({ message: '종이를 뗐습니다 · Ctrl+Z로 되돌릴 수 있어요' })
+  }
+
   function handleFit() {
-    const currentDoc = docRef.current
+    // 종이를 붙인 직후에도 불리므로 React 리렌더를 기다리는 docRef가 아니라 스토어의
+    // 최신 문서를 읽습니다.
+    const currentDoc = useEditorStore.getState().doc
     if (!currentDoc) return
     const { width, height } = bodySizeRef.current
     const { wMm, hMm } = mapSizeMm(currentDoc)
@@ -749,7 +846,48 @@ export default function CanvasViewport() {
           </div>
         )}
 
-        <div className={styles.zoomCluster}>
+        {doc &&
+          SHEET_SIDES.map((side) => {
+            const info = sheetStepInfo(doc, side)
+            const where = SIDE_WORD[side]
+            const tooltipPlacement = SIDE_TOOLTIP[side]
+            return (
+              <div
+                key={side}
+                ref={(el) => {
+                  sideControlRefs.current[side] = el
+                }}
+                data-canvas-ui=""
+                className={`${styles.sheetPill} ${side === 'left' || side === 'right' ? styles.sheetPillVertical : ''}`}
+                data-side={side}
+              >
+                <Tooltip content={`${where} 종이 떼기 (−${info.removeAmount}칸)`} placement={tooltipPlacement}>
+                  <button
+                    type="button"
+                    className={styles.sheetButton}
+                    aria-label={`${where} 종이 떼기`}
+                    disabled={!info.canRemove}
+                    onClick={() => handleSheetStep(side, -1)}
+                  >
+                    <Minus size={16} />
+                  </button>
+                </Tooltip>
+                <span className={`${styles.sheetPillLabel} t-micro`} aria-hidden="true">종이</span>
+                <Tooltip content={`${where} 종이 붙이기 (+${info.addAmount}칸)`} placement={tooltipPlacement}>
+                  <button
+                    type="button"
+                    className={`${styles.sheetButton} ${styles.sheetButtonAdd}`}
+                    aria-label={`${where} 종이 붙이기`}
+                    onClick={() => handleSheetStep(side, 1)}
+                  >
+                    <Plus size={16} />
+                  </button>
+                </Tooltip>
+              </div>
+            )
+          })}
+
+        <div className={styles.zoomCluster} data-canvas-ui="">
           <Tooltip content="축소" placement="top">
             <button type="button" className={styles.zoomIconButton} aria-label="축소" onClick={handleZoomOut}>
               <ZoomOut size={16} />

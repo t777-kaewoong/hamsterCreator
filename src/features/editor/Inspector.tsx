@@ -1,8 +1,13 @@
-// 편집기 인스펙터 (PRD §9.13).
+// 편집기 인스펙터 (PRD §9.13, 2026-09-28 정렬 개편 docs/04 §3.5).
 //
 // 위에서 아래로 4개 섹션을 쌓습니다: ① 선택 항목(선택된 게 없으면 통째로 숨김)
-// ② 맵 설정(격자 크기·피치·선폭) ③ 용지(용지·방향·분할 방식 + 결과 요약)
+// ② 맵 크기(가로·세로 칸 + 세부 설정) ③ 용지(용지·방향 + 분할 도식)
 // ④ 검증(validateMap 결과 목록, 클릭하면 캔버스로 이동).
+//
+// [정렬 규칙 — "사이드바 글씨가 뒤죽박죽" 후기 반영]
+// 예전에는 "라벨 위·입력 아래"와 "라벨 왼쪽·컨트롤 오른쪽 끝" 두 방식이 섞여 있었고
+// 컨트롤 폭도 제각각이었습니다. 이제 모든 필드는 <Row>(라벨 72px + 컨트롤 나머지 폭)
+// 하나로만 그립니다. 새 필드를 추가할 때도 반드시 Row를 쓰세요.
 //
 // 값을 바꾸는 모든 조작은 예외 없이 useEditorStore.getState().commitDoc()을 거칩니다
 // (작업 지시 명시 — 인스펙터에서의 편집도 실행취소 한 단계로 묶여야 하므로, 도구
@@ -14,7 +19,8 @@
 // 편이 중간에 데이터를 계속 실어 나르는 것보다 단순합니다.
 import { useEffect, useState } from 'react'
 import type { ChangeEvent, KeyboardEvent } from 'react'
-import { CircleAlert, CircleCheck, Trash2, TriangleAlert } from 'lucide-react'
+import type { ReactNode } from 'react'
+import { ChevronRight, CircleAlert, CircleCheck, Minus, Plus, Trash2, TriangleAlert } from 'lucide-react'
 import { Button, Input, Segmented } from '@/components'
 import type { SegmentedOption } from '@/components'
 import { useEditorStore } from './editorStore'
@@ -25,6 +31,8 @@ import { getTile } from '@/lib/tiles/catalog'
 import { getIcon } from '@/lib/icons/catalog'
 import { resizeMapDoc } from '@/lib/model/resize'
 import { findPrintPlan } from '@/lib/print/plan'
+import type { PrintPlanOption } from '@/lib/print/plan'
+import { fitsOneSheet, withAutoLayout } from '@/lib/print/sheet'
 import type { Cell, Label, MapDoc, NodeCoord, PrintConfig, Prop, Stroke } from '@/lib/model/types'
 import styles from './Inspector.module.css'
 
@@ -64,8 +72,7 @@ const PAPER_SERIES = ['A', 'B'] as const
  */
 function ToggleRow({ label, checked, onChange }: { label: string; checked: boolean; onChange: (next: boolean) => void }) {
   return (
-    <div className={styles.field}>
-      <span className="t-label">{label}</span>
+    <Row label={label}>
       <button
         type="button"
         role="switch"
@@ -76,8 +83,64 @@ function ToggleRow({ label, checked, onChange }: { label: string; checked: boole
       >
         <span className={styles.toggleThumb} />
       </button>
+    </Row>
+  )
+}
+
+/**
+ * 인스펙터의 모든 필드가 쓰는 한 줄(docs/04 §3.5).
+ * 라벨 열 72px + 컨트롤 열 나머지 폭. 컨트롤은 열 폭을 꽉 채웁니다(토글만 왼쪽 정렬).
+ * 라벨 위치·컨트롤 시작점이 모든 섹션에서 같은 세로선에 맞춰져야 한다는 것이 핵심입니다.
+ */
+function Row({ label, children, hint }: { label: string; children: ReactNode; hint?: ReactNode }) {
+  return (
+    <div className={styles.row}>
+      <span className={`${styles.rowLabel} t-label`}>{label}</span>
+      <div className={styles.rowControl}>{children}</div>
+      {hint && <div className={`${styles.rowHint} t-caption`}>{hint}</div>}
     </div>
   )
+}
+
+/** 섹션 틀. 제목 옆(aside)에 항목 이름·상태 배지를 붙일 수 있습니다. */
+function Section({ title, aside, children }: { title: string; aside?: ReactNode; children: ReactNode }) {
+  return (
+    <section className={styles.section}>
+      <div className={styles.sectionHeader}>
+        <h2 className="t-h2">{title}</h2>
+        {aside}
+      </div>
+      <div className={styles.sectionBody}>{children}</div>
+    </section>
+  )
+}
+
+/** 선택 항목 이름 칩(섹션 제목 오른쪽). 긴 파일명은 말줄임합니다. */
+function NameChip({ name }: { name: string }) {
+  return (
+    <span className={`${styles.nameChip} t-caption`} title={name}>
+      {name}
+    </span>
+  )
+}
+
+/** 삭제 버튼 줄. 라벨 열을 비워 컨트롤 열 시작선에 맞춥니다. */
+function DeleteRow({ onDelete }: { onDelete: () => void }) {
+  return (
+    <div className={styles.row}>
+      <span />
+      <div className={styles.rowControl}>
+        <Button variant="ghost" size="sm" className={styles.deleteButton} icon={<Trash2 size={16} />} onClick={onDelete}>
+          삭제
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+/** 숫자 입력 두 개를 한 줄에(X·Y, 너비·높이). 각 칸 앞에 한 글자 표시를 붙입니다. */
+function Pair({ children }: { children: ReactNode }) {
+  return <div className={styles.pair}>{children}</div>
 }
 
 /** cell.art / prop.asset 값("dungeon/xxx", "icon/xxx", "asset:u1")에서 사람이 읽을 이름을
@@ -133,25 +196,19 @@ function CellFields({ doc, index }: { doc: MapDoc; index: number }) {
   }
 
   return (
-    <section className={styles.section}>
-      <h2 className={`${styles.sectionTitle} t-h2`}>선택 항목</h2>
-      <div className={styles.sectionBody}>
-        <p className={`${styles.itemName} t-caption`}>{name}</p>
-        <div className={styles.field}>
-          <span className="t-label">회전</span>
-          <Segmented
-            options={ROTATION_OPTIONS}
-            value={String(cell.rot)}
-            onChange={(v) => updateCell({ rot: Number(v) as 0 | 90 | 180 | 270 })}
-            aria-label="타일 회전"
-          />
-        </div>
-        <ToggleRow label="좌우 반전" checked={cell.flip} onChange={(v) => updateCell({ flip: v })} />
-        <Button variant="ghost" className={styles.deleteButton} icon={<Trash2 size={16} />} onClick={handleDelete}>
-          삭제
-        </Button>
-      </div>
-    </section>
+    <Section title="선택 항목" aside={<NameChip name={name} />}>
+      <Row label="회전">
+        <Segmented
+          fullWidth
+          options={ROTATION_OPTIONS}
+          value={String(cell.rot)}
+          onChange={(v) => updateCell({ rot: Number(v) as 0 | 90 | 180 | 270 })}
+          aria-label="타일 회전"
+        />
+      </Row>
+      <ToggleRow label="좌우 반전" checked={cell.flip} onChange={(v) => updateCell({ flip: v })} />
+      <DeleteRow onDelete={handleDelete} />
+    </Section>
   )
 }
 
@@ -184,31 +241,33 @@ function PropFields({ doc, index }: { doc: MapDoc; index: number }) {
   }
 
   return (
-    <section className={styles.section}>
-      <h2 className={`${styles.sectionTitle} t-h2`}>선택 항목</h2>
-      <div className={styles.sectionBody}>
-        <p className={`${styles.itemName} t-caption`}>{name}</p>
-        <div className={styles.grid2}>
-          <Input label="X" unit="mm" type="number" value={prop.x} onChange={numberField('x')} />
-          <Input label="Y" unit="mm" type="number" value={prop.y} onChange={numberField('y')} />
-          <Input label="너비" unit="mm" type="number" value={prop.w} onChange={numberField('w')} />
-          <Input label="높이" unit="mm" type="number" value={prop.h} onChange={numberField('h')} />
-        </div>
+    <Section title="선택 항목" aside={<NameChip name={name} />}>
+      <Row label="위치">
+        <Pair>
+          <Input unit="mm" type="number" value={prop.x} onChange={numberField('x')} aria-label="가로 위치 X" />
+          <Input unit="mm" type="number" value={prop.y} onChange={numberField('y')} aria-label="세로 위치 Y" />
+        </Pair>
+      </Row>
+      <Row label="크기">
+        <Pair>
+          <Input unit="mm" type="number" value={prop.w} onChange={numberField('w')} aria-label="너비" />
+          <Input unit="mm" type="number" value={prop.h} onChange={numberField('h')} aria-label="높이" />
+        </Pair>
+      </Row>
+      <Row label="회전">
         <Input
-          label="회전"
           unit="°"
           type="number"
           value={prop.rot}
+          aria-label="회전"
           onChange={(e) => {
             const value = Number(e.target.value)
             if (!Number.isNaN(value)) updateProp({ rot: value })
           }}
         />
-        <Button variant="ghost" className={styles.deleteButton} icon={<Trash2 size={16} />} onClick={handleDelete}>
-          삭제
-        </Button>
-      </div>
-    </section>
+      </Row>
+      <DeleteRow onDelete={handleDelete} />
+    </Section>
   )
 }
 
@@ -250,22 +309,23 @@ function LabelFields({ doc, index }: { doc: MapDoc; index: number }) {
   // Backspace 키를 쓰면 됩니다(toolInteractions.ts의 deleteSelection이 이미 처리).
 
   return (
-    <section className={styles.section}>
-      <h2 className={`${styles.sectionTitle} t-h2`}>선택 항목</h2>
-      <div className={styles.sectionBody}>
-        <Input label="텍스트" value={label.text} onChange={(e) => updateLabel({ text: e.target.value })} />
+    <Section title="선택 항목" aside={<NameChip name="글자" />}>
+      <Row label="글자">
+        <Input value={label.text} onChange={(e) => updateLabel({ text: e.target.value })} aria-label="글자 내용" />
+      </Row>
+      <Row label="크기">
         <Input
-          label="크기"
           unit="mm"
           type="number"
           value={label.size}
+          aria-label="글자 크기"
           onChange={(e) => {
             const value = Number(e.target.value)
             if (!Number.isNaN(value)) updateLabel({ size: value })
           }}
         />
-        <div className={styles.field}>
-          <span className="t-label">색</span>
+      </Row>
+      <Row label="색">
           <div className={styles.swatchRow}>
             {LABEL_COLOR_SWATCHES.map((sw) => (
               <button
@@ -287,20 +347,21 @@ function LabelFields({ doc, index }: { doc: MapDoc; index: number }) {
               aria-label="사용자 지정 색"
             />
           </div>
-        </div>
-        <ToggleRow label="선 위 흰 글씨" checked={label.onLine} onChange={(v) => updateLabel({ onLine: v })} />
+      </Row>
+      <ToggleRow label="흰 글씨" checked={label.onLine} onChange={(v) => updateLabel({ onLine: v })} />
+      <Row label="회전">
         <Input
-          label="회전"
           unit="°"
           type="number"
           value={label.rot}
+          aria-label="글자 회전"
           onChange={(e) => {
             const value = Number(e.target.value)
             if (!Number.isNaN(value)) updateLabel({ rot: value })
           }}
         />
-      </div>
-    </section>
+      </Row>
+    </Section>
   )
 }
 
@@ -377,33 +438,29 @@ function StrokeFields({ doc, id }: { doc: MapDoc; id: string }) {
   const lengthMm = computeStrokeLengthMm(stroke)
 
   return (
-    <section className={styles.section}>
-      <h2 className={`${styles.sectionTitle} t-h2`}>선택 항목</h2>
-      <div className={styles.sectionBody}>
-        <p className={`${styles.itemName} t-caption`}>{STROKE_KIND_LABELS[stroke.kind]}</p>
-        <DraftNumberInput label="선폭" value={stroke.width} min={0.1} onCommit={(value) => updateStroke({ width: value })} />
-        <StrokeParameterFields stroke={stroke} updateStroke={updateStroke} />
-        <div className={styles.field}>
-          <span className="t-label">정점 수</span>
-          <span className="t-body t-nums">{vertexCount ?? '—'}</span>
-        </div>
-        <div className={styles.field}>
-          <span className="t-label">총 길이</span>
-          <span className="t-body t-nums">{Math.round(lengthMm)}mm</span>
-        </div>
-        {(stroke.kind === 'spline' || stroke.kind === 'line') && (
-          <p className={`${styles.editHint} t-caption`}>
-            정점 드래그 · 경로 더블클릭으로 추가 · 정점 Alt+클릭 또는 Delete로 제거
-          </p>
-        )}
-        {stroke.kind === 'spline' && (
-          <ToggleRow label="닫힌 경로" checked={stroke.closed} onChange={(v) => updateStroke({ closed: v })} />
-        )}
-        <Button variant="ghost" className={styles.deleteButton} icon={<Trash2 size={16} />} onClick={handleDelete}>
-          삭제
-        </Button>
-      </div>
-    </section>
+    <Section title="선택 항목" aside={<NameChip name={STROKE_KIND_LABELS[stroke.kind]} />}>
+      <Row label="선 굵기">
+        <DraftNumberInput label="선 굵기" value={stroke.width} min={0.1} onCommit={(value) => updateStroke({ width: value })} />
+      </Row>
+      <StrokeParameterFields stroke={stroke} updateStroke={updateStroke} />
+      {vertexCount !== null && (
+        <Row label="정점 수">
+          <span className={`${styles.readout} t-body t-nums`}>{vertexCount}개</span>
+        </Row>
+      )}
+      <Row label="총 길이">
+        <span className={`${styles.readout} t-body t-nums`}>{Math.round(lengthMm)} mm</span>
+      </Row>
+      {stroke.kind === 'spline' && (
+        <ToggleRow label="닫힌 경로" checked={stroke.closed} onChange={(v) => updateStroke({ closed: v })} />
+      )}
+      {(stroke.kind === 'spline' || stroke.kind === 'line') && (
+        <p className={`${styles.editHint} t-caption`}>
+          정점 드래그 · 경로 더블클릭으로 추가 · 정점 Alt+클릭 또는 Delete로 제거
+        </p>
+      )}
+      <DeleteRow onDelete={handleDelete} />
+    </Section>
   )
 }
 
@@ -434,7 +491,7 @@ function DraftNumberInput({
 
   return (
     <Input
-      label={label}
+      aria-label={label}
       unit="mm"
       type="number"
       min={min}
@@ -470,27 +527,39 @@ function StrokeParameterFields({
       updateStroke({ points })
     }
     return (
-      <div className={styles.grid2}>
-        <DraftNumberInput label="시작 X" value={start[0]} onCommit={(value) => updatePoint(0, 0, value)} />
-        <DraftNumberInput label="시작 Y" value={start[1]} onCommit={(value) => updatePoint(0, 1, value)} />
-        <DraftNumberInput label="끝 X" value={end[0]} onCommit={(value) => updatePoint(1, 0, value)} />
-        <DraftNumberInput label="끝 Y" value={end[1]} onCommit={(value) => updatePoint(1, 1, value)} />
-      </div>
+      <>
+        <Row label="시작점">
+          <Pair>
+            <DraftNumberInput label="시작 X" value={start[0]} onCommit={(value) => updatePoint(0, 0, value)} />
+            <DraftNumberInput label="시작 Y" value={start[1]} onCommit={(value) => updatePoint(0, 1, value)} />
+          </Pair>
+        </Row>
+        <Row label="끝점">
+          <Pair>
+            <DraftNumberInput label="끝 X" value={end[0]} onCommit={(value) => updatePoint(1, 0, value)} />
+            <DraftNumberInput label="끝 Y" value={end[1]} onCommit={(value) => updatePoint(1, 1, value)} />
+          </Pair>
+        </Row>
+      </>
     )
   }
 
   const centerFields = (
-    <div className={styles.grid2}>
-      <DraftNumberInput label="중심 X" value={stroke.cx} onCommit={(value) => updateStroke({ cx: value })} />
-      <DraftNumberInput label="중심 Y" value={stroke.cy} onCommit={(value) => updateStroke({ cy: value })} />
-    </div>
+    <Row label="중심">
+      <Pair>
+        <DraftNumberInput label="중심 X" value={stroke.cx} onCommit={(value) => updateStroke({ cx: value })} />
+        <DraftNumberInput label="중심 Y" value={stroke.cy} onCommit={(value) => updateStroke({ cy: value })} />
+      </Pair>
+    </Row>
   )
 
   if (stroke.kind === 'circle') {
     return (
       <>
         {centerFields}
-        <DraftNumberInput label="직경" value={stroke.r * 2} min={2} onCommit={(value) => updateStroke({ r: value / 2 })} />
+        <Row label="지름">
+          <DraftNumberInput label="지름" value={stroke.r * 2} min={2} onCommit={(value) => updateStroke({ r: value / 2 })} />
+        </Row>
       </>
     )
   }
@@ -499,10 +568,12 @@ function StrokeParameterFields({
     return (
       <>
         {centerFields}
-        <div className={styles.grid2}>
-          <DraftNumberInput label="가로" value={stroke.rx * 2} min={1} onCommit={(value) => updateStroke({ rx: value / 2 })} />
-          <DraftNumberInput label="세로" value={stroke.ry * 2} min={1} onCommit={(value) => updateStroke({ ry: value / 2 })} />
-        </div>
+        <Row label="크기">
+          <Pair>
+            <DraftNumberInput label="가로" value={stroke.rx * 2} min={1} onCommit={(value) => updateStroke({ rx: value / 2 })} />
+            <DraftNumberInput label="세로" value={stroke.ry * 2} min={1} onCommit={(value) => updateStroke({ ry: value / 2 })} />
+          </Pair>
+        </Row>
       </>
     )
   }
@@ -510,16 +581,20 @@ function StrokeParameterFields({
   return (
     <>
       {centerFields}
-      <div className={styles.grid2}>
-        <DraftNumberInput label="가로" value={stroke.w} min={1} onCommit={(value) => updateStroke({ w: value })} />
-        <DraftNumberInput label="세로" value={stroke.h} min={1} onCommit={(value) => updateStroke({ h: value })} />
-      </div>
-      <DraftNumberInput
-        label="모서리 반경"
-        value={stroke.radius}
-        min={0}
-        onCommit={(value) => updateStroke({ radius: Math.min(value, stroke.w / 2, stroke.h / 2) })}
-      />
+      <Row label="크기">
+        <Pair>
+          <DraftNumberInput label="가로" value={stroke.w} min={1} onCommit={(value) => updateStroke({ w: value })} />
+          <DraftNumberInput label="세로" value={stroke.h} min={1} onCommit={(value) => updateStroke({ h: value })} />
+        </Pair>
+      </Row>
+      <Row label="모서리">
+        <DraftNumberInput
+          label="모서리 반경"
+          value={stroke.radius}
+          min={0}
+          onCommit={(value) => updateStroke({ radius: Math.min(value, stroke.w / 2, stroke.h / 2) })}
+        />
+      </Row>
     </>
   )
 }
@@ -576,11 +651,11 @@ function MapSettingsSection() {
   // toolInteractions.ts의 여러 메서드와 같은 이유로, blur/Enter 시점에는 항상 최신
   // 문서를 기준으로 계산해야 그 사이 다른 조작(예: 실행취소)이 끼어들어도 어긋나지
   // 않습니다.
-  function commitGridSize() {
+  function commitGridSize(overrideCols?: number, overrideRows?: number) {
     const currentDoc = useEditorStore.getState().doc
     if (!currentDoc) return
-    const parsedCols = Math.round(Number(colsDraft))
-    const parsedRows = Math.round(Number(rowsDraft))
+    const parsedCols = Math.round(overrideCols ?? Number(colsDraft))
+    const parsedRows = Math.round(overrideRows ?? Number(rowsDraft))
     const nextCols = Number.isFinite(parsedCols) && parsedCols > 0 ? parsedCols : currentDoc.board.cols
     const nextRows = Number.isFinite(parsedRows) && parsedRows > 0 ? parsedRows : currentDoc.board.rows
     setColsDraft(String(nextCols))
@@ -589,10 +664,9 @@ function MapSettingsSection() {
 
     useEditorStore.getState().commitDoc(resizeMapDoc(currentDoc, nextCols, nextRows))
 
-    // cell 선택은 배열 인덱스 기반인데 격자 크기가 바뀌면 인덱스 공식 자체가 달라져
-    // 엉뚱한 칸을 가리키게 됩니다(editorStore.ts Selection 타입 주석과 같은 문제).
-    // prop·label·stroke 선택은 mm 좌표/고유 id 기반이라 격자 크기와 무관하게 안전합니다.
-    if (useEditorStore.getState().selection?.kind === 'cell') useEditorStore.getState().setSelection(null)
+    // cell 선택은 배열 인덱스 기반이라 격자 크기가 바뀌면 엉뚱한 칸을 가리킵니다. 줄일 때는
+    // 잘려 나간 오브젝트·글자가 지워져 prop·label 인덱스도 밀릴 수 있으므로 선택을 모두 풉니다.
+    useEditorStore.getState().setSelection(null)
   }
 
   function commitPitch() {
@@ -627,65 +701,123 @@ function MapSettingsSection() {
 
   const pitchOffSpec = doc.board.pitch !== PITCH_MM
   const lineWidthOffSpec = doc.board.lineWidth !== LINE_WIDTH_MM
+  const widthMm = doc.board.cols * doc.board.pitch
+  const heightMm = doc.board.rows * doc.board.pitch
 
   return (
-    <section className={styles.section}>
-      <h2 className={`${styles.sectionTitle} t-h2`}>맵 설정</h2>
-      <div className={styles.sectionBody}>
-        <div className={styles.grid2}>
-          <Input
-            label="열"
-            unit="칸"
-            type="number"
-            value={colsDraft}
-            onChange={(e) => setColsDraft(e.target.value)}
-            onBlur={commitGridSize}
-            onKeyDown={blurOnEnter}
-          />
-          <Input
-            label="행"
-            unit="칸"
-            type="number"
-            value={rowsDraft}
-            onChange={(e) => setRowsDraft(e.target.value)}
-            onBlur={commitGridSize}
-            onKeyDown={blurOnEnter}
-          />
+    <Section title="맵 크기">
+      <Row label="가로">
+        <Stepper
+          value={colsDraft}
+          unit="칸"
+          label="가로 칸 수"
+          onDraft={setColsDraft}
+          onCommit={() => commitGridSize()}
+          onStep={(delta) => commitGridSize(doc.board.cols + delta, doc.board.rows)}
+          canDecrease={doc.board.cols > 1}
+        />
+      </Row>
+      <Row label="세로" hint={<span className="t-nums">실제 크기 {widthMm} × {heightMm} mm</span>}>
+        <Stepper
+          value={rowsDraft}
+          unit="칸"
+          label="세로 칸 수"
+          onDraft={setRowsDraft}
+          onCommit={() => commitGridSize()}
+          onStep={(delta) => commitGridSize(doc.board.cols, doc.board.rows + delta)}
+          canDecrease={doc.board.rows > 1}
+        />
+      </Row>
+      {/* 칸 크기·선 굵기는 공식 말판 규격(50mm·8mm)이라 거의 바꿀 일이 없습니다. 기본 화면의
+          읽을거리를 줄이려고 접어 두되(점진적 공개), 기본값과 다를 때의 경고는 접힘과 무관하게
+          아래에 항상 보입니다 — 모르고 바뀐 값을 놓치면 인쇄물이 정품과 어긋나기 때문입니다. */}
+      <details className={styles.details}>
+        <summary className={`${styles.detailsSummary} t-label`}>
+          <ChevronRight size={14} className={styles.detailsChevron} aria-hidden="true" />
+          세부 설정
+        </summary>
+        <div className={styles.detailsBody}>
+          <Row label="칸 크기">
+            <Input
+              unit="mm"
+              type="number"
+              value={pitchDraft}
+              aria-label="칸 크기"
+              onChange={(e) => setPitchDraft(e.target.value)}
+              onBlur={commitPitch}
+              onKeyDown={blurOnEnter}
+            />
+          </Row>
+          <Row label="선 굵기">
+            <Input
+              unit="mm"
+              type="number"
+              value={lineWidthDraft}
+              aria-label="선 굵기"
+              onChange={(e) => setLineWidthDraft(e.target.value)}
+              onBlur={commitLineWidth}
+              onKeyDown={blurOnEnter}
+            />
+          </Row>
         </div>
-        <div className={styles.grid2}>
-          <Input
-            label="피치"
-            unit="mm"
-            type="number"
-            value={pitchDraft}
-            onChange={(e) => setPitchDraft(e.target.value)}
-            onBlur={commitPitch}
-            onKeyDown={blurOnEnter}
-          />
-          <Input
-            label="선폭"
-            unit="mm"
-            type="number"
-            value={lineWidthDraft}
-            onChange={(e) => setLineWidthDraft(e.target.value)}
-            onBlur={commitLineWidth}
-            onKeyDown={blurOnEnter}
-          />
+      </details>
+      {(pitchOffSpec || lineWidthOffSpec) && (
+        <div className={styles.specWarnings}>
+          {pitchOffSpec && (
+            <p className={`${styles.warnCaption} t-caption`}>칸 크기가 기본값 {PITCH_MM}mm와 달라 정품 말판과 어긋날 수 있어요</p>
+          )}
+          {lineWidthOffSpec && (
+            <p className={`${styles.warnCaption} t-caption`}>선 굵기가 기본값 {LINE_WIDTH_MM}mm와 달라 정품 말판과 어긋날 수 있어요</p>
+          )}
         </div>
-        {/* D6: 좁은 2열 입력 안에 긴 경고를 넣으면 한 글자씩 꺾이므로, 경고는 두 입력
-            공통 아래쪽의 전체 폭을 사용합니다(§9.13: 입력 아래 caption 한 줄). */}
-        {(pitchOffSpec || lineWidthOffSpec) && (
-          <div className={styles.specWarnings}>
-            {pitchOffSpec && (
-              <p className={`${styles.warnCaption} t-caption`}>피치가 기본값 {PITCH_MM}mm과 달라 정품 말판과 어긋날 수 있어요</p>
-            )}
-            {lineWidthOffSpec && (
-              <p className={`${styles.warnCaption} t-caption`}>선폭이 기본값 {LINE_WIDTH_MM}mm과 달라 정품 말판과 어긋날 수 있어요</p>
-            )}
-          </div>
-        )}
-      </div>
-    </section>
+      )}
+    </Section>
+  )
+}
+
+/**
+ * [− 숫자 +] 한 묶음. 버튼은 누를 때마다 바로 반영(실행취소 한 단계)하고, 가운데 칸에
+ * 직접 치면 기존처럼 Enter/포커스 이탈 때 한 번만 반영합니다.
+ * 입력칸만 있을 때는 숫자를 지우고 다시 쳐야 해서 "한 칸만 늘리기"가 번거로웠습니다.
+ */
+function Stepper({
+  value,
+  unit,
+  label,
+  onDraft,
+  onCommit,
+  onStep,
+  canDecrease,
+}: {
+  value: string
+  unit: string
+  label: string
+  onDraft: (next: string) => void
+  onCommit: () => void
+  onStep: (delta: 1 | -1) => void
+  canDecrease: boolean
+}) {
+  return (
+    <div className={styles.stepper}>
+      <button type="button" className={styles.stepButton} aria-label={`${label} 줄이기`} disabled={!canDecrease} onClick={() => onStep(-1)}>
+        <Minus size={16} />
+      </button>
+      <Input
+        unit={unit}
+        type="number"
+        min={1}
+        value={value}
+        aria-label={label}
+        onChange={(e) => onDraft(e.target.value)}
+        onBlur={onCommit}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') e.currentTarget.blur()
+        }}
+      />
+      <button type="button" className={styles.stepButton} aria-label={`${label} 늘리기`} onClick={() => onStep(1)}>
+        <Plus size={16} />
+      </button>
+    </div>
   )
 }
 
@@ -694,26 +826,63 @@ function MapSettingsSection() {
 // ────────────────────────────────────────────────────────────────────────
 
 /**
- * 용지 요약 한 줄을 계산합니다(§9.13 예시: "A4 가로 4장 · 이음매 4곳").
- *
- * [이 계산이 어림값인 이유] 실제 출력 계획기(§9.14, FR-5)는 여백·재단선·겹치기 폭까지
- * 따져 정교하게 나눕니다(§6.1 표의 "활동면적"이 용지 크기보다 항상 작은 이유이기도
- * 합니다). 여기서는 "대략 몇 장이 필요한지" 감을 주는 용도라, 맵 전체 크기를 용지
- * 크기로 단순히 나눠 올림(ceil)한 값만 씁니다. 출력 계획기가 실제로 만들어지면 이
- * 값과 결과가 달라질 수 있습니다.
+ * 용지 요약 한 줄(예: "A4 가로 2장 · 이음매 1곳").
+ * 캔버스 종이 경계·출력 계획기와 같은 findPrintPlan을 써서 세 곳의 숫자가 항상 같습니다.
+ * 저장된 print.layout(단일장/나눠 인쇄)은 보지 않습니다 — 맵 크기로 정해지는 값이라서입니다.
  */
-function summarizePrintPlan(doc: MapDoc): string {
+function summarizePrintPlan(doc: MapDoc, plan: PrintPlanOption | null): string {
   const paper = PAPER_SIZES.find((p) => p.id === doc.print.sheet)
   const orientationLabel = doc.print.orientation === 'landscape' ? '가로' : '세로'
-  if (!paper) return doc.print.sheet // 목록에 없는 값(사용자 정의 등)은 그대로 보여줌
+  const paperLabel = paper?.label ?? doc.print.sheet
+  if (fitsOneSheet(doc) || !plan || plan.sheets <= 1) return `${paperLabel} ${orientationLabel} 1장 · 이음매 없음`
+  return `${paperLabel} ${orientationLabel} ${plan.sheets}장 · 이음매 ${plan.seams}곳`
+}
 
-  if (doc.print.layout === 'single') {
-    return `${paper.label} ${orientationLabel} 1장 · 이음매 없음`
-  }
+/** 분할 도식 최대 높이(px). docs/04 §3.5 */
+const SHEET_DIAGRAM_MAX_H = 96
 
-  const plan = findPrintPlan(doc)
-  if (!plan || plan.sheets <= 1) return `${paper.label} ${orientationLabel} 1장 · 이음매 없음`
-  return `${paper.label} ${orientationLabel} ${plan.sheets}장 · 이음매 ${plan.seams}곳`
+/**
+ * 맵을 종이 몇 장으로 나누는지 보여주는 작은 그림(docs/04 §3.5 — 글자 대신 그림).
+ * 맵 비율 그대로 그리고, 종이마다 칸을 나눠 번호를 씁니다. 번호는 캔버스 배지·출력 계획기·
+ * PDF 머리글과 같은 "행-열" 코드(1-1, 1-2 …)라 화면과 인쇄물이 바로 연결됩니다.
+ */
+function SheetDiagram({ doc, plan }: { doc: MapDoc; plan: PrintPlanOption | null }) {
+  const { cols, rows } = doc.board
+  const regions = plan && plan.sheets > 1 ? plan.regions : [{ index: 1, row: 0, column: 0, startCol: 0, startRow: 0, cols, rows }]
+  // viewBox는 칸 단위. 아주 긴 맵도 최대 높이 안에 들어가도록 preserveAspectRatio로 맞춥니다.
+  return (
+    <svg
+      className={styles.sheetDiagram}
+      viewBox={`-0.1 -0.1 ${cols + 0.2} ${rows + 0.2}`}
+      style={{ maxHeight: SHEET_DIAGRAM_MAX_H, aspectRatio: `${cols + 0.2} / ${rows + 0.2}` }}
+      preserveAspectRatio="xMinYMid meet"
+      role="img"
+      aria-label={`종이 ${regions.length}장으로 나뉨`}
+    >
+      {regions.map((region) => (
+        <g key={region.index}>
+          <rect
+            className={styles.sheetRect}
+            x={region.startCol}
+            y={region.startRow}
+            width={region.cols}
+            height={region.rows}
+            vectorEffect="non-scaling-stroke"
+          />
+          <text
+            className={styles.sheetNumber}
+            x={region.startCol + region.cols / 2}
+            y={region.startRow + region.rows / 2}
+            fontSize={Math.min(region.cols * 0.3, region.rows * 0.45)}
+            textAnchor="middle"
+            dominantBaseline="central"
+          >
+            {regions.length > 1 ? `${region.row + 1}-${region.column + 1}` : '1장'}
+          </text>
+        </g>
+      ))}
+    </svg>
+  )
 }
 
 function PaperSection() {
@@ -721,69 +890,65 @@ function PaperSection() {
   const setPrintPlannerOpen = useEditorStore((s) => s.setPrintPlannerOpen)
 
   if (!doc) return null
+  const plan = findPrintPlan(doc)
 
   function updatePrint(patch: Partial<PrintConfig>) {
     const currentDoc = useEditorStore.getState().doc
     if (!currentDoc) return
-    useEditorStore.getState().commitDoc({ ...currentDoc, print: { ...currentDoc.print, ...patch } })
+    const next = { ...currentDoc, print: { ...currentDoc.print, ...patch } }
+    // 용지를 바꾸면 한 장에 들어가는지가 달라지므로 layout도 같이 맞춥니다.
+    useEditorStore.getState().commitDoc(withAutoLayout(next))
   }
 
   return (
-    <section className={styles.section}>
-      <h2 className={`${styles.sectionTitle} t-h2`}>용지</h2>
-      <div className={styles.sectionBody}>
-        <div className={styles.field}>
-          <span className="t-label">용지</span>
-          {/* [드롭다운] components/에 전용 Select가 없어 네이티브 <select>를 Input과
-              비슷한 높이·테두리로 스타일링해 씁니다(임의 결정 — 커스텀 리스트박스를 새로
-              만들 만큼 이 용도가 복잡하지 않다고 판단했습니다). */}
-          <select
-            className={styles.select}
-            value={doc.print.sheet}
-            onChange={(e) => updatePrint({ sheet: e.target.value })}
-            aria-label="용지"
-          >
-            {PAPER_SERIES.map((series) => (
-              <optgroup key={series} label={`${series} 계열`}>
-                {PAPER_SIZES.filter((paper) => paper.series === series).map((paper) => (
-                  <option key={paper.id} value={paper.id}>
-                    {paper.label}
-                  </option>
-                ))}
-              </optgroup>
-            ))}
-          </select>
+    <Section title="용지">
+      <Row label="용지">
+        {/* [드롭다운] components/에 전용 Select가 없어 네이티브 <select>를 Input과
+            같은 높이·테두리로 스타일링해 씁니다. */}
+        <select
+          className={styles.select}
+          value={doc.print.sheet}
+          onChange={(e) => updatePrint({ sheet: e.target.value })}
+          aria-label="용지"
+        >
+          {PAPER_SERIES.map((series) => (
+            <optgroup key={series} label={`${series} 계열`}>
+              {PAPER_SIZES.filter((paper) => paper.series === series).map((paper) => (
+                <option key={paper.id} value={paper.id}>
+                  {paper.label}
+                </option>
+              ))}
+            </optgroup>
+          ))}
+        </select>
+      </Row>
+      <Row label="방향">
+        <Segmented
+          fullWidth
+          options={[
+            { value: 'landscape', label: '가로' },
+            { value: 'portrait', label: '세로' },
+          ]}
+          value={doc.print.orientation}
+          onChange={(v) => updatePrint({ orientation: v as PrintConfig['orientation'] })}
+          aria-label="용지 방향"
+        />
+      </Row>
+      <Row label="나눔">
+        <div className={styles.sheetSummary}>
+          <SheetDiagram doc={doc} plan={plan} />
+          <span className={`${styles.summaryLine} t-caption`}>{summarizePrintPlan(doc, plan)}</span>
         </div>
-        <div className={styles.field}>
-          <span className="t-label">방향</span>
-          <Segmented
-            options={[
-              { value: 'landscape', label: '가로' },
-              { value: 'portrait', label: '세로' },
-            ]}
-            value={doc.print.orientation}
-            onChange={(v) => updatePrint({ orientation: v as PrintConfig['orientation'] })}
-            aria-label="용지 방향"
-          />
+      </Row>
+      <div className={styles.row}>
+        <span />
+        <div className={styles.rowControl}>
+          <Button variant="secondary" size="sm" className={styles.fullButton} onClick={() => setPrintPlannerOpen(true)}>
+            출력 계획기 열기
+          </Button>
         </div>
-        <div className={styles.field}>
-          <span className="t-label">분할 방식</span>
-          <Segmented
-            options={[
-              { value: 'single', label: '단일장' },
-              { value: 'tiled', label: '나눠 인쇄' },
-            ]}
-            value={doc.print.layout}
-            onChange={(v) => updatePrint({ layout: v as PrintConfig['layout'] })}
-            aria-label="분할 방식"
-          />
-        </div>
-        <p className={`${styles.summaryLine} t-caption`}>{summarizePrintPlan(doc)}</p>
-        <Button variant="ghost" onClick={() => setPrintPlannerOpen(true)}>
-          출력 계획기 열기
-        </Button>
       </div>
-    </section>
+    </Section>
   )
 }
 
@@ -802,7 +967,7 @@ function ValidationSection() {
 
   return (
     <section className={styles.section}>
-      <div className={styles.validationHeader}>
+      <div className={styles.sectionHeader}>
         <h2 className="t-h2">검증</h2>
         {!hasIssues && (
           <span className={`${styles.okBadge} t-caption`}>

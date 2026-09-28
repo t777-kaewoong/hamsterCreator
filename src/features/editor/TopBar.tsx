@@ -10,7 +10,8 @@
 //
 // [2026-09-16] 저장 버튼이 토스트만 띄우고 실제로는 아무 파일도 안 만들던 것을 연결했습니다
 // (FR-1.4/1.5, 둘 다 P0). 저장소 어댑터는 처음부터 있었는데 버튼에만 안 붙어 있어서,
-// 만든 말판을 파일로 남길 방법이 아예 없었습니다. "미리보기"는 아직 연결하지 않았습니다.
+// 만든 말판을 파일로 남길 방법이 아예 없었습니다.
+// [2026-09-28] "미리보기"를 인쇄용 PDF 새 탭 열기로 연결했습니다(docs/04 §3.4).
 //
 // [뒤로가기(M1-5c)] 시작 화면 ↔ 편집기 전환은 editorStore에 상태를 두지 않고(다른
 // 작업자가 그 파일을 동시에 수정 중이라 손대지 않기로 했습니다) App.tsx의 로컬
@@ -23,7 +24,8 @@ import { ChevronLeft, Save, SaveAll, Undo2, Redo2, Eye, Printer, ListChecks } fr
 import { Button, Modal, StatusChip, Tooltip, useToast } from '@/components'
 import { PAPER_SIZES } from '@/lib/model/constants'
 import type { MapDoc } from '@/lib/model/types'
-import { downloadSingleSheetPdf } from '@/lib/pdf/generateMapPdf'
+import { downloadSingleSheetPdf, generateSingleSheetPdf, generateTiledMapPdf } from '@/lib/pdf/generateMapPdf'
+import { fitsOneSheet } from '@/lib/print/sheet'
 import { UserCancelledError } from '@/lib/storage'
 import { clearDraft, currentDraftId } from '@/lib/storage/draft'
 import { mapStore, useEditorStore } from './editorStore'
@@ -55,6 +57,12 @@ function formatSizeChip(doc: MapDoc): string {
   return `${sheetLabel} · ${doc.board.cols}×${doc.board.rows} · ${widthMm}×${heightMm}mm`
 }
 
+/** 한 장짜리 PDF 생성기는 layout이 'single'인 문서만 받습니다. 한 장에 들어간다는 것을
+ *  이미 확인한 뒤에 부르므로, 저장된 값과 무관하게 'single'로 맞춰 넘깁니다. */
+function asSingleSheet(doc: MapDoc): MapDoc {
+  return doc.print.layout === 'single' ? doc : { ...doc, print: { ...doc.print, layout: 'single' } }
+}
+
 export default function TopBar({ onBack }: TopBarProps) {
   const { show } = useToast()
   const doc = useEditorStore((s) => s.doc)
@@ -78,6 +86,7 @@ export default function TopBar({ onBack }: TopBarProps) {
   const [confirmBackOpen, setConfirmBackOpen] = useState(false)
   const [isCreatingPdf, setIsCreatingPdf] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
+  const [isPreviewing, setIsPreviewing] = useState(false)
 
   // Ctrl+Z / Ctrl+Shift+Z (맥에서는 Cmd). 도구 레일 단축키(ToolRail.tsx)와 마찬가지로
   // 입력창에 포커스가 있으면 무시합니다.
@@ -111,10 +120,6 @@ export default function TopBar({ onBack }: TopBarProps) {
     if (editingTitle) titleInputRef.current?.focus()
   }, [editingTitle])
 
-  // 아직 연결되지 않은 버튼(미리보기)의 동작.
-  function notConnectedYet() {
-    show({ message: '다음 단계에서 연결됩니다' })
-  }
 
   /**
    * 맵을 파일로 저장합니다(FR-1.4 저장 / FR-1.5 다른 이름으로 저장).
@@ -147,21 +152,63 @@ export default function TopBar({ onBack }: TopBarProps) {
     }
   }
 
+  /**
+   * 인쇄. 한 장에 들어가면 바로 PDF, 여러 장이면 출력 계획기를 엽니다.
+   *
+   * [저장된 print.layout을 보지 않는 이유 — 2026-09-28 후기 반영]
+   * 예전에는 "단일장"으로 저장된 맵이 용지보다 크면 인쇄 버튼이 오류 토스트로 끝났습니다.
+   * 한 장이냐 여러 장이냐는 맵 크기와 용지로 이미 정해지므로 그때그때 계산합니다.
+   */
   async function handlePrint() {
     if (!doc || isCreatingPdf) return
-    if (doc.print.layout === 'tiled') {
+    if (!fitsOneSheet(doc)) {
       setPrintPlannerOpen(true)
       return
     }
     setIsCreatingPdf(true)
     try {
-      await downloadSingleSheetPdf(doc)
+      await downloadSingleSheetPdf(asSingleSheet(doc))
       show({ message: 'PDF를 내려받았습니다' })
     } catch (error) {
       const message = error instanceof Error ? error.message : 'PDF를 만들지 못했습니다'
       show({ message, tone: 'danger' })
     } finally {
       setIsCreatingPdf(false)
+    }
+  }
+
+  /**
+   * 미리보기 = 실제로 인쇄될 PDF를 새 탭에 엽니다(docs/04 §3.4).
+   * 화면용 미리보기를 따로 만들면 인쇄물과 어긋날 수 있어, 인쇄와 똑같은 PDF를 보여줍니다.
+   * 여러 장이면 지금 용지의 출력 계획 그대로(조립 안내도 포함) 만듭니다.
+   *
+   * [빈 탭을 먼저 여는 이유] PDF를 만드는 동안 기다렸다가 window.open을 부르면 브라우저가
+   * "사용자 클릭과 무관한 팝업"으로 보고 막습니다. 클릭 순간 탭부터 열고 주소만 나중에 바꿉니다.
+   */
+  async function handlePreview() {
+    if (!doc || isPreviewing) return
+    const tab = window.open('', '_blank')
+    if (tab) {
+      tab.document.title = '미리보기 준비 중'
+      tab.document.body.style.fontFamily = 'sans-serif'
+      tab.document.body.textContent = '인쇄 미리보기를 만드는 중입니다…'
+    }
+    setIsPreviewing(true)
+    try {
+      const bytes = fitsOneSheet(doc)
+        ? await generateSingleSheetPdf(asSingleSheet(doc))
+        : await generateTiledMapPdf({ ...doc, print: { ...doc.print, layout: 'tiled' } })
+      const url = URL.createObjectURL(new Blob([new Uint8Array(bytes).buffer], { type: 'application/pdf' }))
+      if (tab && !tab.closed) tab.location.href = url
+      else show({ message: '팝업이 막혀 미리보기 탭을 열지 못했습니다', tone: 'danger' })
+      // 새 탭이 PDF를 다 읽을 시간을 넉넉히 준 뒤 메모리를 돌려받습니다.
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000)
+    } catch (error) {
+      tab?.close()
+      const message = error instanceof Error ? error.message : '미리보기를 만들지 못했습니다'
+      show({ message, tone: 'danger' })
+    } finally {
+      setIsPreviewing(false)
     }
   }
 
@@ -290,9 +337,17 @@ export default function TopBar({ onBack }: TopBarProps) {
 
         <span className={styles.divider} aria-hidden="true" />
 
-        <Button variant="ghost" icon={<Eye size={18} />} onClick={notConnectedYet}>
-          미리보기
-        </Button>
+        <Tooltip content="인쇄될 PDF를 새 탭에서 보기" placement="bottom">
+          <Button
+            variant="ghost"
+            icon={<Eye size={18} />}
+            onClick={() => void handlePreview()}
+            disabled={!doc || isPreviewing}
+            aria-busy={isPreviewing}
+          >
+            미리보기
+          </Button>
+        </Tooltip>
         <Button variant="secondary" icon={<ListChecks size={18} />} onClick={() => setAnswerOpen(true)} disabled={!doc}>
           정답
         </Button>
