@@ -92,7 +92,7 @@ const TOOL_HELP: Record<ToolId, { title: string; description: string; hint?: str
   select: { title: '선택', description: '캔버스의 타일·글자·도형을 선택합니다.', hint: '선택한 항목은 오른쪽에서 수정하거나 Delete로 지울 수 있어요.', icon: MousePointer2 },
   lineDraw: { title: '격자선 긋기', description: '격자점 사이를 드래그해 길을 연결합니다.', hint: '격자 바깥을 클릭하면 경계 진입로가 생깁니다. Alt는 지우기.', icon: Grid3x3 },
   eyedropper: { title: '타일 집기', description: '캔버스에 놓인 타일을 클릭해 같은 타일을 가져옵니다.', hint: '타일을 집으면 자동으로 타일 배치 도구로 바뀝니다.', icon: Pipette },
-  eraser: { title: '지우개', description: '타일이나 객체를 클릭 또는 드래그해 지웁니다.', hint: 'Alt를 누르면 격자선을 지울 수 있어요.', icon: Eraser },
+  eraser: { title: '지우개', description: '빨갛게 보이는 것을 누르거나 문질러 지웁니다.', hint: '격자선은 한 토막씩 지워져요. + 모양의 왼쪽 팔을 누르면 ㅏ 모양이 됩니다. 끌면 처음 누른 것과 같은 종류만 지워요.', icon: Eraser },
   text: { title: '글자', description: '글자를 넣을 위치를 클릭한 뒤 바로 입력합니다.', hint: '입력 후 오른쪽 선택 항목에서 크기·색·회전을 바꿀 수 있어요.', icon: Type },
   pen: { title: '곡선 펜', description: '캔버스를 차례로 클릭해 곡선의 정점을 만듭니다.', hint: 'Enter 또는 더블클릭으로 완료하고 Esc로 취소합니다.', icon: PenTool },
   freeDraw: { title: '자유 그리기', description: '캔버스를 드래그한 궤적대로 트랙을 만듭니다.', hint: '완성된 곡선은 선택 도구에서 정점을 수정할 수 있어요.', icon: Pencil },
@@ -693,10 +693,18 @@ function PaletteTile({
   onDragStart: (e: DragEvent<HTMLButtonElement>, item: PaletteItem) => void
   showCoachMark?: boolean
 }) {
+  // 타일 집기(I)로 고른 타일이 그리드 아래쪽에 있으면 선택 표시가 안 보입니다.
+  // 선택되는 순간 그 칸이 보이도록 스크롤합니다(이미 보이면 움직이지 않음).
+  const buttonRef = useRef<HTMLButtonElement>(null)
+  useEffect(() => {
+    if (selected) buttonRef.current?.scrollIntoView({ block: 'nearest' })
+  }, [selected])
+
   return (
     <div className={styles.tileSlot}>
       <Tooltip content={item.name}>
         <button
+          ref={buttonRef}
           type="button"
           className={`${styles.tile} ${selected ? styles.tileSelected : ''}`}
           draggable

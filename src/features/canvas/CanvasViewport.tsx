@@ -455,6 +455,18 @@ export default function CanvasViewport() {
     }
     bodyWrap.addEventListener('contextmenu', preventContextMenu)
 
+    // ── 캔버스를 눌러도 포커스를 옮기지 않기 ────────────────────────────────────────────
+    // [2026-09-29 "글자 기능 동작 안 함"의 원인] T 도구는 pointerdown에서 입력칸을 띄우고
+    // 곧바로 포커스를 줍니다. 그런데 뒤이어 오는 mousedown의 기본 동작이 "누른 곳으로 포커스
+    // 옮기기"라서, 포커스를 받을 수 없는 캔버스를 누른 순간 입력칸 포커스가 빠지고(blur)
+    // 빈 글자로 확정되며 라벨이 바로 지워졌습니다. 캔버스 본체를 누를 때만 이 기본 동작을
+    // 막습니다(떠 있는 버튼과 입력칸 자체는 그대로 둡니다).
+    function preventCanvasFocusSteal(e: MouseEvent) {
+      if (e.target instanceof Element && e.target.closest('[data-canvas-ui], input, textarea')) return
+      e.preventDefault()
+    }
+    bodyWrap.addEventListener('mousedown', preventCanvasFocusSteal)
+
     // ── 팬: Space+왼쪽 버튼 드래그, 또는 마우스 가운데 버튼 드래그 ──────────────────────────
     //    그 외의 왼쪽/오른쪽 버튼 입력은 지금 고른 도구(ToolController)에게 넘깁니다.
     /**
@@ -482,6 +494,10 @@ export default function CanvasViewport() {
       // 버튼의 click까지 가로챕니다. React의 stopPropagation은 이 네이티브 리스너보다
       // 늦게 돌아서 막지 못하므로 data 속성으로 직접 판별합니다.
       if (e.target instanceof Element && e.target.closest('[data-canvas-ui]')) return
+      // 인스펙터 숫자 칸 등에 입력하던 중이면 여기서 먼저 확정(blur)합니다. 아래 mousedown
+      // 기본 동작을 막기 때문에 브라우저가 대신 포커스를 빼 주지 않습니다.
+      const active = document.activeElement
+      if (active instanceof HTMLElement && isTypingTarget(active)) active.blur()
       const isMiddleButton = e.button === 1
       const isSpaceDrag = e.button === 0 && isSpaceDownRef.current
       if (isMiddleButton || isSpaceDrag) {
@@ -605,6 +621,7 @@ export default function CanvasViewport() {
       resizeObserver.disconnect()
       bodyWrap.removeEventListener('wheel', handleWheel)
       bodyWrap.removeEventListener('contextmenu', preventContextMenu)
+      bodyWrap.removeEventListener('mousedown', preventCanvasFocusSteal)
       bodyWrap.removeEventListener('pointerdown', handlePointerDown)
       bodyWrap.removeEventListener('pointermove', handlePointerMove)
       bodyWrap.removeEventListener('pointerup', handlePointerUpOrCancel)
@@ -816,6 +833,8 @@ export default function CanvasViewport() {
               <input
                 key={editingLabel.index}
                 ref={labelInputRef}
+                // 입력칸 안을 눌러 커서를 옮기는 것은 도구 입력이 아닙니다(handlePointerDown 참고).
+                data-canvas-ui=""
                 className={styles.labelInput}
                 // labelInputTick 자체는 화면에 쓰이지 않지만, 이 값이 바뀌어야 위 style의
                 // 화면 좌표가 다시 계산됩니다(선언부 주석 참고). 속성으로 한 번 읽어 둡니다.

@@ -8,8 +8,6 @@
 // 바로 지정/토글하는 방식이라 "먼저 선택한 뒤 조작"하는 흐름 자체가 필요 없습니다.
 import type { Label, MapDoc } from '@/lib/model/types'
 import type { Selection } from '@/features/editor/editorStore'
-import { getIcon } from '@/lib/icons/catalog'
-import { getTile } from '@/lib/tiles/catalog'
 import { cellAtMm } from './gridMath'
 import { measureLabelBoxMm } from './drawBoard'
 import { distanceToStroke } from './strokeGeometry'
@@ -86,14 +84,12 @@ export function hitTest(doc: MapDoc, mx: number, my: number): Selection {
     }
   }
 
-  // ③ 격자선 위에 그려지는 object 셀(사용자 이미지 포함). 곡선보다 화면 앞쪽이라 먼저 잡습니다.
+  // ③ 칸 타일. 2026-09-29부터 모든 타일이 격자선·곡선 위에 그려지므로(isTileAboveLine)
+  //    곡선보다 먼저 잡습니다 — 화면에서 앞에 보이는 것이 먼저 선택되어야 합니다.
   const cell = cellAtMm(mx, my, doc.board.cols, doc.board.rows, doc.board.pitch)
   if (cell) {
     const index = cell.r * doc.board.cols + cell.c
-    const placed = doc.cells[index]
-    if (placed && (placed.art.startsWith('asset:') || getTile(placed.art)?.kind === 'object' || getIcon(placed.art))) {
-      return { kind: 'cell', index }
-    }
+    if (doc.cells[index] !== null) return { kind: 'cell', index }
   }
 
   // ④ 자유곡선 — 화면에서 위에 놓인 마지막 곡선부터, 선폭 절반 + 2mm 선택 여유로 검사합니다.
@@ -101,12 +97,6 @@ export function hitTest(doc: MapDoc, mx: number, my: number): Selection {
   for (let i = doc.strokes.length - 1; i >= 0; i--) {
     const stroke = doc.strokes[i]
     if (distanceToStroke(stroke, [mx, my]) <= stroke.width / 2 + 2) return { kind: 'stroke', id: stroke.id }
-  }
-
-  // ⑤ 곡선 아래에 그려지는 floor/block 셀. 빈 칸 클릭은 선택 해제로 처리합니다.
-  if (cell) {
-    const index = cell.r * doc.board.cols + cell.c
-    if (doc.cells[index] !== null) return { kind: 'cell', index }
   }
 
   return null

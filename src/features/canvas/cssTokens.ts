@@ -31,6 +31,7 @@ const TOKEN_NAMES = [
   '--c-warn',
   '--c-warn-zone',
   '--c-seam',
+  '--c-danger',
   '--c-print-black',
   '--e1',
   '--e2',

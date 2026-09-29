@@ -104,6 +104,16 @@
 .seamControls > span { display: inline-flex; align-items: center; gap: var(--sp-1); white-space: nowrap; }
 .seamControls > div:last-child { width: 110px; }
 
+/* ── PDF에 넣을 것(체크박스 4개, 2열) ── */
+.extras { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-2) var(--sp-4); margin: 0; padding: var(--sp-3) 0 0; border: none; border-top: 1px solid var(--c-border); }
+.extras legend { float: left; width: 100%; margin-bottom: var(--sp-1); padding: 0; color: var(--c-text); }
+.extraItem { display: flex; align-items: flex-start; gap: var(--sp-2); cursor: pointer; }
+.extraItem input { width: 16px; height: 16px; margin: 1px 0 0; flex-shrink: 0; accent-color: var(--c-primary); cursor: inherit; }
+.extraText { display: flex; flex-direction: column; min-width: 0; }
+.extraText .t-caption { color: var(--c-text-3); }
+.extraDisabled { opacity: 0.45; cursor: not-allowed; }
+.previewHeader p.marginNote { margin-top: 2px; color: var(--c-text-3); }
+
 .footerContent { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: var(--sp-4); }
 .footerContent > span { color: var(--c-text-2); }
 .footerActions { display: flex; gap: var(--sp-3); }
@@ -119,5 +129,6 @@
   .seamControls { flex-wrap: wrap; gap: var(--sp-2); }
   .seamControls > span:first-child { flex-basis: 100%; }
   .footerContent > span { display: none; }
+  .extras { grid-template-columns: 1fr; }
   .footerActions { margin-left: auto; }
 }

@@ -1,5 +1,5 @@
 # Progress: 햄스터S 말판 제작 웹앱 (hamsterCreator)
-Last updated: 2026-09-28
+Last updated: 2026-09-29
 
 ---
 
@@ -567,6 +567,19 @@ preview는 base를 `/`로 잡는데, dist/index.html 안의 자산 주소는 `/h
   실서비스(https://t777-kaewoong.github.io/hamsterCreator/) 번들에 새 문구 확인, "다음 단계에서 연결됩니다" 0건.
   실서비스에서 A4 기본 → 오른쪽 종이 붙이기 → "A4 가로 2장 · 이음매 1곳", 콘솔 오류 0건.
 
+### 2026-09-29 사용자 후기 2차 — 도구 결함 5건·인쇄 옵션 (docs/05)
+
+후기 7건을 원인 분석 후 수정했습니다. 상세는 `docs/05_feedback-round2.md`.
+- 타일 집기 후 팔레트가 다른 종류를 보여 줌 → `setStampTile`이 종류를 맞추고 선택 타일로 스크롤
+- 바닥 타일 11종·올린 이미지가 격자선 아래 → 공식 PDF 대조 후 전부 선 위(`isTileAboveLine`)
+- 지우개 → "보이는 것 중 맨 위" 규칙, 선 한 토막 지우기(+ → ㅏ), 빨간 미리보기(`eraseTarget.ts`)
+- 글자 도구: mousedown 기본 동작이 입력칸 포커스를 빼앗아 라벨이 즉시 지워지던 결함
+- 곡선 펜 더블클릭: pointerdown `detail`이 항상 0이라 판정 불가 → 직접 판정(450ms·8px)
+- 인쇄 버튼은 항상 계획기, "PDF에 넣을 것" 체크박스 4개(`PrintConfig.assemblyGuide?`·`notice?` 추가)
+- 여백은 의도(공식 A4와 동일) — 계획기에 설명 한 줄
+- 검증: tsc 0건, build·build:single 성공, 회귀 26항목, 지우개 판정 10경우, PDF 옵션 켬 3쪽/끔 2쪽
+- 미확인: 창이 가려져 실제 마우스 좌표 조작(지우개 미리보기·글자 입력)은 사용자 확인 필요
+
 ## Decisions
 - 2026-09-05 분석·설계·PRD를 먼저 작성하고 구현 착수 (`docs/01`~`03`). 코드부터 쓰지 않음
 - 2026-09-05 DB 없이 `.hsmap.json` 파일 저장/불러오기로 운영. 사용자 업로드 이미지는 파일에 base64로 내장해 자기 완결적으로 만듦
@@ -577,6 +590,8 @@ preview는 base를 `/`로 잡는데, dist/index.html 안의 자산 주소는 `/h
 - 2026-09-05 자유곡선 트랙을 v1에 포함. PDF 렌더러를 두 번 손대지 않도록 M1.5(격자 다음, PDF 앞)에 배치
 - 2026-09-05 라이트 모드만 구현. 캔버스가 실제 흰 종이를 표현하므로 다크 모드는 종이 색 인지를 방해함
 - 2026-09-05 스타일은 CSS 커스텀 프로퍼티 + CSS Modules. 유틸리티 프레임워크 미사용 (토큰을 단일 진실 공급원으로)
+- 2026-09-29 모든 타일은 격자선 위(공식 board_game.pdf와 같음). 지우개는 보이는 것 중 맨 위를 지움
+- 2026-09-29 인쇄 버튼은 한 장이어도 출력 계획기를 거침(부가 요소 체크박스)
 - 2026-09-28 "단일장/나눠 인쇄"는 사용자가 고르지 않고 맵 크기·용지로 자동 결정(파일에는 계속 저장)
 - 2026-09-28 크기를 키울 때 전체 격자 맵이면 새 영역도 격자선으로 채움. 선을 일부 지운 맵은 새 영역을 비워 둠
 - 2026-09-28 종이 번호는 화면·계획기·PDF 모두 "행-열" 코드로 통일
@@ -983,6 +998,8 @@ preview는 base를 `/`로 잡는데, dist/index.html 안의 자산 주소는 `/h
 - `src/lib/print/plan.ts`: 용지 후보 계산·정렬·셀 경계/곡선 회피 분할
 - `src/lib/print/sheet.ts`: 한 장 칸 수·한 장 판정·layout 자동 맞춤 (2026-09-28)
 - `docs/04_usability-review.md`: 사용자 후기 분석·개선 명세·구현 결과 (2026-09-28)
+- `docs/05_feedback-round2.md`: 후기 2차 원인·명세·검증 (2026-09-29)
+- `src/features/canvas/eraseTarget.ts`: 지우개 대상 판정·지우기·강조용 도우미 (2026-09-29)
 - `src/lib/model/resize.ts`: 격자 크기 변경 통합(`reframeMapDoc`·`extendMapDoc`, 네 방향 종이 붙이기·떼기)
 - `src/lib/pdf/generateMapPdf.ts`: M2 단일장 PDF 벡터/이미지 렌더러와 다운로드
 - `src/lib/pdf/generateAnswerPdf.ts`, `src/lib/pdf/pdfResources.ts`: M4 정답지 PDF와 공용 한글 폰트 로더

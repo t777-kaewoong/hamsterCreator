@@ -63,6 +63,57 @@ function PlanPreview({ plan, cols, rows, thumbnail }: { plan: PrintPlanOption; c
   )
 }
 
+/** PDF에 함께 넣을 부가 요소(docs/05 §3.6 — 2026-09-29 후기 "출력할지 말지 체크박스"). */
+interface PdfExtras {
+  assemblyGuide: boolean
+  cropMarks: boolean
+  scaleRuler: boolean
+  notice: boolean
+}
+const DEFAULT_EXTRAS: PdfExtras = { assemblyGuide: true, cropMarks: true, scaleRuler: true, notice: true }
+
+/**
+ * 종이 여백 설명 한 줄(2026-09-29 후기 "여백이 너무 넓은 것 아닌가?").
+ *
+ * 여백은 의도된 값입니다. 칸 크기 50mm를 지키면 A4 가로(297mm)에는 5칸(250mm)까지만
+ * 들어가서 좌우에 23.5mm씩 남습니다. 공식 playbot_A4.pdf도 같은 배치입니다.
+ * 맵을 늘려 채우면 칸이 50mm가 아니게 되어 로봇 이동 거리·정품 타일과 어긋납니다.
+ */
+function marginNote(plan: PrintPlanOption, pitch: number): string {
+  const first = plan.regions[0]
+  const sideMm = (plan.pageWidthMm - first.cols * pitch) / 2
+  const topMm = (plan.pageHeightMm - first.rows * pitch) / 2
+  const fmt = (mm: number) => (Number.isInteger(mm) ? String(mm) : mm.toFixed(1))
+  return `종이 여백 좌우 ${fmt(sideMm)}mm · 위아래 ${fmt(topMm)}mm — 칸을 실제 50mm로 지키려고 남는 부분입니다(공식 말판과 같음)`
+}
+
+function ExtraCheck({
+  label,
+  hint,
+  checked,
+  disabled = false,
+  onChange,
+}: {
+  label: string
+  hint: string
+  checked: boolean
+  disabled?: boolean
+  onChange: (next: boolean) => void
+}) {
+  return (
+    <label
+      className={`${styles.extraItem} ${disabled ? styles.extraDisabled : ''}`}
+      title={disabled ? '여러 장으로 나눌 때만 들어갑니다' : undefined}
+    >
+      <input type="checkbox" checked={checked && !disabled} disabled={disabled} onChange={(e) => onChange(e.target.checked)} />
+      <span className={styles.extraText}>
+        <span className="t-label">{label}</span>
+        <span className="t-caption">{hint}</span>
+      </span>
+    </label>
+  )
+}
+
 export default function PrintPlannerModal() {
   const open = useEditorStore((state) => state.printPlannerOpen)
   const setOpen = useEditorStore((state) => state.setPrintPlannerOpen)
@@ -76,6 +127,8 @@ export default function PrintPlannerModal() {
   const [seam, setSeam] = useState<'butt' | 'overlap'>('butt')
   const [overlap, setOverlap] = useState('5')
   const [creating, setCreating] = useState(false)
+  // PDF에 함께 넣을 것들(docs/05 §3.6). 열 때마다 문서에 저장된 값으로 다시 채웁니다.
+  const [extras, setExtras] = useState<PdfExtras>(DEFAULT_EXTRAS)
   const wasOpenRef = useRef(false)
   const optionListRef = useRef<HTMLDivElement>(null)
 
@@ -95,6 +148,12 @@ export default function PrintPlannerModal() {
       setSecondDraft(String(doc.board.rows))
       setSeam(doc.print.seam)
       setOverlap(String(doc.print.overlap || 5))
+      setExtras({
+        assemblyGuide: doc.print.assemblyGuide !== false,
+        cropMarks: doc.print.cropMarks,
+        scaleRuler: doc.print.scaleRuler,
+        notice: doc.print.notice !== false,
+      })
     }
     wasOpenRef.current = open
   }, [open, doc])
@@ -151,6 +210,7 @@ export default function PrintPlannerModal() {
         layout: selected.sheets === 1 ? 'single' as const : 'tiled' as const,
         seam,
         overlap: overlapMm,
+        ...extras,
       },
     }
     setCreating(true)
@@ -171,7 +231,7 @@ export default function PrintPlannerModal() {
     <div className={styles.footerContent}>
       <span className="t-caption">
         {selected.sheetLabel} {orientationLabel(selected)} {selected.sheets}장
-        {selected.sheets > 1 ? ' + 조립 안내도 1장' : ' · 이음매 없음'}
+        {selected.sheets > 1 ? (extras.assemblyGuide ? ' + 조립 안내도 1장' : '') : ' · 이음매 없음'}
       </span>
       <div className={styles.footerActions}>
         <Button variant="ghost" onClick={() => setOpen(false)}>취소</Button>
@@ -260,6 +320,7 @@ export default function PrintPlannerModal() {
               <div>
                 <strong className="t-h2">{selected.sheetLabel} {orientationLabel(selected)} · {selected.tilesX}×{selected.tilesY}장</strong>
                 <p className="t-caption">파선은 실제 셀 경계에 놓이는 시트 이음매입니다.</p>
+                <p className={`${styles.marginNote} t-caption`}>{marginNote(selected, doc.board.pitch)}</p>
               </div>
               {selected.curveCrossings > 0 && <span className={styles.crossingNotice}><AlertTriangle size={14} />피할 수 없는 곡선 교차 {selected.curveCrossings}곳</span>}
             </div>
@@ -276,6 +337,35 @@ export default function PrintPlannerModal() {
                 <Input type="number" min="1" max="10" value={overlap} onChange={(event) => setOverlap(event.target.value)} unit="mm" aria-label="겹치기 폭" />
               )}
             </div>
+            <fieldset className={styles.extras}>
+              <legend className="t-label">PDF에 넣을 것</legend>
+              <ExtraCheck
+                label="조립 안내도"
+                hint="여러 장을 이어 붙이는 순서 그림 1쪽"
+                checked={extras.assemblyGuide}
+                disabled={selected.sheets <= 1}
+                onChange={(v) => setExtras({ ...extras, assemblyGuide: v })}
+              />
+              <ExtraCheck
+                label="재단선·맞춤 표시"
+                hint="자를 선과 이어 붙일 삼각 표시"
+                checked={extras.cropMarks}
+                disabled={selected.sheets <= 1}
+                onChange={(v) => setExtras({ ...extras, cropMarks: v })}
+              />
+              <ExtraCheck
+                label="50mm 확인 자"
+                hint="인쇄 후 자로 재서 크기 확인"
+                checked={extras.scaleRuler}
+                onChange={(v) => setExtras({ ...extras, scaleRuler: v })}
+              />
+              <ExtraCheck
+                label="안내 문구·시트 번호"
+                hint="“실제 크기(100%)로 인쇄” 문구와 1-1 번호"
+                checked={extras.notice}
+                onChange={(v) => setExtras({ ...extras, notice: v })}
+              />
+            </fieldset>
           </div>
         </div>
       </div>

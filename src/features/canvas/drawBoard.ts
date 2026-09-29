@@ -9,9 +9,8 @@
 // 칸에 놓인 아트 타일 · 자유 배치 오브젝트(props) · 텍스트 라벨(labels, FR-4.1/4.2) ·
 // 출발·도착 마커(markers, FR-4.3/4.4) · 자유곡선(strokes, FR-10).
 import type { Direction, Label, MapDoc } from '@/lib/model/types'
-import { getIcon } from '@/lib/icons/catalog'
 import { goalDisplayNames } from '@/lib/model/goalNames'
-import { getTile } from '@/lib/tiles/catalog'
+import { isTileAboveLine } from '@/lib/tiles/catalog'
 import type { MapPoint, Viewport } from './viewport'
 import type { TokenName } from './cssTokens'
 import { parseShadowToken } from './cssTokens'
@@ -111,8 +110,8 @@ export function drawPaperLayer(ctx: CanvasRenderingContext2D, viewport: Viewport
  * [왜 TileKind에 따라 나누는가] floor·block은 말판 바닥에 깔리는 그림이라 검은 경로가
  * 위에 보여야 하지만, object는 상자·금화처럼 바닥 위에 놓인 물건이라 경로가 그림을
  * 가리면 안 됩니다. cells 배열은 저장 형식을 바꾸지 않고 그대로 두되, 카탈로그의 kind만
- * 보고 어느 캔버스 레이어에 그릴지를 결정합니다. 카탈로그에 없는 사용자 자산 등은 기존
- * 동작을 보존하기 위해 격자선 아래 아트로 취급합니다.
+ * 보고 어느 캔버스 레이어에 그릴지를 결정합니다.
+ * 2026-09-29부터 내장 타일·아이콘·사용자 이미지 모두 선 위입니다(isTileAboveLine).
  */
 function drawCellArtGroup(
   ctx: CanvasRenderingContext2D,
@@ -125,9 +124,8 @@ function drawCellArtGroup(
 
   doc.cells.forEach((cell, index) => {
     if (!cell) return
-    // 선 위에 얹을지 여부는 타일별 aboveLine 값이 정합니다(catalog.ts 주석 참고).
-    // 인쇄용 아이콘 8종은 전부 낱개 오브젝트라 항상 선 위입니다.
-    const isObject = getTile(cell.art)?.aboveLine ?? Boolean(getIcon(cell.art))
+    // 선 위에 얹을지는 isTileAboveLine 하나로 판단합니다(catalog.ts 주석 참고).
+    const isObject = isTileAboveLine(cell.art)
     if (isObject !== aboveGrid) return
     const bitmap = tileBitmapCache.get(cell.art, doc.userAssets)
     if (!bitmap) return // 아직 디코드 전 — 로드 완료 알림이 두 아트 레이어를 다시 dirty 표시함

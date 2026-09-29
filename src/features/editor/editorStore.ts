@@ -13,6 +13,8 @@ import type { Direction, MapDoc, NodeCoord, UserAsset } from '@/lib/model/types'
 import { createMapStore } from '@/lib/storage'
 import type { StoreKind } from '@/lib/storage'
 import { saveDraft } from '@/lib/storage/draft'
+import { getTile } from '@/lib/tiles/catalog'
+import { getIcon } from '@/lib/icons/catalog'
 
 /** 도구 레일에 나열되는 도구 id (PRD §9.6 도구 레일 매핑 표의 단축키 순서 그대로).
  *  select~marker 는 격자 도구, pen~shape 는 자유곡선 도구 그룹입니다.
@@ -241,6 +243,14 @@ export const mapStore = createMapStore()
  *  보장이 필요하기 때문입니다. */
 let focusRequestNonce = 0
 
+/** 스탬프 id가 팔레트의 어느 "종류"에 들어 있는지. 내장 타일은 테마, 아이콘은 'icon',
+ *  교사가 올린 이미지는 'myImages'. 모르는 id면 null(팔레트를 그대로 둠). */
+function paletteCategoryOf(id: string): string | null {
+  if (id.startsWith('asset:')) return 'myImages'
+  if (getIcon(id)) return 'icon'
+  return getTile(id)?.theme ?? null
+}
+
 export const useEditorStore = create<EditorState>()((set, get) => ({
   doc: null,
   activeTool: 'select',
@@ -331,7 +341,20 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
   setPaletteQuery: (query) => set({ paletteQuery: query }),
   // 새 타일을 고르면 방향도 기본값(0도·반전 없음)으로 되돌립니다 — 직전 타일의 회전
   // 상태가 다음 타일에도 그대로 남아있으면 "왜 삐딱하게 찍히지?"로 헷갈리기 쉽습니다.
-  setStampTile: (id) => set({ stampTileId: id, activeTool: 'stamp', stampRot: 0, stampFlip: false }),
+  // 팔레트의 "종류"도 그 타일이 들어 있는 묶음으로 맞춥니다. 타일 집기(I)로 숲 타일을
+  // 집었는데 팔레트가 던전을 보여 주고 있으면, 무엇이 선택됐는지 화면에서 안 보입니다
+  // (2026-09-29 후기). 검색 중이면 검색 결과에 이미 보이므로 검색어는 건드리지 않습니다.
+  setStampTile: (id) =>
+    set((state) => {
+      const category = id ? paletteCategoryOf(id) : null
+      return {
+        stampTileId: id,
+        activeTool: 'stamp',
+        stampRot: 0,
+        stampFlip: false,
+        activeTheme: category ?? state.activeTheme,
+      }
+    }),
   notifyTilePlaced: () => set((state) => ({ tilePlacementNonce: state.tilePlacementNonce + 1 })),
 
   addUserAsset: (asset) => {

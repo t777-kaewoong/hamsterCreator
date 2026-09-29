@@ -27,7 +27,7 @@
     "theme": "dungeon",
     "themeName": "던전",
     "kind": "floor",
-    "aboveLine": false,
+    "aboveLine": true,
     "w": 433,
     "h": 433,
     "bytes": 4635
@@ -49,7 +49,7 @@
     "theme": "dungeon",
     "themeName": "던전",
     "kind": "floor",
-    "aboveLine": false,
+    "aboveLine": true,
     "w": 433,
     "h": 433,
     "bytes": 4112
@@ -60,7 +60,7 @@
     "theme": "dungeon",
     "themeName": "던전",
     "kind": "floor",
-    "aboveLine": false,
+    "aboveLine": true,
     "w": 433,
     "h": 433,
     "bytes": 3974
@@ -148,7 +148,7 @@
     "theme": "ice",
     "themeName": "얼음",
     "kind": "block",
-    "aboveLine": false,
+    "aboveLine": true,
     "w": 433,
     "h": 433,
     "bytes": 7913
@@ -159,7 +159,7 @@
     "theme": "ice",
     "themeName": "얼음",
     "kind": "block",
-    "aboveLine": false,
+    "aboveLine": true,
     "w": 433,
     "h": 433,
     "bytes": 9185
@@ -214,7 +214,7 @@
     "theme": "adventure",
     "themeName": "모험",
     "kind": "floor",
-    "aboveLine": false,
+    "aboveLine": true,
     "w": 433,
     "h": 433,
     "bytes": 4122
@@ -225,7 +225,7 @@
     "theme": "adventure",
     "themeName": "모험",
     "kind": "floor",
-    "aboveLine": false,
+    "aboveLine": true,
     "w": 433,
     "h": 433,
     "bytes": 20422
@@ -280,7 +280,7 @@
     "theme": "candy",
     "themeName": "사탕",
     "kind": "floor",
-    "aboveLine": false,
+    "aboveLine": true,
     "w": 433,
     "h": 433,
     "bytes": 3814
@@ -346,7 +346,7 @@
     "theme": "dino",
     "themeName": "공룡",
     "kind": "floor",
-    "aboveLine": false,
+    "aboveLine": true,
     "w": 433,
     "h": 433,
     "bytes": 4996
@@ -357,7 +357,7 @@
     "theme": "dino",
     "themeName": "공룡",
     "kind": "floor",
-    "aboveLine": false,
+    "aboveLine": true,
     "w": 433,
     "h": 433,
     "bytes": 3922
@@ -379,7 +379,7 @@
     "theme": "dino",
     "themeName": "공룡",
     "kind": "floor",
-    "aboveLine": false,
+    "aboveLine": true,
     "w": 433,
     "h": 433,
     "bytes": 14630

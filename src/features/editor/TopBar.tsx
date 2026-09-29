@@ -24,7 +24,7 @@ import { ChevronLeft, Save, SaveAll, Undo2, Redo2, Eye, Printer, ListChecks } fr
 import { Button, Modal, StatusChip, Tooltip, useToast } from '@/components'
 import { PAPER_SIZES } from '@/lib/model/constants'
 import type { MapDoc } from '@/lib/model/types'
-import { downloadSingleSheetPdf, generateSingleSheetPdf, generateTiledMapPdf } from '@/lib/pdf/generateMapPdf'
+import { generateSingleSheetPdf, generateTiledMapPdf } from '@/lib/pdf/generateMapPdf'
 import { fitsOneSheet } from '@/lib/print/sheet'
 import { UserCancelledError } from '@/lib/storage'
 import { clearDraft, currentDraftId } from '@/lib/storage/draft'
@@ -84,7 +84,6 @@ export default function TopBar({ onBack }: TopBarProps) {
   // 뒤로가기 확인 모달. saveState가 'unsaved'일 때만 이 모달을 거칩니다 — 저장된 상태라면
   // 되돌릴 게 없으므로 바로 나갑니다(PRD U7: 확인 모달은 정말 필요할 때만).
   const [confirmBackOpen, setConfirmBackOpen] = useState(false)
-  const [isCreatingPdf, setIsCreatingPdf] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [isPreviewing, setIsPreviewing] = useState(false)
 
@@ -153,28 +152,16 @@ export default function TopBar({ onBack }: TopBarProps) {
   }
 
   /**
-   * 인쇄. 한 장에 들어가면 바로 PDF, 여러 장이면 출력 계획기를 엽니다.
+   * 인쇄 = 출력 계획기 열기. PDF는 계획기의 "PDF 만들기"에서 만듭니다.
    *
-   * [저장된 print.layout을 보지 않는 이유 — 2026-09-28 후기 반영]
-   * 예전에는 "단일장"으로 저장된 맵이 용지보다 크면 인쇄 버튼이 오류 토스트로 끝났습니다.
-   * 한 장이냐 여러 장이냐는 맵 크기와 용지로 이미 정해지므로 그때그때 계산합니다.
+   * [한 장이어도 바로 내려받지 않는 이유 — 2026-09-29 후기]
+   * 조립 안내도·눈금자·안내 문구를 넣을지 PDF를 만들기 **전에** 고르고 싶다는 요청이라,
+   * 한 장짜리도 계획기를 거쳐 체크박스를 보게 합니다. 계획기는 편집 중인 용지를
+   * 골라 둔 채로 열리므로 한 장이면 "PDF 만들기" 한 번만 더 누르면 됩니다.
    */
-  async function handlePrint() {
-    if (!doc || isCreatingPdf) return
-    if (!fitsOneSheet(doc)) {
-      setPrintPlannerOpen(true)
-      return
-    }
-    setIsCreatingPdf(true)
-    try {
-      await downloadSingleSheetPdf(asSingleSheet(doc))
-      show({ message: 'PDF를 내려받았습니다' })
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'PDF를 만들지 못했습니다'
-      show({ message, tone: 'danger' })
-    } finally {
-      setIsCreatingPdf(false)
-    }
+  function handlePrint() {
+    if (!doc) return
+    setPrintPlannerOpen(true)
   }
 
   /**
@@ -356,10 +343,9 @@ export default function TopBar({ onBack }: TopBarProps) {
           variant="primary"
           icon={<Printer size={18} />}
           onClick={handlePrint}
-          disabled={!doc || isCreatingPdf}
-          aria-busy={isCreatingPdf}
+          disabled={!doc}
         >
-          {isCreatingPdf ? '만드는 중…' : '인쇄'}
+          인쇄
         </Button>
       </div>
 

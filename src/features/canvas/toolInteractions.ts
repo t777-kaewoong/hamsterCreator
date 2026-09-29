@@ -41,9 +41,15 @@ import {
   type CellCoord,
 } from './gridMath'
 import { setStub, toggleStub } from '@/lib/model/stubs'
+import { applyErase, eraseGroupOf, findEraseTarget } from './eraseTarget'
+import type { EraseGroup, EraseTarget } from './eraseTarget'
 
 /** 지금 진행 중인 제스처의 종류. 스포이드(I)·선택(V)은 문서를 바꾸지 않아 제스처로
  *  치지 않습니다(null로 둠 — 실행취소 대상이 아님). */
+/** 더블클릭 판정 간격(ms)과 허용 이동 거리(px). isDoubleClick 주석 참고. */
+const DOUBLE_CLICK_MS = 450
+const DOUBLE_CLICK_SLOP_PX = 8
+
 type GestureKind = 'stamp' | 'eraser' | 'lineDraw' | 'fill' | 'freeDraw' | 'shape' | 'strokeEdit' | null
 
 type StrokeEditTarget = {
@@ -91,6 +97,8 @@ export interface OverlayState {
    *  실제로 눈에 보이는 깜빡임을 만듭니다 — 다른 오버레이와 달리 포인터 이벤트가 아니라
    *  타이머로 갱신되는 유일한 필드입니다. */
   focusHighlight: { c: number; r: number } | null
+  /** 지우개(E)가 지금 누르면 지울 대상. 빨갛게 강조해 "무엇이 지워질지" 미리 보여 줍니다. */
+  eraseHover: EraseTarget | null
 }
 
 /** 클릭인지 드래그인지 구분하는 기준(화면 CSS px). L 도구의 "단순 클릭 = 엣지 토글" 대
@@ -111,6 +119,7 @@ function emptyOverlay(): OverlayState {
     strokeSelection: null,
     activeStrokeVertex: null,
     focusHighlight: null,
+    eraseHover: null,
   }
 }
 
@@ -234,6 +243,10 @@ export class ToolController {
   private shapeStart: MapPoint | null = null
   /** V 도구로 끌고 있는 정점 또는 베지어 핸들. pointerup까지 하나의 실행취소로 묶습니다. */
   private strokeEditTarget: StrokeEditTarget | null = null
+  /** 직전 왼쪽 클릭의 시각(ms)과 화면 위치. 더블클릭을 직접 판정하는 데 씁니다(isDoubleClick). */
+  private lastClick: { time: number; x: number; y: number } | null = null
+  /** 지우개로 끄는 동안 지울 종류. 처음 누른 대상의 종류로 고정합니다(eraseTarget.ts 주석). */
+  private eraseLock: EraseGroup = 'any'
 
   constructor(
     private readonly viewport: Viewport,
@@ -251,6 +264,24 @@ export class ToolController {
   ) {}
 
   // ── 포인터 입력 ──────────────────────────────────────────────────────
+
+  /**
+   * 이번 pointerdown이 더블클릭의 두 번째 누름인지.
+   *
+   * [e.detail을 믿지 않는 이유 — 2026-09-29 "곡선 펜 더블클릭해도 완료 안 됨"]
+   * 클릭 횟수(detail)는 mousedown/click에만 채워지고, 크롬의 pointerdown은 항상 0입니다.
+   * 그래서 예전 `e.detail >= 2` 검사는 한 번도 참이 된 적이 없었습니다. 운영체제 기본
+   * 더블클릭 간격(500ms)보다 조금 짧게, 손떨림을 감안해 8px 안에서 다시 누르면 더블클릭으로 봅니다.
+   */
+  private isDoubleClick(e: PointerEvent, sx: number, sy: number): boolean {
+    if (e.button !== 0) return false
+    const now = e.timeStamp
+    const prev = this.lastClick
+    const isDouble = e.detail >= 2 || (prev !== null && now - prev.time <= DOUBLE_CLICK_MS && Math.hypot(sx - prev.x, sy - prev.y) <= DOUBLE_CLICK_SLOP_PX)
+    // 세 번째 누름이 또 더블클릭으로 잡히지 않도록, 더블클릭이면 기록을 비웁니다.
+    this.lastClick = isDouble ? null : { time: now, x: sx, y: sy }
+    return isDouble
+  }
 
   handlePointerDown(e: PointerEvent, rect: DOMRect): void {
     const doc = this.getDoc()
@@ -275,6 +306,7 @@ export class ToolController {
     // P 도구의 미완성 정점은 다른 도구로 넘어가면 문서에 남기지 않습니다. 도구 전환을
     // "완료"로 해석하면 실수로 찍은 한 점짜리 경로까지 저장되기 때문입니다.
     if (activeTool !== 'pen' && this.penDraftPoints.length > 0) this.cancelPenDraft()
+    const doubleClick = this.isDoubleClick(e, sx, sy)
     this.dragMoved = false
     this.downScreen = { x: sx, y: sy }
     this.gestureAlt = e.altKey
@@ -292,18 +324,16 @@ export class ToolController {
         else this.paintStampAt(mapPt)
         break
 
-      case 'eraser':
+      case 'eraser': {
         this.activeGesture = 'eraser'
         this.gestureSnapshot = structuredClone(doc)
-        this.lastPaintedIndex = null
-        this.lastNode = null
         this.lastPointerMapPt = mapPt
-        if (this.gestureAlt) {
-          this.lastNode = nearestNode(mapPt.mx, mapPt.my, doc.board.cols, doc.board.rows, doc.board.pitch)
-        } else {
-          this.eraseCellAt(mapPt)
-        }
+        // Alt는 예전처럼 "선만 지우기"로 남겨 둡니다(손에 익은 사람을 위해).
+        const target = findEraseTarget(doc, mapPt.mx, mapPt.my, this.gestureAlt ? 'line' : 'any')
+        this.eraseLock = this.gestureAlt ? 'line' : target ? eraseGroupOf(target) : 'any'
+        if (target) this.eraseTarget(target)
         break
+      }
 
       case 'lineDraw':
         this.activeGesture = 'lineDraw'
@@ -349,7 +379,7 @@ export class ToolController {
         }
 
         // 선택된 경로를 더블클릭하면 가장 가까운 실제 곡선 위에 정점을 삽입합니다.
-        if (e.detail >= 2 && selectedStroke) {
+        if (doubleClick && selectedStroke) {
           const nearest = closestEditableSegment(selectedStroke, [mapPt.mx, mapPt.my])
           if (nearest && nearest.distance <= selectedStroke.width / 2 + 2) {
             this.insertStrokeVertex(selectedStroke, nearest.insertIndex, nearest.point)
@@ -384,7 +414,7 @@ export class ToolController {
       case 'pen':
         // 더블클릭의 두 번째 pointerdown에서는 새 점을 하나 더 중복 추가하지 않고, 첫 번째
         // 클릭에서 들어간 끝점을 그대로 사용해 확정합니다. Enter도 같은 finish 경로를 씁니다.
-        if (e.detail >= 2) this.finishPenDraft()
+        if (doubleClick) this.finishPenDraft()
         else this.addPenPoint(mapPt)
         break
 
@@ -462,25 +492,22 @@ export class ToolController {
         this.lastPointerMapPt = mapPt
         break
 
-      case 'eraser':
-        if (this.gestureAlt) {
-          // Alt+지우개 = 엣지 지우기. L 도구와 완전히 같은 보간 경로를 씁니다
-          // (stepEdgesAlongPath 주석 참고).
-          if (prevPt) this.stepEdgesAlongPath(doc, prevPt.mx, prevPt.my, mapPt.mx, mapPt.my, false)
-          else {
-            const node = nearestNode(mapPt.mx, mapPt.my, doc.board.cols, doc.board.rows, doc.board.pitch)
-            if (this.lastNode) this.applyEdgeDrag(this.lastNode, node, false)
-            this.lastNode = node
-          }
-        } else if (prevPt) {
-          for (const p of interpolateMmPoints(prevPt.mx, prevPt.my, mapPt.mx, mapPt.my, doc.board.pitch / 2)) {
-            this.eraseCellAt(p)
-          }
-        } else {
-          this.eraseCellAt(mapPt)
+      case 'eraser': {
+        // 빠르게 문질러도 사이의 선 토막을 놓치지 않도록 5mm 간격으로 촘촘히 훑습니다
+        // (선 굵기 8mm보다 작아야 토막 하나를 건너뛰지 않습니다).
+        const points = prevPt ? interpolateMmPoints(prevPt.mx, prevPt.my, mapPt.mx, mapPt.my, 5) : [mapPt]
+        for (const p of points) {
+          const fresh = this.getDoc()
+          if (!fresh) break
+          const target = findEraseTarget(fresh, p.mx, p.my, this.eraseLock)
+          if (!target) continue
+          // 빈 곳에서 시작했으면 처음 맞힌 종류로 고정합니다.
+          if (this.eraseLock === 'any') this.eraseLock = eraseGroupOf(target)
+          this.eraseTarget(target)
         }
         this.lastPointerMapPt = mapPt
         break
+      }
 
       case 'lineDraw': {
         // 보간해서 지나간 노드를 전부 밟습니다(stepEdgesAlongPath가 매 샘플마다
@@ -743,6 +770,7 @@ export class ToolController {
 
   private updateHoverAndGhost(): void {
     this.overlay.hoverCell = null
+    this.overlay.eraseHover = null
     this.overlay.stampGhost = null
     this.overlay.freePropGhost = null
     this.overlay.markerGhost = null
@@ -761,6 +789,14 @@ export class ToolController {
       }
     } else if (activeTool !== 'freeDraw') {
       this.overlay.curveDraft = null
+    }
+
+    // E(지우개): 누르면 지워질 대상을 미리 빨갛게 보여 줍니다. 끄는 중이면 고정된 종류 안에서만.
+    // 격자 바깥의 진입로도 대상이라 칸 범위 검사보다 먼저 처리합니다.
+    if (activeTool === 'eraser') {
+      const group = this.activeGesture === 'eraser' ? this.eraseLock : 'any'
+      this.overlay.eraseHover = findEraseTarget(doc, mapPt.mx, mapPt.my, group)
+      return
     }
 
     // M(마커) 도구: 팔레트에서 고른 종류를 가장 가까운 노드에 미리 보여줍니다.
@@ -784,7 +820,7 @@ export class ToolController {
     // PRD §9.12 표(작업 지시서 인용본)는 이 행의 대상 도구를 "타일·지우개 도구"로
     // 명시합니다(원문 PRD 표는 "타일 도구"만 적혀 있었으나, 이번 작업 지시서가 지우개를
     // 추가로 명시했으므로 그대로 따랐습니다).
-    if (activeTool === 'stamp' || activeTool === 'eraser') {
+    if (activeTool === 'stamp') {
       this.overlay.hoverCell = cell
     }
     if (activeTool === 'stamp' && stampTileId) {
@@ -892,18 +928,14 @@ export class ToolController {
     this.commitDocChange({ ...doc, props: [...doc.props, prop] }, true)
   }
 
-  private eraseCellAt(mapPt: MapPoint): void {
+  /** 지우개 한 번. 인덱스로 가리키는 선택(글자·그림·칸)이 밀릴 수 있어 선택은 풉니다. */
+  private eraseTarget(target: EraseTarget): void {
     const doc = this.getDoc()
     if (!doc) return
-    const cell = cellAtMm(mapPt.mx, mapPt.my, doc.board.cols, doc.board.rows, doc.board.pitch)
-    if (!cell) return
-    const index = cell.r * doc.board.cols + cell.c
-    if (index === this.lastPaintedIndex) return
-    this.lastPaintedIndex = index
-    if (doc.cells[index] === null) return // 이미 비어있음 — 바꿀 게 없음
-    const nextCells = doc.cells.slice()
-    nextCells[index] = null
-    this.commitDocChange({ ...doc, cells: nextCells })
+    const next = applyErase(doc, target)
+    if (next === doc) return
+    if (useEditorStore.getState().selection) useEditorStore.getState().setSelection(null)
+    this.commitDocChange(next)
   }
 
   private applyEdgeDrag(prev: NodeCoord, curr: NodeCoord, add: boolean): void {
@@ -980,7 +1012,10 @@ export class ToolController {
     const found = doc.cells[index]
     if (!found) return // 빈 칸은 가져올 타일이 없음(FR-3.7)
     const store = useEditorStore.getState()
-    store.setStampTile(found.art) // 스토어 로직이 도구도 자동으로 'stamp'(B)로 바꿉니다.
+    // 검색어가 남아 있으면 집은 타일이 검색 결과에 없을 수 있어 먼저 지웁니다.
+    store.setPaletteQuery('')
+    // 스토어가 도구를 'stamp'(B)로 바꾸고, 팔레트 "종류"도 그 타일의 묶음으로 맞춥니다.
+    store.setStampTile(found.art)
     // 방향(회전·반전)까지 함께 가져옵니다 — PRD 문구엔 없지만, 스포이드로 집은 타일이
     // 화면에 보이는 모습 그대로 다시 찍히는 편이 자연스러운 확장이라고 판단했습니다.
     store.setStampOrientation(found.rot, found.flip)

@@ -34,7 +34,7 @@ import type { Direction, Label, MapDoc, Point, Stroke } from '@/lib/model/types'
 import { getIcon } from '@/lib/icons/catalog'
 import { findPrintPlan } from '@/lib/print/plan'
 import type { PrintPlanOption, TileRegion } from '@/lib/print/plan'
-import { getTile } from '@/lib/tiles/catalog'
+import { getTile, isTileAboveLine } from '@/lib/tiles/catalog'
 import { splineControlHandles } from '@/features/canvas/strokeGeometry'
 import { loadPdfFontBytes } from './pdfResources'
 
@@ -229,9 +229,8 @@ async function drawCellGroup(context: RenderContext, aboveGrid: boolean): Promis
   for (let index = 0; index < context.doc.cells.length; index++) {
     const cell = context.doc.cells[index]
     if (!cell) continue
-    // 선 위에 얹을지 여부는 타일별 aboveLine 값이 정합니다(catalog.ts 주석 참고).
-    // 인쇄용 아이콘 8종은 전부 낱개 오브젝트라 항상 선 위입니다.
-    const isObject = getTile(cell.art)?.aboveLine ?? Boolean(getIcon(cell.art))
+    // 선 위에 얹을지는 isTileAboveLine 하나로 판단합니다(catalog.ts 주석 참고).
+    const isObject = isTileAboveLine(cell.art)
     if (isObject !== aboveGrid) continue
     const image = await imageFor(context, cell.art)
     drawTransformedImage(context, image, (index % cols) * pitch, Math.floor(index / cols) * pitch, pitch, pitch, cell.rot, cell.flip)
@@ -518,11 +517,14 @@ function drawPageGuides(context: RenderContext, pageLabel?: string): void {
     page.drawRectangle({ x: pt(xMm), y: pt(yMm), width: pt(wMm), height: pt(hMm), color: rgb(1, 1, 1), opacity: 0.9 })
   }
 
+  // 안내 문구·시트 번호를 끈 경우(출력 계획기 체크박스). 눈금자 설정은 따로 따릅니다.
+  const showNotice = doc.print.notice !== false
+
   if (vertical) {
     // ── 안내 문구: 오른쪽 띠에 90° 세워서 ──────────────────────────────
     // degrees(90)이면 글자가 위로 진행하고 글자 높이는 x가 작아지는 쪽으로 자랍니다.
     // 그래서 기준 x를 띠의 오른쪽 끝에 두면 글자가 통째로 띠 안에 들어옵니다.
-    page.drawText(PRINT_NOTICE, {
+    if (showNotice) page.drawText(PRINT_NOTICE, {
       x: pt(layout.pageWidthMm - SAFE_PRINT_EDGE_MM),
       y: (pt(layout.pageHeightMm) - noticeWidth) / 2,
       size: noticeSize,
@@ -530,7 +532,7 @@ function drawPageGuides(context: RenderContext, pageLabel?: string): void {
       color: black,
       rotate: degrees(90),
     })
-    if (pageLabel) {
+    if (showNotice && pageLabel) {
       page.drawText(pageLabel, {
         x: pt(layout.pageWidthMm - SAFE_PRINT_EDGE_MM),
         y: pt(SAFE_PRINT_EDGE_MM),
@@ -568,16 +570,18 @@ function drawPageGuides(context: RenderContext, pageLabel?: string): void {
 
   // ── 안내 문구: 위쪽 띠에 가로로 ────────────────────────────────────
   const noticeBaselineMm = layout.pageHeightMm - SAFE_PRINT_EDGE_MM - 2.4
-  backing(SAFE_PRINT_EDGE_MM, noticeBaselineMm - 0.8, layout.pageWidthMm - SAFE_PRINT_EDGE_MM * 2, 4)
-  page.drawText(PRINT_NOTICE, {
-    x: (pt(layout.pageWidthMm) - noticeWidth) / 2,
-    y: pt(noticeBaselineMm),
-    size: noticeSize,
-    font,
-    color: black,
-  })
+  if (showNotice) {
+    backing(SAFE_PRINT_EDGE_MM, noticeBaselineMm - 0.8, layout.pageWidthMm - SAFE_PRINT_EDGE_MM * 2, 4)
+    page.drawText(PRINT_NOTICE, {
+      x: (pt(layout.pageWidthMm) - noticeWidth) / 2,
+      y: pt(noticeBaselineMm),
+      size: noticeSize,
+      font,
+      color: black,
+    })
+  }
 
-  if (pageLabel) {
+  if (showNotice && pageLabel) {
     page.drawText(pageLabel, { x: pt(SAFE_PRINT_EDGE_MM), y: pt(noticeBaselineMm), size: pt(2.4), font, color: black })
   }
 
@@ -750,6 +754,9 @@ function drawTileMarks(context: RenderContext, plan: PrintPlanOption, region: Ti
     ])
   }
 
+  // 시트 번호·이웃 시트 안내는 맵 위에 겹쳐 찍히므로 "안내 문구·시트 번호"를 끄면 함께 뺍니다.
+  if (doc.print.notice === false) return
+
   const code = tileCode(region)
   page.drawRectangle({ x: left + pt(2), y: top - pt(8), width: pt(16), height: pt(6), color: rgb(1, 1, 1), opacity: 0.88 })
   page.drawText(code, { x: left + pt(4), y: top - pt(6.4), size: pt(3.2), font, color: rgb(0.31, 0.275, 0.898) })
@@ -893,7 +900,8 @@ export async function generateTiledMapPdf(
     drawTileMarks(context, plan, region)
   }
 
-  drawAssemblyGuide(pdf, font, doc, plan)
+  // 조립 안내도는 출력 계획기에서 끌 수 있습니다(예전 파일은 값이 없으므로 켬).
+  if (doc.print.assemblyGuide !== false) drawAssemblyGuide(pdf, font, doc, plan)
   return pdf.save()
 }
 

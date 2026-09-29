@@ -17,6 +17,9 @@ import type { OverlayState } from './toolInteractions'
 import { drawStrokePath, splineControlHandles } from './strokeGeometry'
 import { findPrintPlan } from '@/lib/print/plan'
 import type { PrintPlanOption } from '@/lib/print/plan'
+import { measureLabelBoxMmCached } from './hitTest'
+import { stubVector } from './eraseTarget'
+import type { EraseTarget } from './eraseTarget'
 
 type Tokens = Record<TokenName, string>
 
@@ -113,6 +116,94 @@ function drawSheetSeams(ctx: CanvasRenderingContext2D, viewport: Viewport, doc: 
   ctx.restore()
 }
 
+/** 지우개 강조 투명도. 아래 그림이 비쳐 보여야 "무엇이" 지워질지 알 수 있습니다. */
+const ERASE_FILL_ALPHA = 0.28
+const ERASE_LINE_ALPHA = 0.7
+
+/** 중심·크기·회전으로 사각형 경로를 만듭니다(글자·자유 배치 그림 강조용). */
+function traceRotatedRect(ctx: CanvasRenderingContext2D, cx: number, cy: number, w: number, h: number, rotDeg: number): void {
+  ctx.save()
+  ctx.translate(cx, cy)
+  ctx.rotate((rotDeg * Math.PI) / 180)
+  ctx.beginPath()
+  ctx.rect(-w / 2, -h / 2, w, h)
+  ctx.restore()
+}
+
+/**
+ * 지우개가 지금 누르면 지울 대상을 빨갛게 덮습니다(docs/05 §3.3).
+ * 선 토막은 실제 선 굵기보다 2mm 굵게 칠해, 검은 선 위에서도 어느 토막인지 보이게 합니다.
+ */
+function drawEraseHover(ctx: CanvasRenderingContext2D, viewport: Viewport, doc: MapDoc, tokens: Tokens, target: EraseTarget): void {
+  const { pitch, cols, lineWidth } = doc.board
+  const color = tokens['--c-danger']
+  ctx.save()
+  ctx.fillStyle = color
+  ctx.strokeStyle = color
+
+  const strokeSegment = (x0: number, y0: number, x1: number, y1: number) => {
+    const a = viewport.mapToScreen(x0, y0)
+    const b = viewport.mapToScreen(x1, y1)
+    ctx.globalAlpha = ERASE_LINE_ALPHA
+    ctx.lineWidth = viewport.mmToPx(lineWidth + 2)
+    ctx.lineCap = 'butt'
+    ctx.beginPath()
+    ctx.moveTo(a.x, a.y)
+    ctx.lineTo(b.x, b.y)
+    ctx.stroke()
+  }
+
+  if (target.kind === 'cell') {
+    const c = target.index % cols
+    const r = Math.floor(target.index / cols)
+    const tl = viewport.mapToScreen(c * pitch, r * pitch)
+    const size = viewport.mmToPx(pitch)
+    ctx.globalAlpha = ERASE_FILL_ALPHA
+    ctx.fillRect(tl.x, tl.y, size, size)
+    ctx.globalAlpha = 1
+    ctx.lineWidth = 2
+    ctx.strokeRect(tl.x + 1, tl.y + 1, size - 2, size - 2)
+  } else if (target.kind === 'label' || target.kind === 'prop') {
+    let cx: number, cy: number, w: number, h: number, rot: number
+    if (target.kind === 'label') {
+      const label = doc.labels[target.index]
+      const box = measureLabelBoxMmCached(label)
+      ;[cx, cy, w, h, rot] = [label.x, label.y, box.wMm, box.hMm, label.rot]
+    } else {
+      const prop = doc.props[target.index]
+      ;[cx, cy, w, h, rot] = [prop.x + prop.w / 2, prop.y + prop.h / 2, prop.w, prop.h, prop.rot]
+    }
+    const center = viewport.mapToScreen(cx, cy)
+    traceRotatedRect(ctx, center.x, center.y, viewport.mmToPx(w), viewport.mmToPx(h), rot)
+    ctx.globalAlpha = ERASE_FILL_ALPHA
+    ctx.fill()
+    ctx.globalAlpha = 1
+    ctx.lineWidth = 2
+    ctx.stroke()
+  } else if (target.kind === 'edge') {
+    const x0 = target.c * pitch + pitch / 2
+    const y0 = target.r * pitch + pitch / 2
+    if (target.edge === 'h') strokeSegment(x0, y0, x0 + pitch, y0)
+    else strokeSegment(x0, y0, x0, y0 + pitch)
+  } else if (target.kind === 'stub') {
+    const [c, r] = target.stub.node
+    const [vx, vy] = stubVector(target.stub.dir)
+    const x0 = c * pitch + pitch / 2
+    const y0 = r * pitch + pitch / 2
+    strokeSegment(x0, y0, x0 + (vx * pitch) / 2, y0 + (vy * pitch) / 2)
+  } else {
+    const stroke = doc.strokes.find((s) => s.id === target.id)
+    if (stroke) {
+      ctx.globalAlpha = ERASE_LINE_ALPHA
+      ctx.lineWidth = viewport.mmToPx(stroke.width + 2)
+      ctx.lineCap = 'round'
+      ctx.lineJoin = 'round'
+      drawStrokePath(ctx, viewport, stroke)
+    }
+  }
+  ctx.restore()
+}
+
 export function drawOverlayLayer(
   ctx: CanvasRenderingContext2D,
   viewport: Viewport,
@@ -138,6 +229,7 @@ export function drawOverlayLayer(
   }
 
   drawSheetSeams(ctx, viewport, doc, tokens)
+  if (overlay.eraseHover) drawEraseHover(ctx, viewport, doc, tokens, overlay.eraseHover)
 
   // ① 셀 호버 — 타일·지우개 도구에서 지금 가리키고 있는 칸을 옅게 채웁니다.
   if (overlay.hoverCell) {
