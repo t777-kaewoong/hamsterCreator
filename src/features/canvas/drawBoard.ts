@@ -10,6 +10,14 @@
 // 출발·도착 마커(markers, FR-4.3/4.4) · 자유곡선(strokes, FR-10).
 import type { Direction, Label, MapDoc } from '@/lib/model/types'
 import { goalDisplayNames } from '@/lib/model/goalNames'
+import { markerPositionMm, obstaclePreset, obstaclesOf } from '@/lib/model/obstacles'
+import {
+  HAMSTER_BODY_PATH,
+  HAMSTER_CAPTION_RADIUS_MM,
+  HAMSTER_DETAIL_PATH,
+  HAMSTER_OUTLINE_MM,
+  HEADING_DEGREES,
+} from '@/lib/markers/hamsterArt'
 import { isTileAboveLine } from '@/lib/tiles/catalog'
 import type { MapPoint, Viewport } from './viewport'
 import type { TokenName } from './cssTokens'
@@ -351,6 +359,28 @@ function drawMarkerCaption(
  * ③-4 출발·도착 마커. §5 markers.start/goals를 그대로 읽어 그립니다. markers 데이터
  * 자체는 doc.markers 하나뿐이라 배열 순회 없이 start 하나 + goals 배열만 처리합니다.
  */
+/**
+ * 햄스터 모양 마커(docs/06 §3.2). hamsterArt.ts의 SVG 경로를 mm 단위로 그대로 씁니다.
+ * Path2D는 경로를 한 번만 해석해 두고 매번 배율만 바꿔 그립니다.
+ */
+let hamsterPaths: { body: Path2D; detail: Path2D } | null = null
+function drawHamsterMarker(ctx: CanvasRenderingContext2D, viewport: Viewport, x: number, y: number, heading: Direction): void {
+  hamsterPaths ??= { body: new Path2D(HAMSTER_BODY_PATH), detail: new Path2D(HAMSTER_DETAIL_PATH) }
+  const scale = viewport.mmToPx(1)
+  ctx.save()
+  ctx.translate(x, y)
+  ctx.rotate((HEADING_DEGREES[heading] * Math.PI) / 180)
+  ctx.scale(scale, scale)
+  ctx.fillStyle = MARKER_BACKGROUND
+  ctx.fill(hamsterPaths.body)
+  ctx.strokeStyle = MARKER_COLOR
+  ctx.lineWidth = HAMSTER_OUTLINE_MM
+  ctx.stroke(hamsterPaths.body)
+  ctx.fillStyle = MARKER_COLOR
+  ctx.fill(hamsterPaths.detail)
+  ctx.restore()
+}
+
 export function drawMarkersLayer(ctx: CanvasRenderingContext2D, viewport: Viewport, doc: MapDoc): void {
   const { pitch } = doc.board
   const outerRadiusPx = viewport.mmToPx(MARKER_OUTER_DIAMETER_MM / 2)
@@ -358,52 +388,66 @@ export function drawMarkersLayer(ctx: CanvasRenderingContext2D, viewport: Viewpo
   const ringWidthPx = viewport.mmToPx(MARKER_RING_WIDTH_MM)
   const labelSizePx = viewport.mmToPx(MARKER_LABEL_SIZE_MM)
   const captionHaloPx = viewport.mmToPx(MARKER_CAPTION_HALO_MM)
+  const hamsterRadiusPx = viewport.mmToPx(HAMSTER_CAPTION_RADIUS_MM)
 
   if (doc.markers.start) {
-    const { cell, heading } = doc.markers.start
-    const center = nodeCenterMm(cell[0], cell[1], pitch)
-    const p = viewport.mapToScreen(center.mx, center.my)
+    const { heading } = doc.markers.start
+    // 자유 위치(at)로 놓았으면 그 자리, 아니면 격자점(docs/06 §2.6).
+    const [mx, my] = markerPositionMm(doc.markers.start, pitch)
+    const p = viewport.mapToScreen(mx, my)
 
-    ctx.save()
-    // 밑의 굵은 격자선이 원 안을 관통하면 방향 화살표와 한 덩어리로 보여 알아보기
-    // 어렵습니다. 흰 바탕으로 먼저 가린 뒤 윤곽과 화살표를 그립니다.
-    ctx.fillStyle = MARKER_BACKGROUND
-    ctx.beginPath()
-    ctx.arc(p.x, p.y, outerRadiusPx, 0, Math.PI * 2)
-    ctx.fill()
-    ctx.strokeStyle = MARKER_COLOR
-    ctx.lineWidth = ringWidthPx
-    ctx.beginPath()
-    ctx.arc(p.x, p.y, outerRadiusPx, 0, Math.PI * 2)
-    ctx.stroke()
+    if (doc.markers.start.look === 'hamster') {
+      drawHamsterMarker(ctx, viewport, p.x, p.y, heading)
+      drawMarkerCaption(ctx, p.x, p.y, hamsterRadiusPx, 0, labelSizePx, '출발', captionHaloPx)
+    } else {
+      ctx.save()
+      // 밑의 굵은 격자선이 원 안을 관통하면 방향 화살표와 한 덩어리로 보여 알아보기
+      // 어렵습니다. 흰 바탕으로 먼저 가린 뒤 윤곽과 화살표를 그립니다.
+      ctx.fillStyle = MARKER_BACKGROUND
+      ctx.beginPath()
+      ctx.arc(p.x, p.y, outerRadiusPx, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.strokeStyle = MARKER_COLOR
+      ctx.lineWidth = ringWidthPx
+      ctx.beginPath()
+      ctx.arc(p.x, p.y, outerRadiusPx, 0, Math.PI * 2)
+      ctx.stroke()
 
-    // heading 방향을 가리키는 채운 삼각형 화살표. 원 반지름의 90%를 길이로 삼아
-    // 테두리 안쪽에 살짝 여유를 두고 들어가게 했습니다(PRD 미규정 — 임의로 정함).
-    const [dx, dy] = DIR_VECTOR[heading]
-    const angle = Math.atan2(dy, dx)
-    const triTip = outerRadiusPx * 0.68
-    const triBack = -outerRadiusPx * 0.22
-    const triHalfWidth = outerRadiusPx * 0.28
-    ctx.save()
-    ctx.translate(p.x, p.y)
-    ctx.rotate(angle)
-    ctx.fillStyle = MARKER_COLOR
-    ctx.beginPath()
-    ctx.moveTo(triTip, 0)
-    ctx.lineTo(triBack, triHalfWidth)
-    ctx.lineTo(triBack, -triHalfWidth)
-    ctx.closePath()
-    ctx.fill()
-    ctx.restore()
+      // heading 방향을 가리키는 채운 삼각형 화살표. 원 반지름의 90%를 길이로 삼아
+      // 테두리 안쪽에 살짝 여유를 두고 들어가게 했습니다(PRD 미규정 — 임의로 정함).
+      const [dx, dy] = DIR_VECTOR[heading]
+      const angle = Math.atan2(dy, dx)
+      const triTip = outerRadiusPx * 0.68
+      const triBack = -outerRadiusPx * 0.22
+      const triHalfWidth = outerRadiusPx * 0.28
+      ctx.save()
+      ctx.translate(p.x, p.y)
+      ctx.rotate(angle)
+      ctx.fillStyle = MARKER_COLOR
+      ctx.beginPath()
+      ctx.moveTo(triTip, 0)
+      ctx.lineTo(triBack, triHalfWidth)
+      ctx.lineTo(triBack, -triHalfWidth)
+      ctx.closePath()
+      ctx.fill()
+      ctx.restore()
 
-    drawMarkerCaption(ctx, p.x, p.y, outerRadiusPx, ringWidthPx, labelSizePx, '출발', captionHaloPx)
-    ctx.restore()
+      drawMarkerCaption(ctx, p.x, p.y, outerRadiusPx, ringWidthPx, labelSizePx, '출발', captionHaloPx)
+      ctx.restore()
+    }
   }
 
   const goalNames = goalDisplayNames(doc.markers.goals)
   doc.markers.goals.forEach((goal, index) => {
-    const center = nodeCenterMm(goal.cell[0], goal.cell[1], pitch)
-    const p = viewport.mapToScreen(center.mx, center.my)
+    const [mx, my] = markerPositionMm(goal, pitch)
+    const p = viewport.mapToScreen(mx, my)
+
+    // 도착 햄스터는 "여기까지 와서 선다"는 뜻이라 방향 없이 위를 보게 그립니다.
+    if (goal.look === 'hamster') {
+      drawHamsterMarker(ctx, viewport, p.x, p.y, 'N')
+      drawMarkerCaption(ctx, p.x, p.y, hamsterRadiusPx, 0, labelSizePx, goalNames[index], captionHaloPx)
+      return
+    }
 
     ctx.save()
     ctx.fillStyle = MARKER_BACKGROUND
@@ -423,6 +467,46 @@ export function drawMarkersLayer(ctx: CanvasRenderingContext2D, viewport: Viewpo
     drawMarkerCaption(ctx, p.x, p.y, outerRadiusPx, ringWidthPx, labelSizePx, goalNames[index], captionHaloPx)
     ctx.restore()
   })
+}
+
+// ── 장애물 자리(obstacles, docs/06 §3.5) ─────────────────────────────────
+// 실제 물건(종이컵 등)을 올려 둘 자리라 "여기에 무언가 놓인다"만 알리면 됩니다. 꽉 찬 선은
+// 트랙 선과 헷갈리므로 가는 점선 원으로 그리고, 가운데에 이름을 회색으로 적습니다.
+const OBSTACLE_LINE_MM = 1.2
+const OBSTACLE_DASH_MM = 4
+const OBSTACLE_GAP_MM = 2.5
+const OBSTACLE_LABEL_MM = 5
+const OBSTACLE_LABEL_COLOR = '#444'
+const OBSTACLE_LABEL_HALO_MM = 1.2
+
+export function drawObstaclesLayer(ctx: CanvasRenderingContext2D, viewport: Viewport, doc: MapDoc): void {
+  const obstacles = obstaclesOf(doc)
+  if (obstacles.length === 0) return
+  ctx.save()
+  ctx.strokeStyle = MARKER_COLOR
+  ctx.lineWidth = viewport.mmToPx(OBSTACLE_LINE_MM)
+  ctx.setLineDash([viewport.mmToPx(OBSTACLE_DASH_MM), viewport.mmToPx(OBSTACLE_GAP_MM)])
+  for (const o of obstacles) {
+    const p = viewport.mapToScreen(o.cx, o.cy)
+    ctx.beginPath()
+    ctx.arc(p.x, p.y, viewport.mmToPx(o.d / 2), 0, Math.PI * 2)
+    ctx.stroke()
+  }
+  ctx.setLineDash([])
+  ctx.font = `${LABEL_FONT_WEIGHT} ${viewport.mmToPx(OBSTACLE_LABEL_MM)}px ${LABEL_FONT_FAMILY}`
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  ctx.lineJoin = 'round'
+  for (const o of obstacles) {
+    const p = viewport.mapToScreen(o.cx, o.cy)
+    const name = obstaclePreset(o.kind).name
+    ctx.lineWidth = viewport.mmToPx(OBSTACLE_LABEL_HALO_MM)
+    ctx.strokeStyle = MARKER_BACKGROUND
+    ctx.strokeText(name, p.x, p.y)
+    ctx.fillStyle = OBSTACLE_LABEL_COLOR
+    ctx.fillText(name, p.x, p.y)
+  }
+  ctx.restore()
 }
 
 /** ③ 자유곡선 → 격자선 + 진입로(stub). 같은 오프스크린 레이어 안에서도 PRD §5의

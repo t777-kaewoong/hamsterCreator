@@ -4,7 +4,7 @@
 // 좌표 단위는 특별히 표시하지 않는 한 전부 mm이고, 원점은 맵 좌상단입니다(D1).
 //
 // 렌더 순서(고정, PRD §5): 흰 배경 → cells의 floor·block → strokes → edges →
-// cells의 object → props → labels → markers
+// cells의 object → props → labels → obstacles → markers
 
 /** mm 좌표 한 점. [x, y] */
 export type Point = [x: number, y: number]
@@ -201,11 +201,21 @@ export interface Label {
 
 // ── 출발·도착(markers) ────────────────────────────────────────────────
 
+/** 출발·도착 마커 모양. 없으면 'basic'(출발 = 원+화살표, 도착 = 과녁).
+ *  'hamster'는 위에서 내려다본 햄스터 로봇 그림입니다(docs/06 §3.2). */
+export type MarkerLook = 'basic' | 'hamster'
+
 /** 출발 지점(FR-4.3). */
 export interface StartMarker {
+  /** 가장 가까운 격자점. 자유 위치(at)로 놓았어도 항상 함께 저장합니다 — 정답 코드·검증은
+   *  칸 단위로 계산하므로 이 값을 씁니다(docs/06 §2.6). */
   cell: NodeCoord
   /** 로봇이 바라보는 방향 */
   heading: Direction
+  /** Alt+클릭으로 격자점이 아닌 곳에 놓았을 때의 실제 위치(mm). 없으면 cell의 격자점.
+   *  2026-10-26 추가(선택 필드라 예전 파일도 그대로 열림). */
+  at?: Point
+  look?: MarkerLook
 }
 
 /** 도착 지점(FR-4.4). 복수 지정 가능. */
@@ -213,6 +223,9 @@ export interface GoalMarker {
   cell: NodeCoord
   /** 도착지 이름. 빈 문자열이면 표시할 때 순서에 맞는 자동 이름을 계산합니다. */
   name: string
+  /** StartMarker.at과 같은 의미 */
+  at?: Point
+  look?: MarkerLook
 }
 
 /** 출발·도착 마커 모음. */
@@ -220,6 +233,23 @@ export interface Markers {
   /** 아직 출발 지점을 안 정했으면 null(새 맵의 초기 상태) */
   start: StartMarker | null
   goals: GoalMarker[]
+}
+
+// ── 장애물 자리 표시(obstacles) ───────────────────────────────────────
+
+/** 장애물 종류. 지름 기본값은 obstacles.ts의 OBSTACLE_PRESETS에 있습니다. */
+export type ObstacleKind = 'paperCup' | 'sojuCup' | 'bottleCap'
+
+/** 종이컵 등 실제 물건을 올려 둘 자리를 알려 주는 점선 원(docs/06 §2.6).
+ *  로봇이 피해 가거나 밀어야 할 장애물 위치를 말판에 미리 찍어 두는 용도입니다. */
+export interface Obstacle {
+  kind: ObstacleKind
+  /** 중심 x(mm) */
+  cx: number
+  /** 중심 y(mm) */
+  cy: number
+  /** 지름(mm) */
+  d: number
 }
 
 // ── 사용자 업로드 이미지 ───────────────────────────────────────────────
@@ -284,6 +314,8 @@ export interface MapDoc {
   props: Prop[]
   labels: Label[]
   markers: Markers
+  /** 장애물 자리. 2026-10-26 추가 — 없으면(예전 파일) 빈 배열로 봅니다. */
+  obstacles?: Obstacle[]
   userAssets: UserAssets
   print: PrintConfig
 }

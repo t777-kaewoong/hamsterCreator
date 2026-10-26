@@ -15,6 +15,7 @@ import {
   drawGridLayer,
   drawLabelsLayer,
   drawMarkersLayer,
+  drawObstaclesLayer,
   drawPaperLayer,
   drawPropsLayer,
   mapSizeMm,
@@ -74,6 +75,7 @@ export function renderMapThumbnail(doc: MapDoc, cssW: number, cssH: number): str
   drawCellObjectsLayer(ctx, viewport, doc)
   drawPropsLayer(ctx, viewport, doc)
   drawLabelsLayer(ctx, viewport, doc, tokens)
+  drawObstaclesLayer(ctx, viewport, doc)
   drawMarkersLayer(ctx, viewport, doc)
   // 오버레이(호버·고스트)는 상호작용 중에만 존재하므로 그리지 않습니다.
 

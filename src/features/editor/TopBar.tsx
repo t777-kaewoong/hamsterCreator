@@ -20,7 +20,7 @@
 // 먼저 Modal로 확인을 받습니다(작업 지시: window.confirm 대신 기존 Modal 컴포넌트 재사용).
 import { useEffect, useRef, useState } from 'react'
 import type { KeyboardEvent } from 'react'
-import { ChevronLeft, Save, SaveAll, Undo2, Redo2, Eye, Printer, ListChecks } from 'lucide-react'
+import { ChevronDown, ChevronLeft, Save, SaveAll, Undo2, Redo2, Eye, Printer, ListChecks } from 'lucide-react'
 import { Button, Modal, StatusChip, Tooltip, useToast } from '@/components'
 import { PAPER_SIZES } from '@/lib/model/constants'
 import type { MapDoc } from '@/lib/model/types'
@@ -86,6 +86,26 @@ export default function TopBar({ onBack }: TopBarProps) {
   const [confirmBackOpen, setConfirmBackOpen] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [isPreviewing, setIsPreviewing] = useState(false)
+  // "저장 ▾" 메뉴(다른 이름으로 저장). docs/06 §2.7
+  const [saveMenuOpen, setSaveMenuOpen] = useState(false)
+  const saveSplitRef = useRef<HTMLDivElement>(null)
+
+  // 메뉴 바깥을 누르거나 Esc를 누르면 닫습니다.
+  useEffect(() => {
+    if (!saveMenuOpen) return
+    function handlePointerDown(e: PointerEvent) {
+      if (saveSplitRef.current && e.target instanceof Node && !saveSplitRef.current.contains(e.target)) setSaveMenuOpen(false)
+    }
+    function handleKey(e: globalThis.KeyboardEvent) {
+      if (e.key === 'Escape') setSaveMenuOpen(false)
+    }
+    window.addEventListener('pointerdown', handlePointerDown)
+    window.addEventListener('keydown', handleKey)
+    return () => {
+      window.removeEventListener('pointerdown', handlePointerDown)
+      window.removeEventListener('keydown', handleKey)
+    }
+  }, [saveMenuOpen])
 
   // Ctrl+Z / Ctrl+Shift+Z (맥에서는 Cmd). 도구 레일 단축키(ToolRail.tsx)와 마찬가지로
   // 입력창에 포커스가 있으면 무시합니다.
@@ -295,32 +315,53 @@ export default function TopBar({ onBack }: TopBarProps) {
       </div>
 
       <div className={styles.rightGroup}>
-        <Tooltip content={canOverwrite ? '저장' : '내려받기'} shortcut="Ctrl+S" placement="bottom">
-          <Button
-            variant="secondary"
-            icon={<Save size={18} />}
-            onClick={() => void handleSave('save')}
-            disabled={!doc || isSaving}
-            aria-busy={isSaving}
-          >
-            {canOverwrite ? '저장' : '내려받기'}
-          </Button>
-        </Tooltip>
-
-        {/* 다른 이름으로 저장(FR-1.5). 덮어쓰기가 되는 브라우저에서만 의미가 있습니다 —
-            내려받기 방식에서는 "저장"도 어차피 매번 새 파일이라 버튼이 둘이면 헷갈립니다.
-            글자 없이 아이콘만 둔 건 기본 화면의 읽을거리를 늘리지 않기 위해서입니다(NFR-10). */}
-        {canOverwrite && (
-          <Tooltip content="다른 이름으로 저장" shortcut="Ctrl+Shift+S" placement="bottom">
+        {/* 저장 + ▾(다른 이름으로 저장) 한 덩어리 버튼(docs/06 §2.7).
+            예전에는 "저장"과 아이콘만 있는 "다른 이름으로 저장"이 나란히 있었는데, 두 아이콘
+            (Save·SaveAll)이 거의 같아 같은 버튼 두 개로 보였습니다(2026-10-26 후기 15번).
+            내려받기 방식에서는 "저장"도 어차피 매번 새 파일이라 ▾를 두지 않습니다(FR-1.5). */}
+        <div className={styles.saveSplit} ref={saveSplitRef}>
+          <Tooltip content={canOverwrite ? '저장' : '내려받기'} shortcut="Ctrl+S" placement="bottom">
             <Button
-              variant="icon"
-              icon={<SaveAll size={18} />}
-              aria-label="다른 이름으로 저장"
-              onClick={() => void handleSave('saveAs')}
+              variant="secondary"
+              icon={<Save size={18} />}
+              className={canOverwrite ? styles.saveMain : undefined}
+              onClick={() => void handleSave('save')}
+              disabled={!doc || isSaving}
+              aria-busy={isSaving}
+            >
+              {canOverwrite ? '저장' : '내려받기'}
+            </Button>
+          </Tooltip>
+          {canOverwrite && (
+            <Button
+              variant="secondary"
+              icon={<ChevronDown size={16} />}
+              className={styles.saveMore}
+              aria-label="저장 방식 더 보기"
+              aria-haspopup="menu"
+              aria-expanded={saveMenuOpen}
+              onClick={() => setSaveMenuOpen((open) => !open)}
               disabled={!doc || isSaving}
             />
-          </Tooltip>
-        )}
+          )}
+          {saveMenuOpen && (
+            <div className={styles.saveMenu} role="menu">
+              <button
+                type="button"
+                role="menuitem"
+                className={`${styles.saveMenuItem} t-label`}
+                onClick={() => {
+                  setSaveMenuOpen(false)
+                  void handleSave('saveAs')
+                }}
+              >
+                <SaveAll size={16} aria-hidden="true" />
+                <span>다른 이름으로 저장</span>
+                <kbd className={`${styles.saveMenuKey} t-micro`}>Ctrl+Shift+S</kbd>
+              </button>
+            </div>
+          )}
+        </div>
 
         <span className={styles.divider} aria-hidden="true" />
 

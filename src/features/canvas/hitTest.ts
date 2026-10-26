@@ -7,6 +7,7 @@
 // 않아 검사하지 않습니다 — 위치를 옮기는 인스펙터 UI가 아직 없고, M 도구가 클릭으로
 // 바로 지정/토글하는 방식이라 "먼저 선택한 뒤 조작"하는 흐름 자체가 필요 없습니다.
 import type { Label, MapDoc } from '@/lib/model/types'
+import { obstaclesOf } from '@/lib/model/obstacles'
 import type { Selection } from '@/features/editor/editorStore'
 import { cellAtMm } from './gridMath'
 import { measureLabelBoxMm } from './drawBoard'
@@ -60,6 +61,10 @@ function pointInRotatedRect(
   return Math.abs(localX) <= wMm / 2 && Math.abs(localY) <= hMm / 2
 }
 
+/** 장애물 점선 테두리를 잡았다고 볼 여유(mm)와, 가운데를 잡았다고 볼 반경(mm). */
+const OBSTACLE_RING_SLACK_MM = 4
+const OBSTACLE_CENTER_GRAB_MM = 8
+
 /** mm 좌표 (mx, my)를 클릭했을 때 무엇이 선택되어야 하는지 판정합니다. 아무 것도 없으면 null. */
 export function hitTest(doc: MapDoc, mx: number, my: number): Selection {
   // ① 라벨 — 배열 뒤쪽(나중에 추가된 것)일수록 화면에서 위에 그려지므로 역순으로 검사.
@@ -71,6 +76,17 @@ export function hitTest(doc: MapDoc, mx: number, my: number): Selection {
     // 중심점이므로, 히트박스도 그 점을 중심으로 한 사각형이어야 그려진 모습과 일치합니다.
     if (pointInRotatedRect(mx, my, label.x, label.y, wMm, hMm, label.rot)) {
       return { kind: 'label', index: i }
+    }
+  }
+
+  // ①-2 장애물 점선 원 — 화면에서 그림·타일보다 위에 그려집니다. 원 안 전체를 잡으면 그 아래
+  //     타일을 고를 수 없게 되므로, 점선 테두리 근처(±4mm)와 가운데 이름 부근(8mm)만 잡습니다.
+  const obstacles = obstaclesOf(doc)
+  for (let i = obstacles.length - 1; i >= 0; i--) {
+    const o = obstacles[i]
+    const dist = Math.hypot(mx - o.cx, my - o.cy)
+    if (Math.abs(dist - o.d / 2) <= OBSTACLE_RING_SLACK_MM || dist <= OBSTACLE_CENTER_GRAB_MM) {
+      return { kind: 'obstacle', index: i }
     }
   }
 

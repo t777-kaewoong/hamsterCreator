@@ -7,8 +7,8 @@
 // 검색 입력 → 테마 탭 → 타일 그리드 → (내 이미지 탭일 때만) 이미지 추가 버튼, 순서로
 // 위에서 아래로 쌓습니다. 타일/아이콘/내 이미지는 전부 같은 모양(id·name·url)으로 맞춰서
 // 하나의 PaletteTile 컴포넌트로 그립니다 — 그리드 코드가 세 벌로 갈라지지 않게 하기 위함입니다.
-import { useEffect, useMemo, useRef, useState } from 'react'
-import type { DragEvent } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
+import type { DragEvent, ReactNode } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import {
   ArrowDown,
@@ -21,14 +21,14 @@ import {
   Flag,
   Grid3x3,
   MapPin,
-  Minus,
   MousePointer2,
-  PaintBucket,
   PenTool,
   Pencil,
   Pipette,
   RectangleHorizontal,
   Search,
+  Slash,
+  Spline,
   SquareRoundCorner,
   Stamp,
   Type,
@@ -39,9 +39,11 @@ import { TILES, TILES_BY_THEME } from '@/lib/tiles/catalog'
 import { ICONS } from '@/lib/icons/catalog'
 import { USER_ASSET_MAX_PX } from '@/lib/model/constants'
 import { goalDisplayNames, goalMarkerKey } from '@/lib/model/goalNames'
-import type { Direction, GoalMarker, UserAsset } from '@/lib/model/types'
+import type { Direction, GoalMarker, MarkerLook, UserAsset } from '@/lib/model/types'
+import { OBSTACLE_PRESETS } from '@/lib/model/obstacles'
+import { HAMSTER_BODY_PATH, HAMSTER_DETAIL_PATH } from '@/lib/markers/hamsterArt'
 import { useEditorStore } from '@/features/editor/editorStore'
-import type { ShapeKind, ToolId } from '@/features/editor/editorStore'
+import type { PenMode, ShapeKind, ToolId } from '@/features/editor/editorStore'
 import { sampleStroke, strokeBounds } from '@/features/canvas/strokeGeometry'
 import { allBoundaryStubs } from '@/lib/model/stubs'
 import { TRACK_PRESETS } from './trackPresets'
@@ -57,15 +59,17 @@ interface PaletteItem {
   url: string
 }
 
-/** 가로 스크롤 대신 한 번에 고를 수 있는 자산 종류 목록. 트랙은 도형 도구 안에 표시합니다. */
+/** 가로 스크롤 대신 한 번에 고를 수 있는 자산 종류 목록. 트랙은 도형 도구 안에 표시합니다.
+ *  맨 앞 '전체'가 기본값입니다(docs/06 §2.3) — 처음부터 종류를 고르게 하지 않고 다 보여 줍니다. */
 const ASSET_CATEGORIES = [
+  { value: 'all', label: '전체' },
   ...TILES_BY_THEME.map((group) => ({ value: group.theme, label: group.themeName })),
   { value: 'icon', label: '아이콘' },
   { value: 'myImages', label: '내 이미지' },
 ]
 
+// 직선은 펜(P)의 "직선" 모드로 옮겼습니다(docs/06 §2.4). 예전 파일의 직선은 그대로 열립니다.
 const SHAPES: { id: ShapeKind; label: string; icon: LucideIcon }[] = [
-  { id: 'line', label: '직선', icon: Minus },
   { id: 'circle', label: '원', icon: Circle },
   { id: 'ellipse', label: '타원', icon: RectangleHorizontal },
   { id: 'roundedRect', label: '라운드 사각', icon: SquareRoundCorner },
@@ -86,17 +90,52 @@ const DIRECTIONS: { id: Direction; label: string; icon: LucideIcon }[] = [
  */
 const TOOL_HELP: Record<ToolId, { title: string; description: string; hint?: string; icon: LucideIcon }> = {
   stamp: { title: '타일 배치', description: '타일을 고른 뒤 칸을 클릭하거나 드래그하세요.', icon: Stamp },
-  fill: { title: '영역 채우기', description: '타일을 고른 뒤 채울 범위를 드래그하세요.', icon: PaintBucket },
-  marker: { title: '출발·도착', description: '종류를 고른 뒤 원하는 격자점을 클릭하세요.', icon: Flag },
-  shape: { title: '도형', description: '도형을 고르고 캔버스에서 드래그해 크기를 정하세요.', icon: Circle },
-  select: { title: '선택', description: '캔버스의 타일·글자·도형을 선택합니다.', hint: '선택한 항목은 오른쪽에서 수정하거나 Delete로 지울 수 있어요.', icon: MousePointer2 },
-  lineDraw: { title: '격자선 긋기', description: '격자점 사이를 드래그해 길을 연결합니다.', hint: '격자 바깥을 클릭하면 경계 진입로가 생깁니다. Alt는 지우기.', icon: Grid3x3 },
+  marker: { title: '출발·도착·장애물', description: '종류를 고른 뒤 원하는 격자점을 클릭하세요.', icon: Flag },
+  shape: { title: '도형', description: '도형을 고르고 캔버스에서 드래그해 크기를 정하세요.', hint: '다 그리면 선택 도구로 바뀌어 바로 옮기거나 크기를 바꿀 수 있어요.', icon: Circle },
+  select: { title: '선택', description: '눌러서 고르고, 끌어서 옮기고, 핸들로 크기를 바꿉니다.', icon: MousePointer2 },
+  lineDraw: { title: '격자선 긋기', description: '격자점 사이를 드래그해 로봇이 칸 단위로 다니는 길을 잇습니다.', hint: '정답 코드는 이 선을 따라 계산해요. 격자 바깥을 클릭하면 경계 진입로가 생깁니다. Alt는 지우기.', icon: Grid3x3 },
   eyedropper: { title: '타일 집기', description: '캔버스에 놓인 타일을 클릭해 같은 타일을 가져옵니다.', hint: '타일을 집으면 자동으로 타일 배치 도구로 바뀝니다.', icon: Pipette },
   eraser: { title: '지우개', description: '빨갛게 보이는 것을 누르거나 문질러 지웁니다.', hint: '격자선은 한 토막씩 지워져요. + 모양의 왼쪽 팔을 누르면 ㅏ 모양이 됩니다. 끌면 처음 누른 것과 같은 종류만 지워요.', icon: Eraser },
   text: { title: '글자', description: '글자를 넣을 위치를 클릭한 뒤 바로 입력합니다.', hint: '입력 후 오른쪽 선택 항목에서 크기·색·회전을 바꿀 수 있어요.', icon: Type },
-  pen: { title: '곡선 펜', description: '캔버스를 차례로 클릭해 곡선의 정점을 만듭니다.', hint: 'Enter 또는 더블클릭으로 완료하고 Esc로 취소합니다.', icon: PenTool },
+  pen: { title: '펜', description: '클릭한 점을 직선이나 곡선으로 잇습니다. 아무 데나 긋는 트랙 선이에요.', icon: PenTool },
   freeDraw: { title: '자유 그리기', description: '캔버스를 드래그한 궤적대로 트랙을 만듭니다.', hint: '완성된 곡선은 선택 도구에서 정점을 수정할 수 있어요.', icon: Pencil },
 }
+
+/** 키 칩 + 짧은 설명 한 줄(docs/06 §3.3). keys가 여럿이면 "+"로 잇습니다. */
+interface KeyHint {
+  keys: string[]
+  text: string
+}
+
+const STAMP_KEYS: KeyHint[] = [
+  { keys: ['클릭·드래그'], text: '칸에 칠하기' },
+  { keys: ['Shift', '드래그'], text: '사각 영역 채우기' },
+  { keys: ['Alt'], text: '격자 무시하고 자유 배치' },
+  { keys: ['R'], text: '회전 · F 좌우 반전' },
+  { keys: ['우클릭'], text: '같은 타일 다시 찍기' },
+]
+const PEN_KEYS: KeyHint[] = [
+  { keys: ['Enter'], text: '완료 (더블클릭도 됨)' },
+  { keys: ['Esc'], text: '취소 · Backspace 한 점 지우기' },
+  { keys: ['Shift'], text: '45° 단위로 반듯하게' },
+  { keys: ['Alt'], text: '격자점에 붙지 않기 (직선)' },
+]
+const SELECT_KEYS: KeyHint[] = [
+  { keys: ['끌기'], text: '옮기기' },
+  { keys: ['핸들'], text: '크기 바꾸기 · Shift 비율 유지' },
+  { keys: ['Ctrl', '끌기'], text: '복제해서 옮기기' },
+  { keys: ['Ctrl', 'C'], text: '복사' },
+  { keys: ['Ctrl', 'V'], text: '붙여넣기 (커서 자리)' },
+  { keys: ['Ctrl', 'D'], text: '바로 옆에 복제' },
+  { keys: ['Delete'], text: '지우기' },
+]
+const SHAPE_KEYS: KeyHint[] = [{ keys: ['Shift'], text: '정원 · 정사각' }]
+const MARKER_KEYS: KeyHint[] = [{ keys: ['Alt', '클릭'], text: '격자점이 아닌 곳에 놓기' }]
+
+const PEN_MODES: { id: PenMode; label: string; icon: LucideIcon }[] = [
+  { id: 'line', label: '직선', icon: Slash },
+  { id: 'curve', label: '곡선', icon: Spline },
+]
 
 /** 코치 마크는 앱을 다시 열어도 되풀이하지 않습니다(§9.15). 초안 저장 키와 분리해,
  *  초안을 지우거나 새 맵을 만들어도 이미 배운 안내가 다시 나타나지 않게 합니다. */
@@ -199,6 +238,13 @@ export default function PalettePanel() {
   const setShape = useEditorStore((s) => s.setShape)
   const setMarkerMode = useEditorStore((s) => s.setMarkerMode)
   const setMarkerHeading = useEditorStore((s) => s.setMarkerHeading)
+  const markerLook = useEditorStore((s) => s.markerLook)
+  const obstacleKind = useEditorStore((s) => s.obstacleKind)
+  const setObstacleKind = useEditorStore((s) => s.setObstacleKind)
+  const penMode = useEditorStore((s) => s.penMode)
+  const setPenMode = useEditorStore((s) => s.setPenMode)
+  const mixFill = useEditorStore((s) => s.mixFill)
+  const setMixFill = useEditorStore((s) => s.setMixFill)
   const addUserAsset = useEditorStore((s) => s.addUserAsset)
   const { show: showToast } = useToast()
 
@@ -219,8 +265,8 @@ export default function PalettePanel() {
 
   const query = paletteQuery.trim().toLowerCase()
   const isSearching = query.length > 0
-  const showsAssets = activeTool === 'stamp' || activeTool === 'fill'
-  const activeCategory = ASSET_CATEGORIES.some((category) => category.value === activeTheme) ? activeTheme : 'dungeon'
+  const showsAssets = activeTool === 'stamp'
+  const activeCategory = ASSET_CATEGORIES.some((category) => category.value === activeTheme) ? activeTheme : 'all'
 
   // 검색어가 있으면 테마 탭을 무시하고 내장 타일 35종 전체를 이름으로 가로질러 찾습니다
   // (PRD §9.11: "검색어가 있으면 모든 테마를 가로질러 이름으로 필터링").
@@ -234,9 +280,27 @@ export default function PalettePanel() {
   }, [isSearching, query])
 
   function handleSelect(item: PaletteItem) {
-    const keepFillTool = useEditorStore.getState().activeTool === 'fill'
     setStampTile(item.id)
-    if (keepFillTool) useEditorStore.getState().setTool('fill')
+  }
+
+  /**
+   * 출발·도착 모양을 고릅니다. 지금 있는 출발(출발 모드) 또는 모든 도착(도착 모드)에도 바로
+   * 적용해 "골랐는데 왜 그대로지?"가 없게 합니다. 이후 놓는 것도 이 모양입니다.
+   */
+  function handleLookSelect(look: MarkerLook) {
+    useEditorStore.getState().setMarkerLook(look)
+    const current = useEditorStore.getState().doc
+    if (!current) return
+    const { start, goals } = current.markers
+    if (markerMode === 'start' && start && (start.look ?? 'basic') !== look) {
+      useEditorStore.getState().commitDoc({ ...current, markers: { ...current.markers, start: { ...start, look } } })
+    }
+    if (markerMode === 'goal' && goals.some((goal) => (goal.look ?? 'basic') !== look)) {
+      useEditorStore.getState().commitDoc({
+        ...current,
+        markers: { ...current.markers, goals: goals.map((goal) => ({ ...goal, look })) },
+      })
+    }
   }
 
   function handleTrackSelect(preset: TrackPreset) {
@@ -354,6 +418,13 @@ export default function PalettePanel() {
             </div>
           )}
           <div className={styles.gridArea}>{renderGridContent()}</div>
+          <div className={styles.stampFooter}>
+            <label className={styles.mixToggle}>
+              <input type="checkbox" checked={mixFill} onChange={(e) => setMixFill(e.target.checked)} />
+              <span className="t-label">같은 테마 섞어 칠하기</span>
+            </label>
+            <KeyHints items={STAMP_KEYS} />
+          </div>
         </>
       ) : (
         <div className={styles.contextArea}>{renderToolContext()}</div>
@@ -394,10 +465,52 @@ export default function PalettePanel() {
     if (activeTool === 'marker') {
       return (
         <>
-          <div className={styles.choiceGrid} role="group" aria-label="마커 종류">
+          <div className={`${styles.choiceGrid} ${styles.choiceGrid3}`} role="group" aria-label="놓을 것">
             <ContextChoice icon={Flag} label="출발지" selected={markerMode === 'start'} onClick={() => setMarkerMode('start')} />
             <ContextChoice icon={MapPin} label="도착지" selected={markerMode === 'goal'} onClick={() => setMarkerMode('goal')} />
+            <ContextChoice
+              art={<ObstacleArt diameter={70} />}
+              label="장애물"
+              selected={markerMode === 'obstacle'}
+              onClick={() => setMarkerMode('obstacle')}
+            />
           </div>
+          {markerMode !== 'obstacle' && (
+            <div className={styles.contextSection}>
+              <h3 className="t-label">모양</h3>
+              <div className={styles.directionGrid} role="group" aria-label="마커 모양">
+                <ContextChoice
+                  art={<MarkerLookArt look="basic" goal={markerMode === 'goal'} />}
+                  label="기본"
+                  selected={markerLook === 'basic'}
+                  onClick={() => handleLookSelect('basic')}
+                />
+                <ContextChoice
+                  art={<MarkerLookArt look="hamster" goal={markerMode === 'goal'} />}
+                  label="햄스터"
+                  selected={markerLook === 'hamster'}
+                  onClick={() => handleLookSelect('hamster')}
+                />
+              </div>
+            </div>
+          )}
+          {markerMode === 'obstacle' && (
+            <div className={styles.contextSection}>
+              <h3 className="t-label">장애물 종류</h3>
+              <div className={`${styles.choiceGrid} ${styles.choiceGrid3}`} role="group" aria-label="장애물 종류">
+                {OBSTACLE_PRESETS.map((preset) => (
+                  <ContextChoice
+                    key={preset.kind}
+                    art={<ObstacleArt diameter={preset.d} />}
+                    label={`${preset.name} Ø${preset.d}`}
+                    selected={obstacleKind === preset.kind}
+                    onClick={() => setObstacleKind(preset.kind)}
+                  />
+                ))}
+              </div>
+              <p className={`${styles.goalNameHint} t-caption`}>지름은 놓은 뒤 오른쪽에서 바꿀 수 있어요. 같은 장애물 가운데를 다시 누르면 지워집니다.</p>
+            </div>
+          )}
           {markerMode === 'start' && (
             <div className={styles.contextSection}>
               <h3 className="t-label">출발 방향</h3>
@@ -432,9 +545,40 @@ export default function PalettePanel() {
               )}
             </div>
           )}
+          {markerMode !== 'obstacle' && (
+            <p className={`${styles.contextHint} t-caption`}>
+              {markerMode === 'goal' ? '도착지는 여러 곳에 놓을 수 있고, 같은 곳을 다시 누르면 삭제됩니다.' : '새 출발지를 놓으면 기존 출발지가 이동합니다.'}
+              {' '}격자점이 아닌 곳에 놓아도 정답 코드는 가장 가까운 격자점으로 계산해요.
+            </p>
+          )}
+          <KeyHints items={MARKER_KEYS} />
+        </>
+      )
+    }
+
+    if (activeTool === 'pen') {
+      return (
+        <>
+          <div className={styles.choiceGrid} role="group" aria-label="펜 모드">
+            {PEN_MODES.map((mode) => (
+              <ContextChoice key={mode.id} icon={mode.icon} label={mode.label} selected={penMode === mode.id} onClick={() => setPenMode(mode.id)} />
+            ))}
+          </div>
           <p className={`${styles.contextHint} t-caption`}>
-            {markerMode === 'goal' ? '도착지는 여러 곳에 놓을 수 있고, 같은 곳을 다시 누르면 삭제됩니다.' : '새 출발지를 놓으면 기존 출발지가 이동합니다.'}
+            {penMode === 'line'
+              ? '클릭할 때마다 꺾인 직선이 이어집니다. 한 번 끌면 직선 하나. 끝점은 격자점 가까이에서 격자점에 붙어요.'
+              : '클릭한 점들을 부드러운 곡선으로 잇습니다. 완성된 곡선은 선택 도구에서 정점을 고칠 수 있어요.'}
           </p>
+          <KeyHints items={PEN_KEYS} />
+        </>
+      )
+    }
+
+    if (activeTool === 'select') {
+      return (
+        <>
+          <KeyHints items={SELECT_KEYS} first />
+          <p className={`${styles.contextHint} t-caption`}>선택한 항목은 오른쪽에서 숫자로도 고칠 수 있어요.</p>
         </>
       )
     }
@@ -447,6 +591,8 @@ export default function PalettePanel() {
               <ContextChoice key={shape.id} icon={shape.icon} label={shape.label} selected={activeShape === shape.id} onClick={() => setShape(shape.id)} />
             ))}
           </div>
+          <KeyHints items={SHAPE_KEYS} />
+          <p className={`${styles.contextHint} t-caption`}>{TOOL_HELP.shape.hint}</p>
           <div className={styles.contextSection}>
             <h3 className="t-label">트랙 프리셋</h3>
             <div className={styles.trackGrid}>
@@ -532,6 +678,43 @@ export default function PalettePanel() {
             />
           ))}
         </div>
+      )
+    }
+
+    if (activeCategory === 'all') {
+      // '전체': 테마별 소제목 + 그리드를 차례로. 내 이미지는 올린 것이 있을 때만.
+      const userEntries = Object.entries(doc?.userAssets ?? {})
+      const sections: { key: string; title: string; items: PaletteItem[] }[] = [
+        ...TILES_BY_THEME.map((group) => ({
+          key: group.theme,
+          title: group.themeName,
+          items: group.tiles.map((tile) => ({ id: tile.id, name: tile.name, url: tile.url })),
+        })),
+        { key: 'icon', title: '아이콘', items: ICONS.map((icon) => ({ id: icon.id, name: icon.name, url: icon.url })) },
+        ...(userEntries.length > 0
+          ? [{ key: 'myImages', title: '내 이미지', items: userEntries.map(([key, asset]) => ({ id: `asset:${key}`, name: asset.name, url: asset.dataUrl })) }]
+          : []),
+      ]
+      return (
+        <>
+          {sections.map((section, sectionIndex) => (
+            <Fragment key={section.key}>
+              <h3 className={`${styles.gridSectionTitle} t-micro`}>{section.title}</h3>
+              <div className={styles.grid}>
+                {section.items.map((item, index) => (
+                  <PaletteTile
+                    key={item.id}
+                    item={item}
+                    selected={stampTileId === item.id}
+                    onSelect={handleSelect}
+                    onDragStart={handleDragStart}
+                    showCoachMark={coachMarkVisible && sectionIndex === 0 && index === 0}
+                  />
+                ))}
+              </div>
+            </Fragment>
+          ))}
+        </>
       )
     }
 
@@ -626,14 +809,66 @@ function ToolHeader({ icon: Icon, title, description }: { icon: LucideIcon; titl
   )
 }
 
+/** 조작법 키 칩 목록(docs/06 §3.3). 긴 문장 대신 "어떤 키 → 무슨 일"을 한 줄씩 보여 줍니다. */
+function KeyHints({ items, first = false }: { items: KeyHint[]; first?: boolean }) {
+  return (
+    <ul className={`${styles.keyHints} ${first ? styles.keyHintsFirst : ''}`}>
+      {items.map((item) => (
+        <li key={item.keys.join('+') + item.text} className={styles.keyHintRow}>
+          <span className={styles.keyHintKeys}>
+            {item.keys.map((key, index) => (
+              <Fragment key={key}>
+                {index > 0 && <span className={`${styles.keyHintPlus} t-micro`}>+</span>}
+                <kbd className={`${styles.keyCap} t-micro`}>{key}</kbd>
+              </Fragment>
+            ))}
+          </span>
+          <span className={`${styles.keyHintText} t-caption`}>{item.text}</span>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+/** 장애물 선택 그림: 지름에 비례한 점선 원(가장 큰 종이컵 Ø70이 꽉 차게). */
+function ObstacleArt({ diameter }: { diameter: number }) {
+  const r = (diameter / 70) * 11
+  return (
+    <svg width="28" height="28" viewBox="-14 -14 28 28" aria-hidden="true">
+      <circle r={r} fill="none" stroke="currentColor" strokeWidth="1.6" strokeDasharray="3 2" />
+    </svg>
+  )
+}
+
+/** 마커 모양 선택 그림. 실제로 말판에 찍히는 모양을 줄여서 보여 줍니다. */
+function MarkerLookArt({ look, goal }: { look: MarkerLook; goal: boolean }) {
+  if (look === 'hamster') {
+    return (
+      <svg width="28" height="28" viewBox="-21 -21 42 42" aria-hidden="true">
+        <path d={HAMSTER_BODY_PATH} fill="#fff" stroke="currentColor" strokeWidth="2.5" />
+        <path d={HAMSTER_DETAIL_PATH} fill="currentColor" />
+      </svg>
+    )
+  }
+  return (
+    <svg width="28" height="28" viewBox="-20 -20 40 40" aria-hidden="true">
+      <circle r="17" fill="#fff" stroke="currentColor" strokeWidth="3" />
+      {goal ? <circle r="11" fill="none" stroke="currentColor" strokeWidth="3" /> : <path d="M 0 -11.6 L 4.8 3.7 L -4.8 3.7 Z" fill="currentColor" />}
+    </svg>
+  )
+}
+
 function ContextChoice({
   icon: Icon,
+  art,
   label,
   selected,
   onClick,
   compact = false,
 }: {
-  icon: LucideIcon
+  icon?: LucideIcon
+  /** 아이콘 대신 보여 줄 그림(SVG). 실제 모양을 그대로 보여 줘야 하는 선택지에 씁니다. */
+  art?: ReactNode
   label: string
   selected: boolean
   onClick: () => void
@@ -646,7 +881,7 @@ function ContextChoice({
       aria-pressed={selected}
       onClick={onClick}
     >
-      <Icon size={compact ? 18 : 24} />
+      {art ?? (Icon && <Icon size={compact ? 18 : 24} />)}
       <span className="t-label">{label}</span>
       {selected && <Check size={14} className={styles.choiceCheck} aria-hidden="true" />}
     </button>

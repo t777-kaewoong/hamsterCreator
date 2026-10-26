@@ -1,4 +1,4 @@
-import type { Cell, Edges, MapDoc, NodeCoord, Prop, Label, Stroke } from './types'
+import type { Cell, Edges, MapDoc, NodeCoord, Prop, Label, Point, Stroke } from './types'
 import { allBoundaryStubs, isBoundaryStub, isFullBoundarySet } from './stubs'
 import { withAutoLayout } from '@/lib/print/sheet'
 
@@ -50,7 +50,8 @@ function strokeBox(stroke: Stroke): { x0: number; y0: number; x1: number; y1: nu
   return { x0: Math.min(...xs), y0: Math.min(...ys), x1: Math.max(...xs), y1: Math.max(...ys) }
 }
 
-function shiftStroke(stroke: Stroke, dx: number, dy: number): Stroke {
+/** 곡선 하나를 (dx, dy)mm 평행 이동. 선택 도구의 끌어 옮기기·붙여넣기도 이 함수를 씁니다. */
+export function shiftStroke(stroke: Stroke, dx: number, dy: number): Stroke {
   if (stroke.kind === 'spline' || stroke.kind === 'line') {
     // 스플라인 handles는 정점 기준 상대 벡터라 옮길 필요가 없습니다.
     return { ...stroke, points: stroke.points.map(([x, y]) => [x + dx, y + dy]) }
@@ -115,8 +116,13 @@ export function reframeMapDoc(doc: MapDoc, shiftCols: number, shiftRows: number,
     })
 
   const shiftNode = (node: NodeCoord): NodeCoord => [node[0] + shiftCols, node[1] + shiftRows]
+  // 자유 위치(at)로 놓은 출발·도착도 같은 거리만큼 옮깁니다(docs/06 §3.1).
+  const shiftAt = (at: Point | undefined): Point | undefined => (at ? [at[0] + dx, at[1] + dy] : undefined)
   const start = doc.markers.start
-  const movedStart = start ? { ...start, cell: shiftNode(start.cell) } : null
+  const movedStart = start ? { ...start, cell: shiftNode(start.cell), ...(start.at ? { at: shiftAt(start.at) } : {}) } : null
+  const nextObstacles = (doc.obstacles ?? [])
+    .map((obstacle) => ({ ...obstacle, cx: obstacle.cx + dx, cy: obstacle.cy + dy }))
+    .filter((o) => overlapsBoard(o.cx - o.d / 2, o.cy - o.d / 2, o.cx + o.d / 2, o.cy + o.d / 2))
 
   return withAutoLayout({
     ...doc,
@@ -127,10 +133,11 @@ export function reframeMapDoc(doc: MapDoc, shiftCols: number, shiftRows: number,
     strokes: nextStrokes,
     props: nextProps,
     labels: nextLabels,
+    ...(doc.obstacles ? { obstacles: nextObstacles } : {}),
     markers: {
       start: movedStart && inRange(movedStart.cell[0], movedStart.cell[1]) ? movedStart : null,
       goals: doc.markers.goals
-        .map((goal) => ({ ...goal, cell: shiftNode(goal.cell) }))
+        .map((goal) => ({ ...goal, cell: shiftNode(goal.cell), ...(goal.at ? { at: shiftAt(goal.at) } : {}) }))
         .filter((goal) => inRange(goal.cell[0], goal.cell[1])),
     },
   })

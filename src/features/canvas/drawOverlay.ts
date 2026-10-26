@@ -12,8 +12,8 @@ import type { MapDoc } from '@/lib/model/types'
 import type { Viewport } from './viewport'
 import type { TokenName } from './cssTokens'
 import { tileBitmapCache } from './tileBitmaps'
-import { MARKER_OUTER_DIAMETER_MM, nodeCenterMm } from './drawBoard'
 import type { OverlayState } from './toolInteractions'
+import { obstaclesOf } from '@/lib/model/obstacles'
 import { drawStrokePath, splineControlHandles } from './strokeGeometry'
 import { findPrintPlan } from '@/lib/print/plan'
 import type { PrintPlanOption } from '@/lib/print/plan'
@@ -185,6 +185,18 @@ function drawEraseHover(ctx: CanvasRenderingContext2D, viewport: Viewport, doc: 
     const y0 = target.r * pitch + pitch / 2
     if (target.edge === 'h') strokeSegment(x0, y0, x0 + pitch, y0)
     else strokeSegment(x0, y0, x0, y0 + pitch)
+  } else if (target.kind === 'obstacle') {
+    const o = obstaclesOf(doc)[target.index]
+    if (o) {
+      const center = viewport.mapToScreen(o.cx, o.cy)
+      ctx.beginPath()
+      ctx.arc(center.x, center.y, viewport.mmToPx(o.d / 2), 0, Math.PI * 2)
+      ctx.globalAlpha = ERASE_FILL_ALPHA
+      ctx.fill()
+      ctx.globalAlpha = 1
+      ctx.lineWidth = 2
+      ctx.stroke()
+    }
   } else if (target.kind === 'stub') {
     const [c, r] = target.stub.node
     const [vx, vy] = stubVector(target.stub.dir)
@@ -348,15 +360,13 @@ export function drawOverlayLayer(
     ctx.restore()
   }
 
-  // ⑤ M(마커) 도구 미리보기 — 지금 클릭하면 어느 노드에 무엇이(출발/도착) 찍힐지
-  //    점선 원 + 글자 칩으로 보여줍니다. 원 크기는 drawBoard.ts가 실제로 그리는 마커
-  //    (MARKER_OUTER_DIAMETER_MM)와 반드시 같아야 "미리보기 자리 그대로 찍힌다"는
-  //    믿음이 깨지지 않습니다.
+  // ⑤ M(마커) 도구 미리보기 — 지금 클릭하면 어디에 무엇이(출발/도착/장애물) 찍힐지
+  //    점선 원 + 글자 칩으로 보여줍니다. 원 크기는 실제로 그려질 마커·장애물과 같아야
+  //    "미리보기 자리 그대로 찍힌다"는 믿음이 깨지지 않습니다(toolInteractions.ts가 계산).
   if (overlay.markerGhost) {
-    const { c, r, mode } = overlay.markerGhost
-    const center = nodeCenterMm(c, r, doc.board.pitch)
-    const p = viewport.mapToScreen(center.mx, center.my)
-    const radiusPx = viewport.mmToPx(MARKER_OUTER_DIAMETER_MM / 2)
+    const { mx, my, mode, diameterMm } = overlay.markerGhost
+    const p = viewport.mapToScreen(mx, my)
+    const radiusPx = viewport.mmToPx(diameterMm / 2)
 
     ctx.save()
     ctx.strokeStyle = tokens['--c-primary']
@@ -367,7 +377,7 @@ export function drawOverlayLayer(
     ctx.stroke()
     ctx.restore()
 
-    const chipText = mode === 'start' ? '출발' : '도착'
+    const chipText = mode === 'start' ? '출발' : mode === 'goal' ? '도착' : '장애물'
     ctx.save()
     ctx.font = CHIP_FONT
     ctx.textAlign = 'center'
@@ -387,7 +397,7 @@ export function drawOverlayLayer(
 
   // P/D 경로는 확정 전까지 문서에 넣지 않고 primary 색 미리보기로만 보여줍니다.
   if (overlay.curveDraft) {
-    const { points, hoverPoint, mode, width } = overlay.curveDraft
+    const { points, hoverPoint, mode, width, straight } = overlay.curveDraft
     const previewPoints = hoverPoint ? [...points, hoverPoint] : points
     if (previewPoints.length >= 2) {
       ctx.save()
@@ -396,7 +406,14 @@ export function drawOverlayLayer(
       ctx.lineWidth = viewport.mmToPx(width)
       ctx.lineCap = 'round'
       ctx.lineJoin = 'round'
-      drawStrokePath(ctx, viewport, { id: '__draft__', kind: 'spline', points: previewPoints, width, closed: false })
+      // 펜 직선 모드는 꺾은선, 곡선 모드·자유 그리기는 스플라인으로 미리 봅니다.
+      drawStrokePath(
+        ctx,
+        viewport,
+        straight
+          ? { id: '__draft__', kind: 'line', points: previewPoints, width }
+          : { id: '__draft__', kind: 'spline', points: previewPoints, width, closed: false },
+      )
       ctx.restore()
     }
 
@@ -483,14 +500,12 @@ export function drawOverlayLayer(
     }
   }
 
-  // ⑥ V(선택) 도구 윤곽 — 2px 실선 사각형 + 8px 모서리 정사각 핸들(PRD §9.12 "객체
-  //    선택" 행은 핸들을 8px로 명시하지만, 이 작업 지시는 6px로 정해 그 값을 그대로
-  //    따랐습니다 — §9.13 인스펙터가 아직 없어 실제 리사이즈 동작이 없는 지금 단계에서는
-  //    순전히 "이게 선택 가능한 오브젝트다"를 알려주는 장식이라 정확한 px 값의 실익이
-  //    크지 않다고 판단했습니다). 핸들을 드래그해 크기를 바꾸는 기능은 아직 없습니다 —
-  //    지금은 장식일 뿐이고, 실제 리사이즈는 인스펙터의 수치 입력으로만 합니다.
+  // ⑥ V(선택) 도구 윤곽 — 2px 실선 사각형 + 8px 크기 핸들(PRD §9.12 "객체 선택" 행).
+  //    2026-10-26부터 핸들을 끌면 실제로 크기가 바뀝니다(docs/06 §2.5). 핸들 목록은
+  //    selectionEdit.ts의 handlesFor가 정하며(원·장애물은 모서리 4개, 그 밖은 모서리+변 8개),
+  //    칸 타일·글자처럼 크기를 끌어 바꾸지 않는 것은 윤곽만 그립니다.
   if (overlay.selectionBox) {
-    const { mx, my, wMm, hMm, rot } = overlay.selectionBox
+    const { mx, my, wMm, hMm, rot, handles } = overlay.selectionBox
     const center = viewport.mapToScreen(mx, my)
     const wPx = viewport.mmToPx(wMm)
     const hPx = viewport.mmToPx(hMm)
@@ -502,19 +517,13 @@ export function drawOverlayLayer(
     ctx.lineWidth = 2
     ctx.strokeRect(-wPx / 2, -hPx / 2, wPx, hPx)
 
-    // 모서리 핸들 크기(화면 px). PRD §9.12 오버레이 표의 "객체 선택 = 2px --c-primary
-    // 윤곽 + 8px 모서리 핸들(흰 채움, 1.5px --c-primary 테두리)" 수치 그대로입니다.
-    // 아직 이 핸들을 잡아 끌어 크기를 바꾸는 기능은 없습니다(장식 겸 "선택됨" 표시).
+    // 핸들 크기(화면 px). PRD §9.12 오버레이 표의 "8px 핸들(흰 채움, 1.5px --c-primary 테두리)".
     const handleSize = 8
-    const corners: [number, number][] = [
-      [-wPx / 2, -hPx / 2],
-      [wPx / 2, -hPx / 2],
-      [wPx / 2, hPx / 2],
-      [-wPx / 2, hPx / 2],
-    ]
     ctx.lineWidth = 1.5
     ctx.fillStyle = tokens['--c-surface']
-    for (const [hx, hy] of corners) {
+    for (const handle of handles) {
+      const hx = (handle.hx * wPx) / 2
+      const hy = (handle.hy * hPx) / 2
       ctx.fillRect(hx - handleSize / 2, hy - handleSize / 2, handleSize, handleSize)
       ctx.strokeRect(hx - handleSize / 2, hy - handleSize / 2, handleSize, handleSize)
     }

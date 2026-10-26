@@ -33,7 +33,8 @@ import { resizeMapDoc } from '@/lib/model/resize'
 import { findPrintPlan } from '@/lib/print/plan'
 import type { PrintPlanOption } from '@/lib/print/plan'
 import { fitsOneSheet, withAutoLayout } from '@/lib/print/sheet'
-import type { Cell, Label, MapDoc, NodeCoord, PrintConfig, Prop, Stroke } from '@/lib/model/types'
+import { OBSTACLE_PRESETS, obstaclePreset, obstaclesOf } from '@/lib/model/obstacles'
+import type { Cell, Label, MapDoc, NodeCoord, Obstacle, ObstacleKind, PrintConfig, Prop, Stroke } from '@/lib/model/types'
 import styles from './Inspector.module.css'
 
 export default function Inspector() {
@@ -168,7 +169,51 @@ function SelectionSection() {
   if (selection.kind === 'cell') return <CellFields doc={doc} index={selection.index} />
   if (selection.kind === 'prop') return <PropFields doc={doc} index={selection.index} />
   if (selection.kind === 'label') return <LabelFields doc={doc} index={selection.index} />
+  if (selection.kind === 'obstacle') return <ObstacleFields doc={doc} index={selection.index} />
   return <StrokeFields doc={doc} id={selection.id} />
+}
+
+const OBSTACLE_OPTIONS: SegmentedOption[] = OBSTACLE_PRESETS.map((preset) => ({ value: preset.kind, label: preset.name }))
+
+/** 장애물 자리(docs/06 §2.6). 종류를 바꾸면 지름도 그 종류의 기본값으로 바뀝니다. */
+function ObstacleFields({ doc, index }: { doc: MapDoc; index: number }) {
+  const obstacle = obstaclesOf(doc)[index]
+  if (!obstacle) return null
+
+  function update(patch: Partial<Obstacle>) {
+    const list = obstaclesOf(doc).slice()
+    list[index] = { ...list[index], ...patch }
+    useEditorStore.getState().commitDoc({ ...doc, obstacles: list })
+  }
+
+  function handleDelete() {
+    useEditorStore.getState().commitDoc({ ...doc, obstacles: obstaclesOf(doc).filter((_, i) => i !== index) })
+    useEditorStore.getState().setSelection(null)
+  }
+
+  return (
+    <Section title="선택 항목" aside={<NameChip name={`장애물 · ${obstaclePreset(obstacle.kind).name}`} />}>
+      <Row label="종류">
+        <Segmented
+          fullWidth
+          options={OBSTACLE_OPTIONS}
+          value={obstacle.kind}
+          onChange={(v) => update({ kind: v as ObstacleKind, d: obstaclePreset(v as ObstacleKind).d })}
+          aria-label="장애물 종류"
+        />
+      </Row>
+      <Row label="지름">
+        <DraftNumberInput label="지름" value={obstacle.d} min={4} onCommit={(value) => update({ d: value })} />
+      </Row>
+      <Row label="중심">
+        <Pair>
+          <DraftNumberInput label="중심 X" value={obstacle.cx} onCommit={(value) => update({ cx: value })} />
+          <DraftNumberInput label="중심 Y" value={obstacle.cy} onCommit={(value) => update({ cy: value })} />
+        </Pair>
+      </Row>
+      <DeleteRow onDelete={handleDelete} />
+    </Section>
+  )
 }
 
 function CellFields({ doc, index }: { doc: MapDoc; index: number }) {
@@ -475,18 +520,21 @@ function DraftNumberInput({
   min?: number
   onCommit: (value: number) => void
 }) {
-  const [draft, setDraft] = useState(String(value))
+  // 예전 파일·끌기로 만든 값에는 소수점 아래 열몇 자리가 붙어 있을 수 있어(후기 13번)
+  // 화면에는 소수 첫째 자리까지만 보여 줍니다. 입력한 값은 그대로 저장합니다.
+  const shown = String(Math.round(value * 10) / 10)
+  const [draft, setDraft] = useState(shown)
 
-  useEffect(() => setDraft(String(value)), [value])
+  useEffect(() => setDraft(shown), [shown])
 
   function commit() {
     const parsed = Number(draft)
     if (!Number.isFinite(parsed) || (min !== undefined && parsed < min)) {
-      setDraft(String(value))
+      setDraft(shown)
       return
     }
     setDraft(String(parsed))
-    if (parsed !== value) onCommit(parsed)
+    if (String(parsed) !== shown) onCommit(parsed)
   }
 
   return (
@@ -501,7 +549,7 @@ function DraftNumberInput({
       onKeyDown={(event) => {
         if (event.key === 'Enter') event.currentTarget.blur()
         else if (event.key === 'Escape') {
-          setDraft(String(value))
+          setDraft(shown)
           event.currentTarget.blur()
         }
       }}
@@ -517,6 +565,10 @@ function StrokeParameterFields({
   updateStroke: (patch: Partial<Stroke>) => void
 }) {
   if (stroke.kind === 'spline') return null
+
+  // 펜 직선 모드의 꺾은선(점 3개 이상)은 시작·끝 두 칸으로 고치면 가운데 점이 사라지므로
+  // 숫자 칸을 보여 주지 않습니다. 정점은 캔버스에서 끌어 고칩니다.
+  if (stroke.kind === 'line' && stroke.points.length !== 2) return null
 
   if (stroke.kind === 'line') {
     const start = stroke.points[0] ?? [0, 0]

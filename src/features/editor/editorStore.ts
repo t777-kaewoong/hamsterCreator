@@ -9,21 +9,19 @@
 // 실제로 스택에 스냅샷을 쌓는 로직은 src/features/canvas/toolInteractions.ts가
 // 제스처(드래그 등) 단위로 호출합니다 — 이 파일은 "스택을 어떻게 조작하는지"만 압니다.
 import { create } from 'zustand'
-import type { Direction, MapDoc, NodeCoord, UserAsset } from '@/lib/model/types'
+import type { Direction, MapDoc, MarkerLook, NodeCoord, ObstacleKind, UserAsset } from '@/lib/model/types'
 import { createMapStore } from '@/lib/storage'
 import type { StoreKind } from '@/lib/storage'
 import { saveDraft } from '@/lib/storage/draft'
 import { getTile } from '@/lib/tiles/catalog'
 import { getIcon } from '@/lib/icons/catalog'
 
-/** 도구 레일에 나열되는 도구 id (PRD §9.6 도구 레일 매핑 표의 단축키 순서 그대로).
- *  select~marker 는 격자 도구, pen~shape 는 자유곡선 도구 그룹입니다.
- *  이 단계에서는 도구를 "선택"만 하고, 실제로 캔버스에 무엇을 하는지는 다음 단계에서 구현합니다. */
+/** 도구 레일에 나열되는 도구 id. 묶음 순서는 ToolRail.tsx(docs/06 §2.1)에 있습니다.
+ *  2026-10-26: 영역 채우기(R)는 타일 배치(B)의 Shift+드래그로 합쳐져 도구에서 빠졌습니다. */
 export type ToolId =
   | 'select' // V 선택
   | 'lineDraw' // L 격자선 긋기
-  | 'stamp' // B 타일 배치
-  | 'fill' // R 영역 채우기
+  | 'stamp' // B 타일 배치(+ Shift 영역 채우기)
   | 'eyedropper' // I 스포이드
   | 'eraser' // E 지우개
   | 'text' // T 글자
@@ -32,11 +30,15 @@ export type ToolId =
   | 'freeDraw' // D 자유 그리기
   | 'shape' // O 도형
 
-/** O 도구의 하위 도형. 문서의 Stroke.kind와 맞추되 자유곡선(spline)은 제외합니다. */
-export type ShapeKind = 'line' | 'circle' | 'ellipse' | 'roundedRect'
+/** O 도구의 하위 도형. 문서의 Stroke.kind와 맞추되 자유곡선(spline)은 제외합니다.
+ *  직선은 2026-10-26부터 펜(P)의 "직선" 모드로 옮겼습니다(docs/06 §2.4). */
+export type ShapeKind = 'circle' | 'ellipse' | 'roundedRect'
 
-/** M 도구로 다음에 배치할 마커 종류. Alt 키에 숨기지 않고 팔레트에서 직접 고릅니다. */
-export type MarkerMode = 'start' | 'goal'
+/** P 도구가 클릭한 점들을 곧은 꺾은선으로 이을지(line), 부드러운 곡선으로 이을지(curve). */
+export type PenMode = 'line' | 'curve'
+
+/** M 도구로 다음에 배치할 것. Alt 키에 숨기지 않고 팔레트에서 직접 고릅니다. */
+export type MarkerMode = 'start' | 'goal' | 'obstacle'
 
 /** 상단바 저장 상태 칩과 그대로 연결되는 값(components/StatusChip.tsx의 StatusChipStatus와 동일). */
 export type SaveState = 'saved' | 'saving' | 'unsaved'
@@ -73,6 +75,8 @@ export type Selection =
   | { kind: 'prop'; index: number }
   | { kind: 'label'; index: number }
   | { kind: 'stroke'; id: string }
+  /** 장애물(doc.obstacles)의 배열 인덱스. 2026-10-26 추가 */
+  | { kind: 'obstacle'; index: number }
   | null
 
 /** 인스펙터 "검증" 섹션(§9.13)의 항목을 클릭했을 때 "캔버스를 이 노드로 옮기고 0.6초간
@@ -102,6 +106,14 @@ interface EditorState {
   /** M 도구로 다음에 배치할 마커와 출발 방향. */
   markerMode: MarkerMode
   markerHeading: Direction
+  /** 출발·도착을 놓을 때 쓸 모양(docs/06 §2.6) */
+  markerLook: MarkerLook
+  /** 장애물 모드에서 놓을 종류 */
+  obstacleKind: ObstacleKind
+  /** P 도구 모드 */
+  penMode: PenMode
+  /** 켜면 타일 칠하기·영역 채우기가 같은 테마 타일을 무작위로 섞습니다(예전 Alt+R). */
+  mixFill: boolean
   /** 이 브라우저가 파일에 바로 덮어쓸 수 있는 방식인지(§4.4). 세션 내내 바뀌지 않는 값이라
    *  스토어를 만들 때 한 번만 계산합니다. 상단바 "저장"/"내려받기" 버튼 문구 분기에 씁니다. */
   storeKind: StoreKind
@@ -141,7 +153,7 @@ interface EditorState {
   answerOpen: boolean
 
   // ── 팔레트 패널(§9.11)이 쓰는 상태 ──────────────────────────────────
-  /** 팔레트에서 지금 열려 있는 테마 탭. 'dungeon'~'dino' 6종 + 'icon' · 'track' · 'myImages' */
+  /** 팔레트에서 지금 열려 있는 종류. 'all'(전체) · 'dungeon'~'dino' 6종 · 'icon' · 'myImages' */
   activeTheme: string
   /** 팔레트 검색어. 비어있지 않으면 테마 탭을 무시하고 전체 타일을 이름으로 필터링합니다 */
   paletteQuery: string
@@ -158,6 +170,10 @@ interface EditorState {
   setShape: (kind: ShapeKind) => void
   setMarkerMode: (mode: MarkerMode) => void
   setMarkerHeading: (heading: Direction) => void
+  setMarkerLook: (look: MarkerLook) => void
+  setObstacleKind: (kind: ObstacleKind) => void
+  setPenMode: (mode: PenMode) => void
+  setMixFill: (on: boolean) => void
   setDoc: (doc: MapDoc | null) => void
   setSaveState: (saveState: SaveState) => void
   /**
@@ -257,10 +273,15 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
   activeShape: 'circle',
   markerMode: 'start',
   markerHeading: 'N',
+  markerLook: 'basic',
+  obstacleKind: 'paperCup',
+  penMode: 'curve',
+  mixFill: false,
   storeKind: mapStore.kind,
   canOverwrite: mapStore.canOverwrite,
   saveState: 'saved',
-  activeTheme: 'dungeon',
+  // 처음엔 '전체'를 보여 줍니다(docs/06 §2.3). 테마는 필요할 때 고릅니다.
+  activeTheme: 'all',
   paletteQuery: '',
   stampTileId: null,
   tilePlacementNonce: 0,
@@ -277,6 +298,10 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
   setShape: (kind) => set({ activeShape: kind, activeTool: 'shape' }),
   setMarkerMode: (mode) => set({ markerMode: mode, activeTool: 'marker' }),
   setMarkerHeading: (heading) => set({ markerHeading: heading, markerMode: 'start', activeTool: 'marker' }),
+  setMarkerLook: (look) => set({ markerLook: look }),
+  setObstacleKind: (kind) => set({ obstacleKind: kind, markerMode: 'obstacle', activeTool: 'marker' }),
+  setPenMode: (mode) => set({ penMode: mode, activeTool: 'pen' }),
+  setMixFill: (on) => set({ mixFill: on }),
   setDoc: (doc) => set({ doc }),
   setSaveState: (saveState) => set({ saveState }),
   setPrintPlannerOpen: (printPlannerOpen) => set({ printPlannerOpen }),
@@ -352,7 +377,8 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
         activeTool: 'stamp',
         stampRot: 0,
         stampFlip: false,
-        activeTheme: category ?? state.activeTheme,
+        // '전체'를 보고 있으면 그 안에 이미 보이므로 종류를 바꾸지 않습니다(스크롤만 함).
+        activeTheme: state.activeTheme === 'all' ? 'all' : (category ?? state.activeTheme),
       }
     }),
   notifyTilePlaced: () => set((state) => ({ tilePlacementNonce: state.tilePlacementNonce + 1 })),

@@ -31,6 +31,7 @@ import {
   drawGridLayer,
   drawLabelsLayer,
   drawMarkersLayer,
+  drawObstaclesLayer,
   drawPaperLayer,
   drawPropsLayer,
   mapSizeMm,
@@ -102,7 +103,6 @@ function isTypingTarget(el: Element | null): boolean {
 function cursorForTool(tool: ToolId): string {
   switch (tool) {
     case 'stamp':
-    case 'fill':
       return 'copy'
     case 'lineDraw':
     case 'shape':
@@ -298,8 +298,27 @@ export default function CanvasViewport() {
       const currentDoc = docRef.current
       if (!currentDoc) return
       const tokens = getTokens()
-      if (name === 'paper') drawPaperLayer(ctx, viewportRef.current, currentDoc, tokens)
-      else if (name === 'art') drawArtLayer(ctx, viewportRef.current, currentDoc)
+      if (name === 'paper') {
+        drawPaperLayer(ctx, viewportRef.current, currentDoc, tokens)
+        return
+      }
+      if (name === 'overlay') {
+        const overlay = toolControllerRef.current?.overlay
+        if (overlay) drawOverlayLayer(ctx, viewportRef.current, currentDoc, tokens, overlay)
+        return
+      }
+      // 말판 내용은 종이 안만 그립니다(후기 19번 "선이 맵 밖에도 그려짐"). PDF도 맵 영역으로
+      // 잘라 내므로(generateMapPdf.ts의 drawMapContent) 화면과 인쇄물이 같아집니다.
+      const topLeft = viewportRef.current.mapToScreen(0, 0)
+      ctx.beginPath()
+      ctx.rect(
+        topLeft.x,
+        topLeft.y,
+        viewportRef.current.mmToPx(currentDoc.board.cols * currentDoc.board.pitch),
+        viewportRef.current.mmToPx(currentDoc.board.rows * currentDoc.board.pitch),
+      )
+      ctx.clip()
+      if (name === 'art') drawArtLayer(ctx, viewportRef.current, currentDoc)
       else if (name === 'grid') drawGridLayer(ctx, viewportRef.current, currentDoc, tokens)
       else if (name === 'props') {
         // object 칸 아트 → props → labels → markers를 한 레이어 안에서 순서대로 그립니다.
@@ -308,10 +327,8 @@ export default function CanvasViewport() {
         drawCellObjectsLayer(ctx, viewportRef.current, currentDoc)
         drawPropsLayer(ctx, viewportRef.current, currentDoc)
         drawLabelsLayer(ctx, viewportRef.current, currentDoc, tokens)
+        drawObstaclesLayer(ctx, viewportRef.current, currentDoc)
         drawMarkersLayer(ctx, viewportRef.current, currentDoc)
-      } else if (name === 'overlay') {
-        const overlay = toolControllerRef.current?.overlay
-        if (overlay) drawOverlayLayer(ctx, viewportRef.current, currentDoc, tokens, overlay)
       }
     }
 
@@ -527,6 +544,13 @@ export default function CanvasViewport() {
       }
       const rect = bodyWrap!.getBoundingClientRect()
       toolControllerRef.current?.handlePointerMove(e, rect)
+      applyToolCursor()
+    }
+    /** 선택 도구는 핸들·대상 위에서 커서를 바꿉니다(docs/06 §2.5). 스페이스 팬 중이면 건드리지 않습니다. */
+    function applyToolCursor() {
+      if (isSpaceDownRef.current || isPanningRef.current) return
+      const wanted = toolControllerRef.current?.hoverCursor ?? cursorForTool(useEditorStore.getState().activeTool)
+      if (bodyWrap!.style.cursor !== wanted) bodyWrap!.style.cursor = wanted
     }
     function handlePointerUpOrCancel(e: PointerEvent) {
       if (isPanningRef.current) {
@@ -563,7 +587,7 @@ export default function CanvasViewport() {
       e.preventDefault()
       if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'
       const rect = bodyWrap!.getBoundingClientRect()
-      toolControllerRef.current?.handleDragOver(e.clientX - rect.left, e.clientY - rect.top, e.shiftKey)
+      toolControllerRef.current?.handleDragOver(e.clientX - rect.left, e.clientY - rect.top, e.altKey)
     }
     // dragleave는 bodyWrap 안의 자식 요소(캔버스, 줌 클러스터 등) 사이를 넘나들 때도
     // 발생합니다(mouseleave와 달리 자식으로 들어가도 한 번 발생). 그걸 그대로 고스트를
@@ -579,7 +603,7 @@ export default function CanvasViewport() {
       const assetId = e.dataTransfer?.getData('text/plain')
       if (!assetId) return
       const rect = bodyWrap!.getBoundingClientRect()
-      toolControllerRef.current?.handleDrop(assetId, e.clientX - rect.left, e.clientY - rect.top, e.shiftKey)
+      toolControllerRef.current?.handleDrop(assetId, e.clientX - rect.left, e.clientY - rect.top, e.altKey)
     }
     bodyWrap.addEventListener('dragover', handleDragOver)
     bodyWrap.addEventListener('dragleave', handleDragLeaveBody)
@@ -604,10 +628,31 @@ export default function CanvasViewport() {
     // ── 도구 단축키(R 회전, F 반전 — FR-3.4)는 ToolController가 직접 처리합니다 ───────────
     function handleToolShortcutKeyDown(e: KeyboardEvent) {
       if (isTypingTarget(document.activeElement)) return
+      // Shift·Alt 상태가 바뀌면 자유 배치·각도 고정 미리보기를 바로 갱신합니다.
+      toolControllerRef.current?.handleModifierChange(e.shiftKey, e.altKey)
+      // Ctrl+C / Ctrl+V / Ctrl+D = 복사·붙여넣기·복제(docs/06 §2.5). 선택한 것이 없으면
+      // 브라우저 기본 동작(글자 복사 등)을 막지 않습니다.
+      if ((e.ctrlKey || e.metaKey) && !e.altKey) {
+        const key = e.key.toLowerCase()
+        const controller = toolControllerRef.current
+        if (!controller) return
+        const handled = key === 'c' ? controller.copy() : key === 'v' ? controller.paste() : key === 'd' ? controller.duplicate() : false
+        if (handled) e.preventDefault()
+        // Ctrl+D는 브라우저 "북마크 추가"라 선택이 없어도 캔버스 편집 중에는 막습니다.
+        else if (key === 'd') e.preventDefault()
+        return
+      }
       if (e.ctrlKey || e.metaKey || e.altKey) return
       toolControllerRef.current?.handleKeyDown(e)
     }
+    function handleToolShortcutKeyUp(e: KeyboardEvent) {
+      toolControllerRef.current?.handleModifierChange(e.shiftKey, e.altKey)
+      // Alt만 눌렀다 떼면 윈도우 크롬이 메뉴 버튼으로 포커스를 옮겨, 다음 단축키가 먹지 않습니다.
+      // Alt는 이 앱에서 "격자에 안 붙이기"로 자주 쓰므로 입력칸 밖에서는 그 기본 동작을 막습니다.
+      if (e.key === 'Alt' && !isTypingTarget(document.activeElement)) e.preventDefault()
+    }
     window.addEventListener('keydown', handleToolShortcutKeyDown)
+    window.addEventListener('keyup', handleToolShortcutKeyUp)
 
     // ── 자산 이미지가 새로 디코드될 때마다 이를 쓸 수 있는 레이어를 다시 그림 ─────────────────
     const unsubscribeTiles = tileBitmapCache.onLoad(() => {
@@ -634,6 +679,7 @@ export default function CanvasViewport() {
       window.removeEventListener('keydown', handleKeyDown)
       window.removeEventListener('keyup', handleKeyUp)
       window.removeEventListener('keydown', handleToolShortcutKeyDown)
+      window.removeEventListener('keyup', handleToolShortcutKeyUp)
       unsubscribeTiles()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -429,3 +429,99 @@
   flex-wrap: wrap;
   gap: var(--sp-2);
 }
+
+/* ── 2026-10-26 후기 3차(docs/06) ─────────────────────────────── */
+
+/* 출발지·도착지·장애물, 장애물 3종처럼 선택지가 셋이면 3열. 라벨이 길면 두 줄로 내려갑니다. */
+.choiceGrid3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.choiceGrid3 .contextChoice {
+  text-align: center;
+}
+
+/* '전체' 종류의 테마 소제목. 그리드 위 12px, 아래 6px. */
+.gridSectionTitle {
+  margin: var(--sp-3) 0 6px;
+  color: var(--c-text-3);
+  font-weight: 600;
+}
+
+.gridSectionTitle:first-child {
+  margin-top: 0;
+}
+
+/* 타일 도구 아래 고정 영역: 섞어 칠하기 토글 + 조작법 키 칩. 그리드만 스크롤됩니다. */
+.stampFooter {
+  flex-shrink: 0;
+  padding: var(--sp-3) var(--sp-4) var(--sp-4);
+  border-top: 1px solid var(--c-border);
+}
+
+.mixToggle {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: 24px;
+  cursor: pointer;
+}
+
+.mixToggle input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--c-primary);
+}
+
+/* 조작법 키 칩 목록(docs/06 §3.3): 줄 높이 24px, 키 칩 높이 20px. */
+.keyHints {
+  list-style: none;
+  margin: var(--sp-3) 0 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.keyHintsFirst {
+  margin-top: 0;
+}
+
+.keyHintRow {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: 24px;
+}
+
+.keyHintKeys {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.keyCap {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 6px;
+  border: 1px solid var(--c-border);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: var(--c-surface);
+  color: var(--c-text);
+  font-family: inherit;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.keyHintPlus {
+  color: var(--c-text-3);
+}
+
+.keyHintText {
+  min-width: 0;
+  color: var(--c-text-2);
+  line-height: 1.35;
+}

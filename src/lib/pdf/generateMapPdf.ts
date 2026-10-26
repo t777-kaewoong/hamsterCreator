@@ -32,6 +32,14 @@ import { PAPER_SIZES } from '@/lib/model/constants'
 import { goalDisplayNames } from '@/lib/model/goalNames'
 import type { Direction, Label, MapDoc, Point, Stroke } from '@/lib/model/types'
 import { getIcon } from '@/lib/icons/catalog'
+import { markerPositionMm, obstaclePreset, obstaclesOf } from '@/lib/model/obstacles'
+import {
+  HAMSTER_BODY_PATH,
+  HAMSTER_CAPTION_RADIUS_MM,
+  HAMSTER_DETAIL_PATH,
+  HAMSTER_OUTLINE_MM,
+  HEADING_DEGREES,
+} from '@/lib/markers/hamsterArt'
 import { findPrintPlan } from '@/lib/print/plan'
 import type { PrintPlanOption, TileRegion } from '@/lib/print/plan'
 import { getTile, isTileAboveLine } from '@/lib/tiles/catalog'
@@ -443,8 +451,30 @@ function drawMarkers(context: RenderContext): void {
     })
   }
 
-  if (doc.markers.start) {
-    const center = nodePoint(doc, doc.markers.start.cell[0], doc.markers.start.cell[1])
+  // 햄스터 모양(docs/06 §3.2). 화면과 같은 SVG 경로를 mm → pt 배율로 그립니다.
+  // pdf-lib의 drawSvgPath는 y를 뒤집어(SVG는 아래로 +) 그리고, rotate는 반시계 방향이라
+  // 시계방향 heading 각도에 −를 붙입니다.
+  const drawHamster = (center: Point, heading: Direction) => {
+    const point = mapPoint(layout, center)
+    const rotate = degrees(-HEADING_DEGREES[heading])
+    page.drawSvgPath(HAMSTER_BODY_PATH, {
+      x: point.x,
+      y: point.y,
+      scale: POINTS_PER_MM,
+      rotate,
+      color: rgb(1, 1, 1),
+      borderColor: rgb(0.067, 0.067, 0.067),
+      borderWidth: HAMSTER_OUTLINE_MM,
+    })
+    page.drawSvgPath(HAMSTER_DETAIL_PATH, { x: point.x, y: point.y, scale: POINTS_PER_MM, rotate, color: rgb(0.067, 0.067, 0.067) })
+  }
+
+  if (doc.markers.start?.look === 'hamster') {
+    const center = markerPositionMm(doc.markers.start, doc.board.pitch)
+    drawHamster(center, doc.markers.start.heading)
+    drawMarkerCaption(context, '출발', center[0], center[1] + HAMSTER_CAPTION_RADIUS_MM + 5)
+  } else if (doc.markers.start) {
+    const center = markerPositionMm(doc.markers.start, doc.board.pitch)
     drawRing(center, outerRadiusMm, true)
     const vectors: Record<Direction, Point> = { N: [0, -1], E: [1, 0], S: [0, 1], W: [-1, 0] }
     const direction = vectors[doc.markers.start.heading]
@@ -462,11 +492,37 @@ function drawMarkers(context: RenderContext): void {
 
   const goalNames = goalDisplayNames(doc.markers.goals)
   doc.markers.goals.forEach((goal, index) => {
-    const center = nodePoint(doc, goal.cell[0], goal.cell[1])
+    const center = markerPositionMm(goal, doc.board.pitch)
+    if (goal.look === 'hamster') {
+      drawHamster(center, 'N')
+      drawMarkerCaption(context, goalNames[index], center[0], center[1] + HAMSTER_CAPTION_RADIUS_MM + 5)
+      return
+    }
     drawRing(center, outerRadiusMm, true)
     drawRing(center, 11)
     drawMarkerCaption(context, goalNames[index], center[0], center[1] + outerRadiusMm + 5)
   })
+}
+
+/** 장애물 자리 점선 원 + 이름(docs/06 §3.5). 화면(drawBoard.ts drawObstaclesLayer)과 같은 수치. */
+function drawObstacles(context: RenderContext): void {
+  const { page, layout, doc } = context
+  for (const o of obstaclesOf(doc)) {
+    const center = mapPoint(layout, [o.cx, o.cy])
+    page.drawCircle({
+      x: center.x,
+      y: center.y,
+      size: pt(o.d / 2),
+      borderWidth: pt(1.2),
+      borderColor: rgb(0.067, 0.067, 0.067),
+      borderDashArray: [pt(4), pt(2.5)],
+    })
+    drawCenteredText(
+      context,
+      { text: obstaclePreset(o.kind).name, x: o.cx, y: o.cy, rot: 0, size: 5, color: '#444444', onLine: false },
+      1.2,
+    )
+  }
 }
 
 /**
@@ -622,6 +678,7 @@ async function drawMapContent(context: RenderContext): Promise<void> {
   await drawCellGroup(context, true)
   await drawProps(context)
   for (const label of doc.labels) drawCenteredText(context, label)
+  drawObstacles(context)
   drawMarkers(context)
   page.pushOperators(popGraphicsState())
 }
@@ -681,6 +738,27 @@ function triangleHeight(reach: { lengthPt: number; inward: boolean }): number {
   return reach.inward ? -height : height
 }
 
+/** 이음 표시 색(보라). 재단선·정렬 삼각형·겹칠 띠가 같은 색이라 "붙이는 데 쓰는 표시"로 읽힙니다. */
+const SEAM_COLOR = rgb(0.31, 0.275, 0.898)
+
+/**
+ * 시트 한 장의 재단·이음 표시(docs/06 §2.9).
+ *
+ * [2026-10-26 — 후기 18번 "이어붙이는 가이드 선이 불필요한 곳에도"]
+ * 예전에는 재단 점선·모서리 마크·정렬 삼각형을 시트 **네 변 모두**에 그렸습니다. 이웃 장이 없는
+ * 바깥 변은 자를 필요가 없는데도 "점선을 따라 자르라"고 안내하는 셈이었습니다. 이제 이웃 장과
+ * 맞닿는 변에만 그립니다.
+ *
+ * [2026-10-26 — 후기 20번 "겹치기를 해도 여백을 잘라야 함. 의미 없음"]
+ * 겹치기는 아래 깔리는 장(왼쪽·위쪽)의 오른쪽·아래쪽에 겹칠 띠를 더 인쇄합니다(tiledLayout).
+ * 그런데 재단 점선을 원래 경계에 그어서, 그 띠를 잘라 버리라고 안내하고 있었습니다 — 결국 맞대기와
+ * 같아졌습니다. 이제는:
+ *  - 아래 장의 띠 쪽 변: 자르지 않음. 띠를 옅게 칠하고 "다음 장을 여기에 겹쳐 붙이세요".
+ *  - 위에 얹는 장의 이음 변: 원래 경계에서 겹치기 폭 안쪽 범위를 옅게 칠하고 그 가운데에 재단 점선.
+ *    범위 안 어디를 잘라도 아래 장의 같은 그림이 보이므로 정확히 자르지 않아도 됩니다.
+ * 프린터는 종이 끝 4~5mm를 못 찍어 흰 테두리가 항상 남으므로, 위에 얹는 장의 한 변은 한 번은
+ * 잘라야 합니다(가위질 0번은 불가능). 이음매 하나에 가위질 1번이 겹치기의 장점입니다.
+ */
 function drawTileMarks(context: RenderContext, plan: PrintPlanOption, region: TileRegion): void {
   const { page, layout, doc, font } = context
   const left = pt(layout.offsetXmm)
@@ -689,69 +767,71 @@ function drawTileMarks(context: RenderContext, plan: PrintPlanOption, region: Ti
   const bottom = top - pt(region.rows * doc.board.pitch)
   const thin = pt(0.25)
 
+  // 이웃 장과 맞닿는 변. 바깥 변에는 아무것도 그리지 않습니다.
+  const joinLeft = region.column > 0
+  const joinRight = region.column + 1 < plan.tilesX
+  const joinTop = region.row > 0
+  const joinBottom = region.row + 1 < plan.tilesY
+
   // 네 변의 실제 여백을 따로 잽니다. 겹치기(overlap) 이음매를 쓰면 맵이 한쪽으로만
   // 넓어져서 좌우·상하 여백이 서로 달라지기 때문입니다.
-  const widthMm = region.cols * doc.board.pitch
-  const heightMm = region.rows * doc.board.pitch
+  const widthMm = layout.mapWidthMm
+  const heightMm = layout.mapHeightMm
   const reachTop = markReach(layout.offsetYmm)
   const reachBottom = markReach(layout.pageHeightMm - layout.offsetYmm - heightMm)
   const reachLeft = markReach(layout.offsetXmm)
   const reachRight = markReach(layout.pageWidthMm - layout.offsetXmm - widthMm)
 
   if (doc.print.cropMarks) {
-    const trimLines = [
-      [{ x: left, y: bottom }, { x: right, y: bottom }],
-      [{ x: right, y: bottom }, { x: right, y: top }],
-      [{ x: right, y: top }, { x: left, y: top }],
-      [{ x: left, y: top }, { x: left, y: bottom }],
-    ] as const
-    for (const [start, end] of trimLines) {
-      page.drawLine({ start, end, thickness: thin, color: rgb(0.31, 0.275, 0.898), dashArray: [pt(1.5), pt(1)] })
-    }
+    if (doc.print.seam === 'overlap') {
+      drawOverlapMarks(context, { left, right, top, bottom }, { joinLeft, joinRight, joinTop, joinBottom })
+    } else {
+      const dashed = (start: { x: number; y: number }, end: { x: number; y: number }) =>
+        page.drawLine({ start, end, thickness: thin, color: SEAM_COLOR, dashArray: [pt(1.5), pt(1)] })
+      const mark = (start: { x: number; y: number }, end: { x: number; y: number }) =>
+        page.drawLine({ start, end, thickness: thin, color: rgb(0, 0, 0) })
+      const outTop = markOffset(reachTop)
+      const outBottom = markOffset(reachBottom)
+      const outLeft = markOffset(reachLeft)
+      const outRight = markOffset(reachRight)
+      const half = pt(MARK_TRIANGLE_HALF_MM)
+      const midX = (left + right) / 2
+      const midY = (bottom + top) / 2
 
-    // 모서리 재단 마크. 여백이 있으면 바깥으로, 없으면 안쪽으로 그립니다(markReach 주석 참고).
-    const outTop = markOffset(reachTop)
-    const outBottom = markOffset(reachBottom)
-    const outLeft = markOffset(reachLeft)
-    const outRight = markOffset(reachRight)
-    for (const x of [left, right]) {
-      page.drawLine({ start: { x, y: bottom - outBottom }, end: { x, y: bottom }, thickness: thin, color: rgb(0, 0, 0) })
-      page.drawLine({ start: { x, y: top }, end: { x, y: top + outTop }, thickness: thin, color: rgb(0, 0, 0) })
+      // 세로 이음 변(왼쪽·오른쪽): 재단 점선 + 위아래 끝의 모서리 마크(선의 연장) + 가운데 삼각형.
+      // 모서리 마크는 여백이 있으면 바깥으로, 없으면 안쪽으로 그립니다(markReach 주석 참고).
+      for (const [joined, x, reach, sign] of [
+        [joinLeft, left, reachLeft, -1],
+        [joinRight, right, reachRight, 1],
+      ] as const) {
+        if (!joined) continue
+        dashed({ x, y: bottom }, { x, y: top })
+        mark({ x, y: bottom - outBottom }, { x, y: bottom })
+        mark({ x, y: top }, { x, y: top + outTop })
+        const h = triangleHeight(reach)
+        drawAbsolutePolygon(page, [
+          { x: x + sign * h, y: midY - half },
+          { x: x + sign * h, y: midY + half },
+          { x, y: midY },
+        ])
+      }
+      // 가로 이음 변(위·아래).
+      for (const [joined, y, reach, sign] of [
+        [joinTop, top, reachTop, 1],
+        [joinBottom, bottom, reachBottom, -1],
+      ] as const) {
+        if (!joined) continue
+        dashed({ x: left, y }, { x: right, y })
+        mark({ x: left - outLeft, y }, { x: left, y })
+        mark({ x: right, y }, { x: right + outRight, y })
+        const h = triangleHeight(reach)
+        drawAbsolutePolygon(page, [
+          { x: midX - half, y: y + sign * h },
+          { x: midX + half, y: y + sign * h },
+          { x: midX, y },
+        ])
+      }
     }
-    for (const y of [bottom, top]) {
-      page.drawLine({ start: { x: left - outLeft, y }, end: { x: left, y }, thickness: thin, color: rgb(0, 0, 0) })
-      page.drawLine({ start: { x: right, y }, end: { x: right + outRight, y }, thickness: thin, color: rgb(0, 0, 0) })
-    }
-
-    // 변 중앙 정렬 삼각 마크(FR-6.4). 꼭짓점은 항상 재단선을 가리키고, 밑변만 여백 쪽으로
-    // 물러납니다. 여백이 없으면 위 마크와 같은 이유로 안쪽을 향해 뒤집힙니다.
-    const half = pt(MARK_TRIANGLE_HALF_MM)
-    const midX = (left + right) / 2
-    const midY = (bottom + top) / 2
-    const hTop = triangleHeight(reachTop)
-    const hBottom = triangleHeight(reachBottom)
-    const hLeft = triangleHeight(reachLeft)
-    const hRight = triangleHeight(reachRight)
-    drawAbsolutePolygon(page, [
-      { x: midX - half, y: top + hTop },
-      { x: midX + half, y: top + hTop },
-      { x: midX, y: top },
-    ])
-    drawAbsolutePolygon(page, [
-      { x: midX - half, y: bottom - hBottom },
-      { x: midX + half, y: bottom - hBottom },
-      { x: midX, y: bottom },
-    ])
-    drawAbsolutePolygon(page, [
-      { x: left - hLeft, y: midY - half },
-      { x: left - hLeft, y: midY + half },
-      { x: left, y: midY },
-    ])
-    drawAbsolutePolygon(page, [
-      { x: right + hRight, y: midY - half },
-      { x: right + hRight, y: midY + half },
-      { x: right, y: midY },
-    ])
   }
 
   // 시트 번호·이웃 시트 안내는 맵 위에 겹쳐 찍히므로 "안내 문구·시트 번호"를 끄면 함께 뺍니다.
@@ -774,6 +854,72 @@ function drawTileMarks(context: RenderContext, plan: PrintPlanOption, region: Ti
     const y = bottom + pt(2)
     page.drawRectangle({ x: x - pt(1.5), y: y - pt(1), width: width + pt(3), height: pt(4.4), color: rgb(1, 1, 1), opacity: 0.88 })
     page.drawText(text, { x, y, size, font, color: rgb(0, 0, 0) })
+  }
+}
+
+/** 겹치기 띠·자를 범위 표시의 채움 불투명도(docs/06 §3.6). 그림이 비쳐 보여야 합니다. */
+const OVERLAP_BAND_OPACITY = 0.1
+const OVERLAP_CUT_OPACITY = 0.06
+const OVERLAP_TEXT = '다음 장을 여기에 겹쳐 붙이세요'
+
+/** 겹치기 이음매 표시. drawTileMarks 주석의 [후기 20번] 참고. 좌표는 모두 pt. */
+function drawOverlapMarks(
+  context: RenderContext,
+  edge: { left: number; right: number; top: number; bottom: number },
+  join: { joinLeft: boolean; joinRight: boolean; joinTop: boolean; joinBottom: boolean },
+): void {
+  const { page, layout, doc, font } = context
+  const { left, right, top, bottom } = edge
+  const thin = pt(0.25)
+  const fullRight = left + pt(layout.mapWidthMm)
+  const fullBottom = top - pt(layout.mapHeightMm)
+  const textSize = pt(2.2)
+  const textWidth = font.widthOfTextAtSize(OVERLAP_TEXT, textSize)
+
+  const band = (x: number, y: number, width: number, height: number, opacity: number) =>
+    page.drawRectangle({ x, y, width, height, color: SEAM_COLOR, opacity, borderColor: SEAM_COLOR, borderWidth: thin, borderOpacity: 0.6 })
+
+  // ① 아래 깔리는 장: 오른쪽·아래쪽에 더 찍힌 겹칠 띠. 자르지 않습니다.
+  if (join.joinRight && fullRight > right) {
+    band(right, fullBottom, fullRight - right, top - fullBottom, OVERLAP_BAND_OPACITY)
+    if (textWidth < top - bottom) {
+      page.drawText(OVERLAP_TEXT, {
+        x: (right + fullRight) / 2 + textSize / 3,
+        y: (top + bottom) / 2 - textWidth / 2,
+        size: textSize,
+        font,
+        color: SEAM_COLOR,
+        rotate: degrees(90),
+      })
+    }
+  }
+  if (join.joinBottom && fullBottom < bottom) {
+    band(left, fullBottom, fullRight - left, bottom - fullBottom, OVERLAP_BAND_OPACITY)
+    if (textWidth < right - left) {
+      page.drawText(OVERLAP_TEXT, {
+        x: (left + right) / 2 - textWidth / 2,
+        y: (bottom + fullBottom) / 2 - textSize / 3,
+        size: textSize,
+        font,
+        color: SEAM_COLOR,
+      })
+    }
+  }
+
+  // ② 위에 얹는 장: 이음 변 안쪽 겹치기 폭이 "잘라도 되는 범위". 가운데에 재단 점선.
+  // 그 범위는 아래 장의 띠와 같은 그림이라, 범위 안 어디를 잘라도 이음이 어긋나지 않습니다.
+  const cutMm = Math.max(0, doc.print.overlap)
+  const dashed = (start: { x: number; y: number }, end: { x: number; y: number }) =>
+    page.drawLine({ start, end, thickness: thin, color: SEAM_COLOR, dashArray: [pt(1.5), pt(1)] })
+  if (join.joinLeft && cutMm > 0) {
+    const width = Math.min(pt(cutMm), right - left)
+    band(left, fullBottom, width, top - fullBottom, OVERLAP_CUT_OPACITY)
+    dashed({ x: left + width / 2, y: fullBottom }, { x: left + width / 2, y: top })
+  }
+  if (join.joinTop && cutMm > 0) {
+    const height = Math.min(pt(cutMm), top - bottom)
+    band(left, top - height, fullRight - left, height, OVERLAP_CUT_OPACITY)
+    dashed({ x: left, y: top - height / 2 }, { x: fullRight, y: top - height / 2 })
   }
 }
 
@@ -840,9 +986,12 @@ function drawAssemblyGuide(pdf: PdfDocument, font: PDFFont, doc: MapDoc, plan: P
     page.drawText(label, { x: pt(x + width / 2) - labelWidth / 2, y: pt(yTop - height / 2) - size / 3, size, font, color: rgb(0.31, 0.275, 0.898) })
   }
 
-  const seamText = doc.print.seam === 'overlap' ? `겹치기 ${doc.print.overlap}mm` : '맞대기'
-  page.drawText(`1. 시트 번호 순서대로 펼칩니다.  2. 점선을 따라 자릅니다.  3. 중앙 삼각 마크를 맞춰 ${seamText} 방식으로 붙입니다.`, {
-    x: pt(16), y: pt(14), size: pt(2.8), font, color: rgb(0, 0, 0),
+  // 방식마다 자르는 곳이 다르므로 안내도 다르게 씁니다(docs/06 §2.9).
+  const steps = doc.print.seam === 'overlap'
+    ? `1. 시트 번호 순서대로 펼칩니다.  2. 오른쪽·아래 장의 옅은 띠 안 점선을 자릅니다(띠 안이면 어디든 괜찮음).  3. 왼쪽·위 장의 "겹쳐 붙이세요" 띠 위에 그림을 맞춰 얹고 붙입니다.`
+    : '1. 시트 번호 순서대로 펼칩니다.  2. 이웃 장과 붙는 변의 점선을 자릅니다(바깥 변은 자르지 않음).  3. 가운데 삼각 마크를 맞춰 맞대어 붙입니다.'
+  page.drawText(steps, {
+    x: pt(16), y: pt(14), size: pt(2.6), font, color: rgb(0, 0, 0),
   })
   const guideContext: RenderContext = {
     pdf,

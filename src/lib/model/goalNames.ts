@@ -1,7 +1,9 @@
 import type { GoalMarker } from './types'
 
-/** 도착점 위치는 한 문서 안에서 중복되지 않으므로 표시명 연결에도 같은 키를 씁니다. */
-export function goalMarkerKey(goal: Pick<GoalMarker, 'cell'>): string {
+/** 도착점 위치는 한 문서 안에서 중복되지 않으므로 표시명 연결에도 같은 키를 씁니다.
+ *  Alt+클릭 자유 위치(at)로 놓은 도착점은 같은 격자점 근처에 여럿 있을 수 있어 mm 위치로 구분합니다. */
+export function goalMarkerKey(goal: Pick<GoalMarker, 'cell' | 'at'>): string {
+  if (goal.at) return `@${goal.at[0]},${goal.at[1]}`
   return `${goal.cell[0]},${goal.cell[1]}`
 }
 
