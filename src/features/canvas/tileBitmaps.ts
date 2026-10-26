@@ -13,6 +13,7 @@
 import { ICONS } from '@/lib/icons/catalog'
 import type { UserAssets } from '@/lib/model/types'
 import { TILES } from '@/lib/tiles/catalog'
+import { HAMSTER_IMAGE_ID, HAMSTER_IMAGE_URL } from '@/lib/markers/hamsterArt'
 
 type Listener = (assetId: string) => void
 
@@ -30,7 +31,8 @@ class TileBitmapCache {
   constructor() {
     // 내장 자산은 URL이 고정돼 있고 수량도 작으므로 처음부터 준비합니다. 아이콘 SVG도
     // Blob → ImageBitmap 경로를 거치면 PNG 타일과 같은 drawImage 코드로 그릴 수 있습니다.
-    for (const asset of [...TILES, ...ICONS]) {
+    // 출발·도착 햄스터 사진(hamsterArt.ts)도 같은 캐시로 디코드해, 로드가 끝나면 마커 레이어가 다시 그려지게 합니다.
+    for (const asset of [...TILES, ...ICONS, { id: HAMSTER_IMAGE_ID, url: HAMSTER_IMAGE_URL }]) {
       this.builtInSources.set(asset.id, asset.url)
       this.startLoad(asset.id, asset.url)
     }

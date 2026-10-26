@@ -525,3 +525,10 @@
   color: var(--c-text-2);
   line-height: 1.35;
 }
+
+/* 햄스터 모양 선택지의 사진 썸네일. 흰 몸통이 흰 버튼 위에서 묻히지 않게 얇은 윤곽을 줍니다. */
+.lookPhoto {
+  display: block;
+  border-radius: 4px;
+  box-shadow: 0 0 0 1px var(--c-border);
+}

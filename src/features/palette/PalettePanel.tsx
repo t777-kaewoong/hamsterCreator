@@ -41,7 +41,7 @@ import { USER_ASSET_MAX_PX } from '@/lib/model/constants'
 import { goalDisplayNames, goalMarkerKey } from '@/lib/model/goalNames'
 import type { Direction, GoalMarker, MarkerLook, UserAsset } from '@/lib/model/types'
 import { OBSTACLE_PRESETS } from '@/lib/model/obstacles'
-import { HAMSTER_BODY_PATH, HAMSTER_DETAIL_PATH } from '@/lib/markers/hamsterArt'
+import { HAMSTER_IMAGE_URL } from '@/lib/markers/hamsterArt'
 import { useEditorStore } from '@/features/editor/editorStore'
 import type { PenMode, ShapeKind, ToolId } from '@/features/editor/editorStore'
 import { sampleStroke, strokeBounds } from '@/features/canvas/strokeGeometry'
@@ -843,12 +843,7 @@ function ObstacleArt({ diameter }: { diameter: number }) {
 /** 마커 모양 선택 그림. 실제로 말판에 찍히는 모양을 줄여서 보여 줍니다. */
 function MarkerLookArt({ look, goal }: { look: MarkerLook; goal: boolean }) {
   if (look === 'hamster') {
-    return (
-      <svg width="28" height="28" viewBox="-21 -21 42 42" aria-hidden="true">
-        <path d={HAMSTER_BODY_PATH} fill="#fff" stroke="currentColor" strokeWidth="2.5" />
-        <path d={HAMSTER_DETAIL_PATH} fill="currentColor" />
-      </svg>
-    )
+    return <img src={HAMSTER_IMAGE_URL} width={28} height={29} alt="" aria-hidden="true" className={styles.lookPhoto} />
   }
   return (
     <svg width="28" height="28" viewBox="-20 -20 40 40" aria-hidden="true">

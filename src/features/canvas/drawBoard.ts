@@ -14,7 +14,9 @@ import { markerPositionMm, obstaclePreset, obstaclesOf } from '@/lib/model/obsta
 import {
   HAMSTER_BODY_PATH,
   HAMSTER_CAPTION_RADIUS_MM,
-  HAMSTER_DETAIL_PATH,
+  HAMSTER_IMAGE_H_MM,
+  HAMSTER_IMAGE_ID,
+  HAMSTER_IMAGE_W_MM,
   HAMSTER_OUTLINE_MM,
   HEADING_DEGREES,
 } from '@/lib/markers/hamsterArt'
@@ -360,24 +362,25 @@ function drawMarkerCaption(
  * 자체는 doc.markers 하나뿐이라 배열 순회 없이 start 하나 + goals 배열만 처리합니다.
  */
 /**
- * 햄스터 모양 마커(docs/06 §3.2). hamsterArt.ts의 SVG 경로를 mm 단위로 그대로 씁니다.
- * Path2D는 경로를 한 번만 해석해 두고 매번 배율만 바꿔 그립니다.
+ * 햄스터 모양 마커(docs/06 §3.2) — 햄스터S 윗면 사진을 실물 크기로, 방향에 맞춰 돌려 그립니다.
+ * 사진이 아직 디코드 전이면 흰 몸통만 먼저 그리고, 로드가 끝나면 tileBitmapCache 알림으로 다시 그려집니다.
+ * 사진 테두리가 흐려 흰 종이 위에서 묻히므로 몸통 윤곽을 검은 선으로 한 번 더 긋습니다.
  */
-let hamsterPaths: { body: Path2D; detail: Path2D } | null = null
+let hamsterBodyPath: Path2D | null = null
 function drawHamsterMarker(ctx: CanvasRenderingContext2D, viewport: Viewport, x: number, y: number, heading: Direction): void {
-  hamsterPaths ??= { body: new Path2D(HAMSTER_BODY_PATH), detail: new Path2D(HAMSTER_DETAIL_PATH) }
+  hamsterBodyPath ??= new Path2D(HAMSTER_BODY_PATH)
   const scale = viewport.mmToPx(1)
+  const bitmap = tileBitmapCache.get(HAMSTER_IMAGE_ID)
   ctx.save()
   ctx.translate(x, y)
   ctx.rotate((HEADING_DEGREES[heading] * Math.PI) / 180)
   ctx.scale(scale, scale)
   ctx.fillStyle = MARKER_BACKGROUND
-  ctx.fill(hamsterPaths.body)
+  ctx.fill(hamsterBodyPath)
+  if (bitmap) ctx.drawImage(bitmap, -HAMSTER_IMAGE_W_MM / 2, -HAMSTER_IMAGE_H_MM / 2, HAMSTER_IMAGE_W_MM, HAMSTER_IMAGE_H_MM)
   ctx.strokeStyle = MARKER_COLOR
   ctx.lineWidth = HAMSTER_OUTLINE_MM
-  ctx.stroke(hamsterPaths.body)
-  ctx.fillStyle = MARKER_COLOR
-  ctx.fill(hamsterPaths.detail)
+  ctx.stroke(hamsterBodyPath)
   ctx.restore()
 }
 

@@ -36,7 +36,9 @@ import { markerPositionMm, obstaclePreset, obstaclesOf } from '@/lib/model/obsta
 import {
   HAMSTER_BODY_PATH,
   HAMSTER_CAPTION_RADIUS_MM,
-  HAMSTER_DETAIL_PATH,
+  HAMSTER_IMAGE_H_MM,
+  HAMSTER_IMAGE_URL,
+  HAMSTER_IMAGE_W_MM,
   HAMSTER_OUTLINE_MM,
   HEADING_DEGREES,
 } from '@/lib/markers/hamsterArt'
@@ -201,6 +203,9 @@ async function imageFor(context: RenderContext, assetId: string): Promise<PDFIma
 
     const icon = getIcon(assetId)
     if (icon) return context.pdf.embedPng(await rasterizeSvg(icon.url))
+
+    // 출발·도착 햄스터 사진은 PNG 주소를 id 대신 그대로 넘깁니다(drawMarkers).
+    if (assetId === HAMSTER_IMAGE_URL) return context.pdf.embedPng(await fetchBytes(assetId))
 
     throw new PdfGenerationError(`이미지를 찾을 수 없습니다: ${assetId}`)
   })()
@@ -435,7 +440,7 @@ function drawMarkerCaption(context: RenderContext, text: string, xMm: number, yM
   )
 }
 
-function drawMarkers(context: RenderContext): void {
+async function drawMarkers(context: RenderContext): Promise<void> {
   const { doc, page, layout } = context
   const outerRadiusMm = 17
   const ringWidth = pt(3)
@@ -451,22 +456,34 @@ function drawMarkers(context: RenderContext): void {
     })
   }
 
-  // 햄스터 모양(docs/06 §3.2). 화면과 같은 SVG 경로를 mm → pt 배율로 그립니다.
-  // pdf-lib의 drawSvgPath는 y를 뒤집어(SVG는 아래로 +) 그리고, rotate는 반시계 방향이라
-  // 시계방향 heading 각도에 −를 붙입니다.
+  // 햄스터 모양(docs/06 §3.2) — 화면과 같은 햄스터S 사진을 실물 크기로 찍고 몸통 윤곽을 긋습니다.
+  // pdf-lib의 rotate는 반시계 방향이라 시계방향 heading 각도에 −를 붙입니다. drawImage는
+  // 이미지 왼쪽 아래 모서리를 축으로 돌리므로, 중심이 제자리에 오도록 그 모서리 위치를 계산합니다.
+  const usesHamster = doc.markers.start?.look === 'hamster' || doc.markers.goals.some((goal) => goal.look === 'hamster')
+  const hamsterImage = usesHamster ? await imageFor(context, HAMSTER_IMAGE_URL) : null
   const drawHamster = (center: Point, heading: Direction) => {
     const point = mapPoint(layout, center)
-    const rotate = degrees(-HEADING_DEGREES[heading])
+    const angle = (-HEADING_DEGREES[heading] * Math.PI) / 180
+    const w = pt(HAMSTER_IMAGE_W_MM)
+    const h = pt(HAMSTER_IMAGE_H_MM)
+    page.drawSvgPath(HAMSTER_BODY_PATH, { x: point.x, y: point.y, scale: POINTS_PER_MM, rotate: degrees(-HEADING_DEGREES[heading]), color: rgb(1, 1, 1) })
+    if (hamsterImage) {
+      page.drawImage(hamsterImage, {
+        x: point.x - ((w / 2) * Math.cos(angle) - (h / 2) * Math.sin(angle)),
+        y: point.y - ((w / 2) * Math.sin(angle) + (h / 2) * Math.cos(angle)),
+        width: w,
+        height: h,
+        rotate: degrees(-HEADING_DEGREES[heading]),
+      })
+    }
     page.drawSvgPath(HAMSTER_BODY_PATH, {
       x: point.x,
       y: point.y,
       scale: POINTS_PER_MM,
-      rotate,
-      color: rgb(1, 1, 1),
+      rotate: degrees(-HEADING_DEGREES[heading]),
       borderColor: rgb(0.067, 0.067, 0.067),
       borderWidth: HAMSTER_OUTLINE_MM,
     })
-    page.drawSvgPath(HAMSTER_DETAIL_PATH, { x: point.x, y: point.y, scale: POINTS_PER_MM, rotate, color: rgb(0.067, 0.067, 0.067) })
   }
 
   if (doc.markers.start?.look === 'hamster') {
@@ -679,7 +696,7 @@ async function drawMapContent(context: RenderContext): Promise<void> {
   await drawProps(context)
   for (const label of doc.labels) drawCenteredText(context, label)
   drawObstacles(context)
-  drawMarkers(context)
+  await drawMarkers(context)
   page.pushOperators(popGraphicsState())
 }
 
