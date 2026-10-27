@@ -448,9 +448,9 @@ export function drawMarkersLayer(ctx: CanvasRenderingContext2D, viewport: Viewpo
     const [mx, my] = markerPositionMm(goal, pitch)
     const p = viewport.mapToScreen(mx, my)
 
-    // 도착 햄스터는 "여기까지 와서 선다"는 뜻이라 방향 없이 위를 보게 그립니다.
+    // 도착 햄스터는 도착했을 때 바라볼 방향으로 그립니다(없으면 위, docs/10).
     if (goal.look === 'hamster') {
-      drawHamsterMarker(ctx, viewport, p.x, p.y, 'N')
+      drawHamsterMarker(ctx, viewport, p.x, p.y, goal.heading ?? 'N')
       drawMarkerCaption(ctx, p.x, p.y, hamsterRadiusPx, 0, labelSizePx, goalNames[index], captionHaloPx)
       return
     }

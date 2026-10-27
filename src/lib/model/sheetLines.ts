@@ -5,7 +5,8 @@
 // 없었습니다. 종이 경계는 화면의 종이 파선·출력 계획기와 같은 계산(findPrintPlan)을 써야
 // 화면에서 본 "1-2번 종이"와 실제로 채워지는 범위가 같습니다.
 import type { Edges, MapDoc, NodeCoord, Stub } from './types'
-import { allBoundaryStubs, setStub } from './stubs'
+import { setStub, stubExists } from './stubs'
+import { edgeExists, setEdge } from '@/features/canvas/gridMath'
 import { findPrintPlan } from '@/lib/print/plan'
 
 export interface SheetRegion {
@@ -76,13 +77,71 @@ export function fillSheetEdges(doc: MapDoc, region: SheetRegion): Edges {
   return { h: toCoords(h), v: toCoords(v) }
 }
 
-/** 이 종이에 걸친 맵 바깥 경계 격자점에 진입로를 넣습니다(이미 있는 것은 그대로). */
+/**
+ * 이 종이 네 변의 격자점에 진입로(반 칸 선)를 넣습니다(docs/10). 맵 바깥 테두리뿐 아니라 **이웃 종이와
+ * 맞닿는 변**에도 넣어, 종이를 따로 쓰거나 이음매 쪽으로 선을 내보낼 수 있게 합니다. 이음매를 건너는
+ * 온전한 격자선이 이미 있으면 그 자리는 이미 이어져 있으므로 넣지 않습니다.
+ */
 export function addSheetStubs(doc: MapDoc, region: SheetRegion): Stub[] {
+  const { cols, rows } = doc.board
+  const c0 = region.startCol
+  const c1 = region.startCol + region.cols - 1
+  const r0 = region.startRow
+  const r1 = region.startRow + region.rows - 1
   let stubs = doc.stubs
-  for (const stub of allBoundaryStubs(doc.board.cols, doc.board.rows)) {
-    if (inside(region, stub.node[0], stub.node[1])) stubs = setStub(stubs, stub, true)
+  const add = (stub: Stub, crossing: { kind: 'h' | 'v'; c: number; r: number } | null) => {
+    if (crossing && edgeExists(doc.edges, crossing.kind, crossing.c, crossing.r)) return
+    stubs = setStub(stubs, stub, true)
+  }
+  for (let c = c0; c <= c1; c++) {
+    add({ node: [c, r0], dir: 'N' }, r0 > 0 ? { kind: 'v', c, r: r0 - 1 } : null)
+    add({ node: [c, r1], dir: 'S' }, r1 < rows - 1 ? { kind: 'v', c, r: r1 } : null)
+  }
+  for (let r = r0; r <= r1; r++) {
+    add({ node: [c0, r], dir: 'W' }, c0 > 0 ? { kind: 'h', c: c0 - 1, r } : null)
+    add({ node: [c1, r], dir: 'E' }, c1 < cols - 1 ? { kind: 'h', c: c1, r } : null)
   }
   return stubs
+}
+
+/** 종이 경계(이음매)가 지나는 칸 경계 번호. 세로 이음매는 열, 가로 이음매는 행 번호입니다. */
+export function seamCuts(doc: MapDoc): { columns: Set<number>; rows: Set<number> } {
+  const plan = findPrintPlan(doc)
+  return { columns: new Set(plan?.columnCuts ?? []), rows: new Set(plan?.rowCuts ?? []) }
+}
+
+/** 이 격자선 토막이 종이 이음매를 건너는지. h(c,r)은 c+1열 경계, v(c,r)은 r+1행 경계를 지납니다. */
+export function crossesSeam(doc: MapDoc, kind: 'h' | 'v', c: number, r: number): boolean {
+  const cuts = seamCuts(doc)
+  return kind === 'h' ? cuts.columns.has(c + 1) : cuts.rows.has(r + 1)
+}
+
+/**
+ * 이음매를 건너는 토막의 **한쪽 절반**만 켜거나 끕니다(docs/10). 절반 = 그 종이 쪽 격자점에서
+ * 이음매까지의 진입로. 두 절반이 다 켜지면 온전한 격자선 하나로 합치고, 하나라도 꺼지면 남은 쪽은
+ * 진입로로 남깁니다. side 'a'는 왼쪽·위 격자점, 'b'는 오른쪽·아래 격자점 쪽 절반입니다.
+ * on을 주지 않으면 지금 상태를 뒤집습니다.
+ */
+export function setSeamHalf(
+  doc: MapDoc,
+  kind: 'h' | 'v',
+  c: number,
+  r: number,
+  side: 'a' | 'b',
+  on?: boolean,
+): Pick<MapDoc, 'edges' | 'stubs'> {
+  const stubA: Stub = { node: [c, r], dir: kind === 'h' ? 'E' : 'S' }
+  const stubB: Stub = { node: kind === 'h' ? [c + 1, r] : [c, r + 1], dir: kind === 'h' ? 'W' : 'N' }
+  const full = edgeExists(doc.edges, kind, c, r)
+  let halfA = full || stubExists(doc.stubs, stubA)
+  let halfB = full || stubExists(doc.stubs, stubB)
+  if (side === 'a') halfA = on ?? !halfA
+  else halfB = on ?? !halfB
+  const both = halfA && halfB
+  return {
+    edges: setEdge(doc.edges, kind, c, r, both),
+    stubs: setStub(setStub(doc.stubs, stubA, halfA && !both), stubB, halfB && !both),
+  }
 }
 
 /** 이 종이 안 격자점에 닿는 선(이음매를 건너는 선 포함)과 진입로를 모두 지웁니다. */

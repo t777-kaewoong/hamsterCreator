@@ -512,7 +512,7 @@ async function drawMarkers(context: RenderContext): Promise<void> {
   doc.markers.goals.forEach((goal, index) => {
     const center = markerPositionMm(goal, doc.board.pitch)
     if (goal.look === 'hamster') {
-      drawHamster(center, 'N')
+      drawHamster(center, goal.heading ?? 'N')
       drawMarkerCaption(context, goalNames[index], center[0], center[1] + HAMSTER_CAPTION_RADIUS_MM + 5)
       return
     }

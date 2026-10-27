@@ -276,6 +276,17 @@ function MarkerFields({ doc, selection }: { doc: MapDoc; selection: { kind: 'sta
           />
         </Row>
       )}
+      {!isStart && marker.look === 'hamster' && (
+        <Row label="방향">
+          <Segmented
+            fullWidth
+            options={HEADING_OPTIONS}
+            value={(marker as GoalMarker).heading ?? 'N'}
+            onChange={(v) => patch({ heading: v as Direction })}
+            aria-label="도착 방향"
+          />
+        </Row>
+      )}
       {!isStart && (
         <Row label="이름" hint="비우면 자동 이름(도착1, 도착2 …)을 써요.">
           <DraftTextInput

@@ -92,6 +92,16 @@ export function findEraseTarget(doc: MapDoc, mx: number, my: number, group: Eras
   if (allow('line')) {
     const stub = stubAtPoint(mx, my, doc.board.cols, doc.board.rows, doc.board.pitch)
     if (stub && stubExists(doc.stubs, stub)) return { kind: 'stub', stub }
+    // 맵 안쪽의 진입로(종이 이음매 쪽 반 칸 선 등, docs/10)는 그 선분 가까이를 누르면 지웁니다.
+    const { pitch, lineWidth } = doc.board
+    const reach = lineWidth / 2 + LINE_HIT_SLACK_MM
+    for (const item of doc.stubs) {
+      const [vx, vy] = stubVector(item.dir)
+      const x0 = item.node[0] * pitch + pitch / 2
+      const y0 = item.node[1] * pitch + pitch / 2
+      const t = Math.max(0, Math.min(pitch / 2, (mx - x0) * vx + (my - y0) * vy))
+      if (Math.hypot(mx - (x0 + vx * t), my - (y0 + vy * t)) <= reach && t > 0) return { kind: 'stub', stub: item }
+    }
   }
 
   return null

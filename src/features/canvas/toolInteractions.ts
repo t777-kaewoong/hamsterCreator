@@ -42,6 +42,7 @@ import {
   type CellCoord,
 } from './gridMath'
 import { setStub, toggleStub } from '@/lib/model/stubs'
+import { crossesSeam, setSeamHalf } from '@/lib/model/sheetLines'
 import { applyErase, eraseGroupOf, findEraseTarget } from './eraseTarget'
 import type { EraseGroup, EraseTarget } from './eraseTarget'
 import {
@@ -779,7 +780,13 @@ export class ToolController {
             // 되었을 때 엉뚱한 격자선이 사라지는 일이 실제로 생깁니다(FR-2.2는 "엣지 단건
             // 클릭 토글"이지 "아무 데나 클릭해도 토글"이 아닙니다).
             const nearest = nearestEdgeToPoint(mapPt.mx, mapPt.my, doc.board.cols, doc.board.rows, doc.board.pitch)
-            if (nearest) {
+            if (nearest && crossesSeam(fresh, nearest.kind, nearest.c, nearest.r)) {
+              // 종이 이음매를 건너는 토막은 누른 쪽 절반(그 종이 쪽 진입로)만 켜고 끕니다(docs/10).
+              // 두 절반이 다 켜지면 온전한 격자선이 됩니다. Alt는 지우기.
+              const seamMm = (nearest.kind === 'h' ? nearest.c + 1 : nearest.r + 1) * doc.board.pitch
+              const side = (nearest.kind === 'h' ? mapPt.mx : mapPt.my) < seamMm ? 'a' : 'b'
+              this.commitDocChange({ ...fresh, ...setSeamHalf(fresh, nearest.kind, nearest.c, nearest.r, side, this.gestureAlt ? false : undefined) })
+            } else if (nearest) {
               const nextEdges = toggleEdge(fresh.edges, nearest.kind, nearest.c, nearest.r)
               if (nextEdges !== fresh.edges) this.commitDocChange({ ...fresh, edges: nextEdges })
             }
@@ -1459,7 +1466,7 @@ export class ToolController {
    *  free(Alt)면 격자점에 붙이지 않고 그 자리에 놓습니다(후기 16번). 이때도 cell에는 가장 가까운
    *  격자점을 함께 적어 정답 코드·검증이 칸 단위로 계산되게 합니다. */
   private placeMarker(doc: MapDoc, mapPt: MapPoint, free: boolean): void {
-    const { markerMode, markerHeading, markerLook, obstacleKind, startName, goalName, obstacleName } = useEditorStore.getState()
+    const { markerMode, markerHeading, goalHeading, markerLook, obstacleKind, startName, goalName, obstacleName } = useEditorStore.getState()
     // 팔레트 "격자점에 붙이기"가 꺼져 있으면 자유 위치. Alt는 그 반대(docs/07 §2.2).
     free = free !== !useEditorStore.getState().markerSnap
     const spot = this.markerSpot(doc, mapPt, free)
@@ -1509,7 +1516,10 @@ export class ToolController {
     if (existingIndex >= 0) {
       nextGoals = doc.markers.goals.filter((_, i) => i !== existingIndex)
     } else {
-      nextGoals = [...doc.markers.goals, { cell: node, name: goalName.trim(), look: markerLook, ...(at ? { at } : {}) }]
+      nextGoals = [
+        ...doc.markers.goals,
+        { cell: node, name: goalName.trim(), look: markerLook, heading: goalHeading, ...(at ? { at } : {}) },
+      ]
       // 도착지 이름은 한 번 쓰고 비웁니다 — 같은 이름 도착지가 여러 개 생기면 정답 화면에서 헷갈립니다.
       if (goalName) useEditorStore.getState().setPlaceName('goalName', '')
     }

@@ -99,7 +99,7 @@ const TOOL_HELP: Record<ToolId, { title: string; description: string; hint?: str
   marker: { title: '출발·도착·장애물', description: '종류를 고른 뒤 원하는 격자점을 클릭하세요.', icon: Flag },
   shape: { title: '도형', description: '도형을 고르고 캔버스에서 드래그해 크기를 정하세요.', hint: '다 그리면 선택 도구로 바뀌어 바로 옮기거나 크기를 바꿀 수 있어요.', icon: Circle },
   select: { title: '선택', description: '눌러서 고르고, 끌어서 옮기고, 핸들로 크기를 바꿉니다.', icon: MousePointer2 },
-  lineDraw: { title: '격자선 긋기', description: '격자점 사이를 드래그해 로봇이 칸 단위로 다니는 길을 잇습니다.', hint: '정답 코드는 이 선을 따라 계산해요. 격자 바깥을 클릭하면 경계 진입로가 생깁니다. Alt는 지우기.', icon: Grid3x3 },
+  lineDraw: { title: '격자선 긋기', description: '격자점 사이를 드래그해 로봇이 칸 단위로 다니는 길을 잇습니다.', hint: '정답 코드는 이 선을 따라 계산해요. 격자 바깥이나 종이 이음매 쪽 반 칸을 클릭하면 진입로가 생깁니다. Alt는 지우기.', icon: Grid3x3 },
   eyedropper: { title: '타일 집기', description: '캔버스에 놓인 타일을 클릭해 같은 타일을 가져옵니다.', hint: '타일을 집으면 자동으로 타일 배치 도구로 바뀝니다.', icon: Pipette },
   eraser: { title: '지우개', description: '빨갛게 보이는 것을 누르거나 문질러 지웁니다.', hint: '격자선은 한 토막씩 지워져요. + 모양의 왼쪽 팔을 누르면 ㅏ 모양이 됩니다. 끌면 처음 누른 것과 같은 종류만 지워요.', icon: Eraser },
   text: { title: '글자', description: '글자를 넣을 위치를 클릭한 뒤 바로 입력합니다.', hint: '입력 후 오른쪽 선택 항목에서 크기·색·회전을 바꿀 수 있어요.', icon: Type },
@@ -257,6 +257,8 @@ export default function PalettePanel() {
   const setShape = useEditorStore((s) => s.setShape)
   const setMarkerMode = useEditorStore((s) => s.setMarkerMode)
   const setMarkerHeading = useEditorStore((s) => s.setMarkerHeading)
+  const goalHeading = useEditorStore((s) => s.goalHeading)
+  const setGoalHeading = useEditorStore((s) => s.setGoalHeading)
   const markerLook = useEditorStore((s) => s.markerLook)
   const obstacleKind = useEditorStore((s) => s.obstacleKind)
   const setObstacleKind = useEditorStore((s) => s.setObstacleKind)
@@ -654,6 +656,24 @@ export default function PalettePanel() {
               </div>
             </div>
           )}
+          {/* 도착 햄스터가 바라볼 방향(docs/10). 기본 모양(과녁)에는 방향 표시가 없어 햄스터일 때만 보여 줍니다. */}
+          {markerMode === 'goal' && markerLook === 'hamster' && (
+            <div className={styles.contextSection}>
+              <h3 className="t-label">도착 방향</h3>
+              <div className={styles.directionGrid} role="group" aria-label="도착 방향">
+                {DIRECTIONS.map((direction) => (
+                  <ContextChoice
+                    key={direction.id}
+                    icon={direction.icon}
+                    label={direction.label}
+                    selected={goalHeading === direction.id}
+                    compact
+                    onClick={() => setGoalHeading(direction.id)}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
           {markerMode === 'goal' && (
             <div className={styles.contextSection}>
               <h3 className="t-label">도착지 이름</h3>
@@ -785,7 +805,7 @@ export default function PalettePanel() {
                 </Button>
               </div>
               <p className={`${styles.contextHint} t-caption`}>
-                {sheet.code}번 종이({sheet.cols}×{sheet.rows}칸)에만 적용돼요. 진입로는 맵 바깥 테두리에 닿은 곳에만 생깁니다.
+                {sheet.code}번 종이({sheet.cols}×{sheet.rows}칸)에만 적용돼요. 진입로는 네 변(이웃 종이와 맞닿는 변 포함)에 생깁니다.
               </p>
             </div>
           )}

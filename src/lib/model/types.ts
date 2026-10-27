@@ -233,6 +233,9 @@ export interface GoalMarker {
   /** StartMarker.at과 같은 의미 */
   at?: Point
   look?: MarkerLook
+  /** 햄스터 모양일 때 로봇이 바라보는 방향(도착했을 때의 자세). 없으면 위(N).
+   *  2026-10-27 추가 — 정답 계산에는 쓰지 않습니다(docs/10). */
+  heading?: Direction
 }
 
 /** 출발·도착 마커 모음. */
