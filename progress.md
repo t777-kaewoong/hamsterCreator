@@ -640,6 +640,7 @@ preview는 base를 `/`로 잡는데, dist/index.html 안의 자산 주소는 `/h
 - `StartMarker.under?`·`GoalMarker.under?`: 몸통만 격자선 아래, 이름표는 늘 위(화면 `drawMarkersLayer(aboveGrid)`·PDF `drawMarkers(aboveGrid)`)
 - 팔레트 "선 아래에 깔기"(실제 상태 표시, 지금 마커에 바로 적용), 인스펙터 "선과 순서"
 - 검증: tsc 0건, build·build:single, 회귀 31항목, 개발 서버 화면 확인(상세 docs/11 §3)
+- **배포:** 커밋 `203b6c3` 푸시, GitHub Actions 배포 성공. 실서비스 번들에 새 문구 확인, 콘솔 오류 0건
 
 ## Decisions
 - 2026-10-27 초안 이미지는 localStorage 대신 IndexedDB(초안 id별). 새 이미지 번호는 참조 중인 번호를 건너뜀
