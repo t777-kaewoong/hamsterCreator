@@ -626,6 +626,7 @@ preview는 base를 `/`로 잡는데, dist/index.html 안의 자산 주소는 `/h
 - 선 위/아래: `Cell.under?`·`Prop.under?`, 팔레트 "선 아래에 깔기", 인스펙터 "선과 순서" (`isPlacedAboveLine`)
 - 격자선 도구 "종이별로 한꺼번에": 종이 고르기 + 격자선 채우기/진입로 넣기/비우기(`lib/model/sheetLines.ts`)
 - 검증: tsc 0건, build·build:single, 회귀 31항목, 개발 서버(상세 docs/09 §3)
+- **배포:** 커밋 `048742c` 푸시, GitHub Actions 배포 성공. 실서비스 번들에 새 기능 문구(놓는 자리·선 아래에 깔기·종이별로 한꺼번에·칸에서 떼기·초안 이미지 보관) 확인, 콘솔 오류 0건
 
 ## Decisions
 - 2026-10-27 초안 이미지는 localStorage 대신 IndexedDB(초안 id별). 새 이미지 번호는 참조 중인 번호를 건너뜀
