@@ -10,7 +10,7 @@
 // 출발·도착 마커(markers, FR-4.3/4.4) · 자유곡선(strokes, FR-10).
 import type { Direction, Label, MapDoc } from '@/lib/model/types'
 import { goalDisplayNames } from '@/lib/model/goalNames'
-import { markerPositionMm, obstaclePreset, obstaclesOf } from '@/lib/model/obstacles'
+import { markerPositionMm, obstacleLabel, obstaclesOf } from '@/lib/model/obstacles'
 import {
   HAMSTER_BODY_PATH,
   HAMSTER_CAPTION_RADIUS_MM,
@@ -502,7 +502,8 @@ export function drawObstaclesLayer(ctx: CanvasRenderingContext2D, viewport: View
   ctx.lineJoin = 'round'
   for (const o of obstacles) {
     const p = viewport.mapToScreen(o.cx, o.cy)
-    const name = obstaclePreset(o.kind).name
+    const name = obstacleLabel(o)
+    if (!name) continue
     ctx.lineWidth = viewport.mmToPx(OBSTACLE_LABEL_HALO_MM)
     ctx.strokeStyle = MARKER_BACKGROUND
     ctx.strokeText(name, p.x, p.y)

@@ -25,7 +25,7 @@ import type { Selection, ShapeKind } from '@/features/editor/editorStore'
 import type { LayerName } from './renderer'
 import type { MapPoint, Viewport } from './viewport'
 import { MARKER_OUTER_DIAMETER_MM, nodeCenterMm } from './drawBoard'
-import { hitTest, measureLabelBoxMmCached } from './hitTest'
+import { hitTest, markerBoxMm, measureLabelBoxMmCached } from './hitTest'
 import { closestEditableSegment, simplifyDouglasPeucker, splineControlHandles } from './strokeGeometry'
 import {
   areAdjacent,
@@ -1020,7 +1020,7 @@ export class ToolController {
     // M(마커) 도구: 팔레트에서 고른 종류를 놓일 자리(격자점, Alt면 커서)에 미리 보여줍니다.
     if (activeTool === 'marker') {
       const { markerMode, obstacleKind } = useEditorStore.getState()
-      const [mx, my] = this.markerSpot(doc, mapPt, this.isAltDown)
+      const [mx, my] = this.markerSpot(doc, mapPt, this.isAltDown !== !useEditorStore.getState().markerSnap)
       const diameterMm = markerMode === 'obstacle' ? obstaclePreset(obstacleKind).d : MARKER_GHOST_DIAMETER_MM
       this.overlay.markerGhost = { mx, my, mode: markerMode, diameterMm }
       return
@@ -1429,6 +1429,8 @@ export class ToolController {
    *  격자점을 함께 적어 정답 코드·검증이 칸 단위로 계산되게 합니다. */
   private placeMarker(doc: MapDoc, mapPt: MapPoint, free: boolean): void {
     const { markerMode, markerHeading, markerLook, obstacleKind } = useEditorStore.getState()
+    // 팔레트 "격자점에 붙이기"가 꺼져 있으면 자유 위치. Alt는 그 반대(docs/07 §2.2).
+    free = free !== !useEditorStore.getState().markerSnap
     const spot = this.markerSpot(doc, mapPt, free)
     const node = nearestNode(spot[0], spot[1], doc.board.cols, doc.board.rows, doc.board.pitch)
     const at = free ? spot : undefined
@@ -1500,6 +1502,8 @@ export class ToolController {
       next = { ...doc, labels: nextLabels }
     } else if (selection.kind === 'obstacle') {
       next = { ...doc, obstacles: obstaclesOf(doc).filter((_, i) => i !== selection.index) }
+    } else if (selection.kind === 'start' || selection.kind === 'goal') {
+      next = applyErase(doc, selection)
     } else {
       next = { ...doc, strokes: doc.strokes.filter((stroke) => stroke.id !== selection.id) }
     }
@@ -1652,6 +1656,8 @@ export class ToolController {
       else if (selection.kind === 'prop') exists = doc.props[selection.index] !== undefined
       else if (selection.kind === 'label') exists = doc.labels[selection.index] !== undefined
       else if (selection.kind === 'obstacle') exists = obstaclesOf(doc)[selection.index] !== undefined
+      else if (selection.kind === 'start') exists = doc.markers.start !== null
+      else if (selection.kind === 'goal') exists = doc.markers.goals[selection.index] !== undefined
       else {
         const strokeId = selection.id
         exists = doc.strokes.some((stroke) => stroke.id === strokeId)
@@ -1686,6 +1692,13 @@ export class ToolController {
       const r = Math.floor(selection.index / cols)
       const center = nodeCenterMm(c, r, pitch)
       return { mx: center.mx, my: center.my, wMm: pitch, hMm: pitch, rot: 0, handles: [] }
+    }
+    if (selection.kind === 'start' || selection.kind === 'goal') {
+      // 출발·도착은 크기를 끌어 바꾸지 않으므로 핸들 없이 윤곽만 그립니다.
+      const marker = selection.kind === 'start' ? doc.markers.start : doc.markers.goals[selection.index]
+      if (!marker) return null
+      const box = markerBoxMm(marker, doc.board.pitch)
+      return { mx: box.cx, my: box.cy, wMm: box.w, hMm: box.h, rot: 0, handles: [] }
     }
     if (selection.kind === 'label') {
       const label = doc.labels[selection.index]

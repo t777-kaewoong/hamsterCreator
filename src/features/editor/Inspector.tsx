@@ -17,7 +17,7 @@
 // doc을 한 단계씩 내려받지 않음) — 이 파일 안의 섹션들이 전부 "지금 열린 맵"이라는
 // 같은 상태를 보므로, 그때그때 useEditorStore((s) => ...)로 필요한 조각만 꺼내 쓰는
 // 편이 중간에 데이터를 계속 실어 나르는 것보다 단순합니다.
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { ChangeEvent, KeyboardEvent } from 'react'
 import type { ReactNode } from 'react'
 import { ChevronRight, CircleAlert, CircleCheck, Minus, Plus, Trash2, TriangleAlert } from 'lucide-react'
@@ -33,8 +33,24 @@ import { resizeMapDoc } from '@/lib/model/resize'
 import { findPrintPlan } from '@/lib/print/plan'
 import type { PrintPlanOption } from '@/lib/print/plan'
 import { fitsOneSheet, withAutoLayout } from '@/lib/print/sheet'
-import { OBSTACLE_PRESETS, obstaclePreset, obstaclesOf } from '@/lib/model/obstacles'
-import type { Cell, Label, MapDoc, NodeCoord, Obstacle, ObstacleKind, PrintConfig, Prop, Stroke } from '@/lib/model/types'
+import { OBSTACLE_PRESETS, markerPositionMm, obstacleLabel, obstaclePreset, obstaclesOf } from '@/lib/model/obstacles'
+import { goalDisplayNames } from '@/lib/model/goalNames'
+import { translateSelection } from '@/features/canvas/selectionEdit'
+import type {
+  Cell,
+  Direction,
+  GoalMarker,
+  Label,
+  MapDoc,
+  MarkerLook,
+  NodeCoord,
+  Obstacle,
+  ObstacleKind,
+  PrintConfig,
+  Prop,
+  StartMarker,
+  Stroke,
+} from '@/lib/model/types'
 import styles from './Inspector.module.css'
 
 export default function Inspector() {
@@ -170,7 +186,118 @@ function SelectionSection() {
   if (selection.kind === 'prop') return <PropFields doc={doc} index={selection.index} />
   if (selection.kind === 'label') return <LabelFields doc={doc} index={selection.index} />
   if (selection.kind === 'obstacle') return <ObstacleFields doc={doc} index={selection.index} />
+  if (selection.kind === 'start' || selection.kind === 'goal') return <MarkerFields doc={doc} selection={selection} />
   return <StrokeFields doc={doc} id={selection.id} />
+}
+
+const HEADING_OPTIONS: SegmentedOption[] = [
+  { value: 'N', label: '위' },
+  { value: 'E', label: '오른쪽' },
+  { value: 'S', label: '아래' },
+  { value: 'W', label: '왼쪽' },
+]
+const LOOK_OPTIONS: SegmentedOption[] = [
+  { value: 'basic', label: '기본' },
+  { value: 'hamster', label: '햄스터' },
+]
+
+/**
+ * 출발·도착(docs/07 §2.2). 캔버스에서 끌어 옮길 수 있고, 여기서는 위치를 mm로 정확히 넣거나
+ * 격자점에 다시 맞춥니다. 위치를 바꾸면 정답 코드가 쓰는 칸(cell)도 가장 가까운 격자점으로 따라갑니다.
+ */
+function MarkerFields({ doc, selection }: { doc: MapDoc; selection: { kind: 'start' } | { kind: 'goal'; index: number } }) {
+  const isStart = selection.kind === 'start'
+  const marker = isStart ? doc.markers.start : doc.markers.goals[selection.index]
+  const goalNames = goalDisplayNames(doc.markers.goals)
+  if (!marker) return null
+  const [x, y] = markerPositionMm(marker, doc.board.pitch)
+
+  function patch(next: Partial<StartMarker> & Partial<GoalMarker>) {
+    if (selection.kind === 'start') {
+      const start = doc.markers.start
+      if (start) useEditorStore.getState().commitDoc({ ...doc, markers: { ...doc.markers, start: { ...start, ...next } } })
+      return
+    }
+    const goals = doc.markers.goals.slice()
+    goals[selection.index] = { ...goals[selection.index], ...next }
+    useEditorStore.getState().commitDoc({ ...doc, markers: { ...doc.markers, goals } })
+  }
+
+  function moveTo(nextX: number, nextY: number) {
+    const moved = translateSelection(doc, selection, nextX - x, nextY - y)
+    useEditorStore.getState().commitDoc(moved.doc)
+  }
+
+  function snapToNode() {
+    if (!marker) return
+    const { at: _at, ...rest } = marker
+    if (selection.kind === 'start') {
+      useEditorStore.getState().commitDoc({ ...doc, markers: { ...doc.markers, start: rest as StartMarker } })
+      return
+    }
+    const goals = doc.markers.goals.slice()
+    goals[selection.index] = rest as GoalMarker
+    useEditorStore.getState().commitDoc({ ...doc, markers: { ...doc.markers, goals } })
+  }
+
+  function handleDelete() {
+    if (selection.kind === 'start') useEditorStore.getState().commitDoc({ ...doc, markers: { ...doc.markers, start: null } })
+    else useEditorStore.getState().commitDoc({ ...doc, markers: { ...doc.markers, goals: doc.markers.goals.filter((_, i) => i !== selection.index) } })
+    useEditorStore.getState().setSelection(null)
+  }
+
+  const title = isStart ? '출발' : goalNames[(selection as { index: number }).index]
+  return (
+    <Section title="선택 항목" aside={<NameChip name={title} />}>
+      {isStart && doc.markers.start && (
+        <Row label="방향">
+          <Segmented
+            fullWidth
+            options={HEADING_OPTIONS}
+            value={doc.markers.start.heading}
+            onChange={(v) => patch({ heading: v as Direction })}
+            aria-label="출발 방향"
+          />
+        </Row>
+      )}
+      {!isStart && (
+        <Row label="이름" hint="비우면 자동 이름(도착1, 도착2 …)을 써요.">
+          <DraftTextInput
+            label="도착지 이름"
+            value={(marker as GoalMarker).name}
+            placeholder={title}
+            onCommit={(value) => patch({ name: value })}
+          />
+        </Row>
+      )}
+      <Row label="모양">
+        <Segmented
+          fullWidth
+          options={LOOK_OPTIONS}
+          value={marker.look ?? 'basic'}
+          onChange={(v) => patch({ look: v as MarkerLook })}
+          aria-label="마커 모양"
+        />
+      </Row>
+      <Row label="위치" hint={marker.at ? '자유 위치 · 정답 코드는 가장 가까운 격자점으로 계산해요.' : '격자점에 놓여 있어요. 캔버스에서 끌면 자유롭게 옮겨져요.'}>
+        <Pair>
+          <DraftNumberInput label="가로 위치 X" value={x} onCommit={(value) => moveTo(value, y)} />
+          <DraftNumberInput label="세로 위치 Y" value={y} onCommit={(value) => moveTo(x, value)} />
+        </Pair>
+      </Row>
+      {marker.at && (
+        <div className={styles.row}>
+          <span />
+          <div className={styles.rowControl}>
+            <Button variant="secondary" size="sm" onClick={snapToNode}>
+              격자점에 맞추기
+            </Button>
+          </div>
+        </div>
+      )}
+      <DeleteRow onDelete={handleDelete} />
+    </Section>
+  )
 }
 
 const OBSTACLE_OPTIONS: SegmentedOption[] = OBSTACLE_PRESETS.map((preset) => ({ value: preset.kind, label: preset.name }))
@@ -186,13 +313,36 @@ function ObstacleFields({ doc, index }: { doc: MapDoc; index: number }) {
     useEditorStore.getState().commitDoc({ ...doc, obstacles: list })
   }
 
+  /** 이름 칸을 지워 종류 이름(종이컵 등)으로 되돌립니다. */
+  function resetName() {
+    const list = obstaclesOf(doc).slice()
+    const { name: _removed, ...rest } = list[index]
+    list[index] = rest
+    useEditorStore.getState().commitDoc({ ...doc, obstacles: list })
+  }
+
   function handleDelete() {
     useEditorStore.getState().commitDoc({ ...doc, obstacles: obstaclesOf(doc).filter((_, i) => i !== index) })
     useEditorStore.getState().setSelection(null)
   }
 
   return (
-    <Section title="선택 항목" aside={<NameChip name={`장애물 · ${obstaclePreset(obstacle.kind).name}`} />}>
+    <Section title="선택 항목" aside={<NameChip name={`장애물 · ${obstacleLabel(obstacle) || obstaclePreset(obstacle.kind).name}`} />}>
+      <Row label="이름" hint="비우면 이름 없이 점선만 찍혀요.">
+        <div className={styles.inlineControl}>
+          <DraftTextInput
+            label="장애물 이름"
+            value={obstacleLabel(obstacle)}
+            placeholder={obstaclePreset(obstacle.kind).name}
+            onCommit={(value) => update({ name: value })}
+          />
+          {obstacle.name !== undefined && (
+            <Button variant="ghost" size="sm" onClick={resetName}>
+              기본 이름
+            </Button>
+          )}
+        </div>
+      </Row>
       <Row label="종류">
         <Segmented
           fullWidth
@@ -506,6 +656,53 @@ function StrokeFields({ doc, id }: { doc: MapDoc; id: string }) {
       )}
       <DeleteRow onDelete={handleDelete} />
     </Section>
+  )
+}
+
+/**
+ * 글자 입력칸. 한 글자마다 실행취소를 쌓지 않도록, 입력을 마쳤을 때(Enter·포커스 이동) 한 번만 저장합니다.
+ * Esc는 고치던 것을 버립니다.
+ */
+function DraftTextInput({
+  label,
+  value,
+  placeholder,
+  onCommit,
+}: {
+  label: string
+  value: string
+  placeholder?: string
+  onCommit: (value: string) => void
+}) {
+  const [draft, setDraft] = useState(value)
+  const cancelRef = useRef(false)
+
+  useEffect(() => setDraft(value), [value])
+
+  return (
+    <Input
+      aria-label={label}
+      value={draft}
+      placeholder={placeholder}
+      onChange={(event) => setDraft(event.target.value)}
+      onBlur={() => {
+        if (cancelRef.current) {
+          cancelRef.current = false
+          setDraft(value)
+          return
+        }
+        const next = draft.trim()
+        setDraft(next)
+        if (next !== value) onCommit(next)
+      }}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter') event.currentTarget.blur()
+        else if (event.key === 'Escape') {
+          cancelRef.current = true
+          event.currentTarget.blur()
+        }
+      }}
+    />
   )
 }
 

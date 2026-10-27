@@ -77,6 +77,9 @@ export type Selection =
   | { kind: 'stroke'; id: string }
   /** 장애물(doc.obstacles)의 배열 인덱스. 2026-10-26 추가 */
   | { kind: 'obstacle'; index: number }
+  /** 출발(하나뿐이라 인덱스 없음)·도착(doc.markers.goals 인덱스). 2026-10-27 추가 — 끌어 옮기기용(docs/07 §2.2) */
+  | { kind: 'start' }
+  | { kind: 'goal'; index: number }
   | null
 
 /** 인스펙터 "검증" 섹션(§9.13)의 항목을 클릭했을 때 "캔버스를 이 노드로 옮기고 0.6초간
@@ -110,6 +113,8 @@ interface EditorState {
   markerLook: MarkerLook
   /** 장애물 모드에서 놓을 종류 */
   obstacleKind: ObstacleKind
+  /** M 도구가 격자점에 붙여 놓을지(기본 켬). 끄면 누른 자리 그대로. Alt는 반대로 동작(docs/07 §2.2). */
+  markerSnap: boolean
   /** P 도구 모드 */
   penMode: PenMode
   /** 켜면 타일 칠하기·영역 채우기가 같은 테마 타일을 무작위로 섞습니다(예전 Alt+R). */
@@ -172,6 +177,7 @@ interface EditorState {
   setMarkerHeading: (heading: Direction) => void
   setMarkerLook: (look: MarkerLook) => void
   setObstacleKind: (kind: ObstacleKind) => void
+  setMarkerSnap: (on: boolean) => void
   setPenMode: (mode: PenMode) => void
   setMixFill: (on: boolean) => void
   setDoc: (doc: MapDoc | null) => void
@@ -275,6 +281,7 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
   markerHeading: 'N',
   markerLook: 'basic',
   obstacleKind: 'paperCup',
+  markerSnap: true,
   penMode: 'curve',
   mixFill: false,
   storeKind: mapStore.kind,
@@ -300,6 +307,7 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
   setMarkerHeading: (heading) => set({ markerHeading: heading, markerMode: 'start', activeTool: 'marker' }),
   setMarkerLook: (look) => set({ markerLook: look }),
   setObstacleKind: (kind) => set({ obstacleKind: kind, markerMode: 'obstacle', activeTool: 'marker' }),
+  setMarkerSnap: (on) => set({ markerSnap: on }),
   setPenMode: (mode) => set({ penMode: mode, activeTool: 'pen' }),
   setMixFill: (on) => set({ mixFill: on }),
   setDoc: (doc) => set({ doc }),

@@ -32,7 +32,7 @@ import { PAPER_SIZES } from '@/lib/model/constants'
 import { goalDisplayNames } from '@/lib/model/goalNames'
 import type { Direction, Label, MapDoc, Point, Stroke } from '@/lib/model/types'
 import { getIcon } from '@/lib/icons/catalog'
-import { markerPositionMm, obstaclePreset, obstaclesOf } from '@/lib/model/obstacles'
+import { markerPositionMm, obstacleLabel, obstaclesOf } from '@/lib/model/obstacles'
 import {
   HAMSTER_BODY_PATH,
   HAMSTER_CAPTION_RADIUS_MM,
@@ -536,7 +536,7 @@ function drawObstacles(context: RenderContext): void {
     })
     drawCenteredText(
       context,
-      { text: obstaclePreset(o.kind).name, x: o.cx, y: o.cy, rot: 0, size: 5, color: '#444444', onLine: false },
+      { text: obstacleLabel(o), x: o.cx, y: o.cy, rot: 0, size: 5, color: '#444444', onLine: false },
       1.2,
     )
   }

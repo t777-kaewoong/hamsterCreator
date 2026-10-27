@@ -6,11 +6,12 @@
 // 편집기가 따르는 관례). markers는 이번 단계(M1-5a)에서 선택 가능한 대상으로 요구되지
 // 않아 검사하지 않습니다 — 위치를 옮기는 인스펙터 UI가 아직 없고, M 도구가 클릭으로
 // 바로 지정/토글하는 방식이라 "먼저 선택한 뒤 조작"하는 흐름 자체가 필요 없습니다.
-import type { Label, MapDoc } from '@/lib/model/types'
-import { obstaclesOf } from '@/lib/model/obstacles'
+import type { GoalMarker, Label, MapDoc, StartMarker } from '@/lib/model/types'
+import { markerPositionMm, obstaclesOf } from '@/lib/model/obstacles'
+import { HAMSTER_IMAGE_H_MM, HAMSTER_IMAGE_W_MM } from '@/lib/markers/hamsterArt'
 import type { Selection } from '@/features/editor/editorStore'
 import { cellAtMm } from './gridMath'
-import { measureLabelBoxMm } from './drawBoard'
+import { MARKER_OUTER_DIAMETER_MM, measureLabelBoxMm } from './drawBoard'
 import { distanceToStroke } from './strokeGeometry'
 
 // 라벨 폭을 재려면(measureLabelBoxMm) CanvasRenderingContext2D가 있어야 하는데, hitTest는
@@ -61,12 +62,32 @@ function pointInRotatedRect(
   return Math.abs(localX) <= wMm / 2 && Math.abs(localY) <= hMm / 2
 }
 
+/**
+ * 출발·도착 마커가 차지하는 사각형(mm, 중심·크기). 선택 판정·선택 윤곽·지우개 강조가 같이 씁니다.
+ * 기본 모양은 지름 34mm 원을 감싸는 정사각형, 햄스터는 사진 크기(옆을 보면 가로세로가 바뀜).
+ */
+export function markerBoxMm(marker: StartMarker | GoalMarker, pitch: number): { cx: number; cy: number; w: number; h: number } {
+  const [cx, cy] = markerPositionMm(marker, pitch)
+  if (marker.look !== 'hamster') return { cx, cy, w: MARKER_OUTER_DIAMETER_MM, h: MARKER_OUTER_DIAMETER_MM }
+  const sideways = 'heading' in marker && (marker.heading === 'E' || marker.heading === 'W')
+  return sideways
+    ? { cx, cy, w: HAMSTER_IMAGE_H_MM, h: HAMSTER_IMAGE_W_MM }
+    : { cx, cy, w: HAMSTER_IMAGE_W_MM, h: HAMSTER_IMAGE_H_MM }
+}
+
 /** 장애물 점선 테두리를 잡았다고 볼 여유(mm)와, 가운데를 잡았다고 볼 반경(mm). */
 const OBSTACLE_RING_SLACK_MM = 4
 const OBSTACLE_CENTER_GRAB_MM = 8
 
 /** mm 좌표 (mx, my)를 클릭했을 때 무엇이 선택되어야 하는지 판정합니다. 아무 것도 없으면 null. */
 export function hitTest(doc: MapDoc, mx: number, my: number): Selection {
+  // ⓪ 출발·도착 — 화면 맨 위에 그려지므로 가장 먼저 잡습니다(docs/07 §2.2, 끌어 옮기기).
+  const inBox = (box: { cx: number; cy: number; w: number; h: number }) => Math.abs(mx - box.cx) <= box.w / 2 && Math.abs(my - box.cy) <= box.h / 2
+  for (let i = doc.markers.goals.length - 1; i >= 0; i--) {
+    if (inBox(markerBoxMm(doc.markers.goals[i], doc.board.pitch))) return { kind: 'goal', index: i }
+  }
+  if (doc.markers.start && inBox(markerBoxMm(doc.markers.start, doc.board.pitch))) return { kind: 'start' }
+
   // ① 라벨 — 배열 뒤쪽(나중에 추가된 것)일수록 화면에서 위에 그려지므로 역순으로 검사.
   const ctx = getScratchCtx()
   for (let i = doc.labels.length - 1; i >= 0; i--) {

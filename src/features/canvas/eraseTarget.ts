@@ -6,7 +6,7 @@
 // 알아야 하고, 끄는 방향도 정확해야 했습니다. 곡선·글자·자유 배치 그림은 아예 못 지웠습니다.
 //
 // 이제 규칙은 하나입니다: **눈에 보이는 것 중 맨 위에 있는 것을 지운다.**
-//   글자 → 장애물 → 자유 배치 그림 → 칸 타일 → 격자선 한 토막 → 곡선 → 경계 진입로
+//   출발·도착 → 글자 → 장애물 → 자유 배치 그림 → 칸 타일 → 격자선 한 토막 → 곡선 → 경계 진입로
 // 이 순서는 화면에 그려지는 순서(drawBoard.ts)를 거꾸로 따른 것입니다.
 //
 // 격자선 한 토막 = 이웃한 두 노드 사이 선(데이터 모델의 edge). + 모양의 왼쪽 팔을 누르면
@@ -28,6 +28,8 @@ export type EraseTarget =
   | { kind: 'stroke'; id: string }
   | { kind: 'stub'; stub: Stub }
   | { kind: 'obstacle'; index: number }
+  | { kind: 'start' }
+  | { kind: 'goal'; index: number }
 
 /** 끌어서 지울 때 묶는 종류. 'any'는 가리지 않음. */
 export type EraseGroup = 'object' | 'line' | 'curve' | 'any'
@@ -72,7 +74,7 @@ export function findEraseTarget(doc: MapDoc, mx: number, my: number, group: Eras
 
   if (allow('object')) {
     const hit = hitTest(doc, mx, my)
-    if (hit && (hit.kind === 'label' || hit.kind === 'prop' || hit.kind === 'cell' || hit.kind === 'obstacle')) return hit
+    if (hit && hit.kind !== 'stroke') return hit
   }
 
   if (allow('line')) {
@@ -120,6 +122,10 @@ export function applyErase(doc: MapDoc, target: EraseTarget): MapDoc {
     }
     case 'obstacle':
       return { ...doc, obstacles: (doc.obstacles ?? []).filter((_, i) => i !== target.index) }
+    case 'start':
+      return doc.markers.start ? { ...doc, markers: { ...doc.markers, start: null } } : doc
+    case 'goal':
+      return { ...doc, markers: { ...doc.markers, goals: doc.markers.goals.filter((_, i) => i !== target.index) } }
   }
 }
 

@@ -33,6 +33,7 @@ import {
   Stamp,
   Type,
   Upload,
+  X,
 } from 'lucide-react'
 import { Button, Input, Tooltip, useToast } from '@/components'
 import { TILES, TILES_BY_THEME } from '@/lib/tiles/catalog'
@@ -46,6 +47,8 @@ import { useEditorStore } from '@/features/editor/editorStore'
 import type { PenMode, ShapeKind, ToolId } from '@/features/editor/editorStore'
 import { sampleStroke, strokeBounds } from '@/features/canvas/strokeGeometry'
 import { allBoundaryStubs } from '@/lib/model/stubs'
+import { addLibraryImage, listLibraryImages, removeLibraryImage } from '@/lib/storage/imageLibrary'
+import type { LibraryImage } from '@/lib/storage/imageLibrary'
 import { TRACK_PRESETS } from './trackPresets'
 import type { TrackPreset } from './trackPresets'
 import styles from './PalettePanel.module.css'
@@ -121,7 +124,7 @@ const PEN_KEYS: KeyHint[] = [
   { keys: ['Alt'], text: '격자점에 붙지 않기 (직선)' },
 ]
 const SELECT_KEYS: KeyHint[] = [
-  { keys: ['끌기'], text: '옮기기' },
+  { keys: ['끌기'], text: '옮기기 (출발·도착도 자유롭게)' },
   { keys: ['핸들'], text: '크기 바꾸기 · Shift 비율 유지' },
   { keys: ['Ctrl', '끌기'], text: '복제해서 옮기기' },
   { keys: ['Ctrl', 'C'], text: '복사' },
@@ -130,7 +133,10 @@ const SELECT_KEYS: KeyHint[] = [
   { keys: ['Delete'], text: '지우기' },
 ]
 const SHAPE_KEYS: KeyHint[] = [{ keys: ['Shift'], text: '정원 · 정사각' }]
-const MARKER_KEYS: KeyHint[] = [{ keys: ['Alt', '클릭'], text: '격자점이 아닌 곳에 놓기' }]
+const MARKER_KEYS: KeyHint[] = [
+  { keys: ['Alt', '클릭'], text: '격자점 붙이기를 이번만 반대로' },
+  { keys: ['V', '끌기'], text: '선택 도구로 놓은 것을 자유롭게 옮기기' },
+]
 
 const PEN_MODES: { id: PenMode; label: string; icon: LucideIcon }[] = [
   { id: 'line', label: '직선', icon: Slash },
@@ -241,6 +247,8 @@ export default function PalettePanel() {
   const markerLook = useEditorStore((s) => s.markerLook)
   const obstacleKind = useEditorStore((s) => s.obstacleKind)
   const setObstacleKind = useEditorStore((s) => s.setObstacleKind)
+  const markerSnap = useEditorStore((s) => s.markerSnap)
+  const setMarkerSnap = useEditorStore((s) => s.setMarkerSnap)
   const penMode = useEditorStore((s) => s.penMode)
   const setPenMode = useEditorStore((s) => s.setPenMode)
   const mixFill = useEditorStore((s) => s.mixFill)
@@ -279,8 +287,58 @@ export default function PalettePanel() {
     }))
   }, [isSearching, query])
 
+  // ── 내 이미지(docs/07 §2.3) ─────────────────────────────────────────────
+  // 이 브라우저의 보관함(IndexedDB)과 지금 맵 파일의 userAssets를 합쳐 보여 줍니다.
+  const [library, setLibrary] = useState<LibraryImage[]>([])
+  function refreshLibrary() {
+    void listLibraryImages().then(setLibrary)
+  }
+  useEffect(refreshLibrary, [])
+
+  /** 맵 파일 이미지(asset:키) + 보관함에만 있는 이미지(lib:id). 같은 그림은 한 번만. */
+  const myImageItems = useMemo<PaletteItem[]>(() => {
+    const docEntries = Object.entries(doc?.userAssets ?? {})
+    const inDoc = new Set(docEntries.map(([, asset]) => asset.dataUrl))
+    return [
+      ...docEntries.map(([key, asset]) => ({ id: `asset:${key}`, name: asset.name, url: asset.dataUrl })),
+      ...library.filter((image) => !inDoc.has(image.dataUrl)).map((image) => ({ id: `lib:${image.id}`, name: image.name, url: image.dataUrl })),
+    ]
+  }, [doc?.userAssets, library])
+
+  /**
+   * 팔레트 항목 id를 실제로 찍을 id로 바꿉니다. 보관함에만 있는 이미지(lib:)는 이 순간 맵 파일에
+   * 넣고 그 키(asset:uN)를 돌려줍니다 — 맵 파일 하나만 있으면 다시 그릴 수 있어야 하기 때문입니다(D4).
+   */
+  function resolveStampId(item: PaletteItem): string {
+    if (!item.id.startsWith('lib:')) return item.id
+    const image = library.find((candidate) => `lib:${candidate.id}` === item.id)
+    const current = useEditorStore.getState().doc
+    if (!image || !current) return item.id
+    const existing = Object.entries(current.userAssets).find(([, asset]) => asset.dataUrl === image.dataUrl)
+    const key = existing ? existing[0] : addUserAsset({ name: image.name, w: image.w, h: image.h, dataUrl: image.dataUrl })
+    return key ? `asset:${key}` : item.id
+  }
+
+  /** × 버튼: 보관함에서 빼고, 지금 맵에서 쓰지 않는 그림이면 맵 파일에서도 뺍니다(놓인 그림은 그대로). */
+  async function handleRemoveMyImage(item: PaletteItem) {
+    await removeLibraryImage(item.url)
+    refreshLibrary()
+    if (!item.id.startsWith('asset:')) return
+    const current = useEditorStore.getState().doc
+    if (!current) return
+    const used = current.cells.some((cell) => cell?.art === item.id) || current.props.some((prop) => prop.asset === item.id)
+    if (used) {
+      showToast({ message: '맵에 놓인 그림이라 맵 파일에는 남겨 두었습니다. 다음 맵부터 목록에 안 보여요.' })
+      return
+    }
+    const userAssets = { ...current.userAssets }
+    delete userAssets[item.id.slice('asset:'.length)]
+    useEditorStore.getState().commitDoc({ ...current, userAssets })
+    if (useEditorStore.getState().stampTileId === item.id) useEditorStore.setState({ stampTileId: null })
+  }
+
   function handleSelect(item: PaletteItem) {
-    setStampTile(item.id)
+    setStampTile(resolveStampId(item))
   }
 
   /**
@@ -337,9 +395,10 @@ export default function PalettePanel() {
     // id를 읽어 처리하지만, 그 사이(dragover) 동안 보여줄 배치 예정 고스트는 브라우저
     // 보안 정책상 dataTransfer.getData()를 못 읽어서(드롭 순간에만 값을 읽을 수 있음)
     // 여기서 미리 스토어에 올려둔 stampTileId를 그대로 씁니다.
-    setStampTile(item.id)
+    const id = resolveStampId(item)
+    setStampTile(id)
     e.dataTransfer.effectAllowed = 'copy'
-    e.dataTransfer.setData('text/plain', item.id)
+    e.dataTransfer.setData('text/plain', id)
     const preview = dragPreviewRef.current
     if (preview) {
       preview.src = item.url
@@ -376,11 +435,14 @@ export default function PalettePanel() {
         const asset = await squareCropAndResize(file)
         const key = addUserAsset(asset)
         if (key) lastKey = key
+        // 다음 맵에서도 쓰도록 이 브라우저에 보관합니다(막힌 환경이면 조용히 건너뜀).
+        await addLibraryImage(asset)
       } catch {
         showToast({ message: `이미지를 불러오지 못했습니다: ${file.name}`, tone: 'danger' })
       }
     }
     setUploading(false)
+    refreshLibrary()
     // 여러 장을 한꺼번에 올렸으면 마지막 이미지를 바로 스탬프로 선택해, 업로드 직후
     // 바로 찍어볼 수 있게 합니다(FR-8.3 "즉시 팔레트 그리드에 나타나야 함"의 연장).
     if (lastKey) setStampTile(`asset:${lastKey}`)
@@ -475,6 +537,12 @@ export default function PalettePanel() {
               onClick={() => setMarkerMode('obstacle')}
             />
           </div>
+          {/* 격자점에 붙일지(docs/07 §2.2). 끄면 칸 경계에 걸쳐 놓을 수 있습니다. Alt는 이번만 반대로. */}
+          <label className={`${styles.mixToggle} ${styles.snapToggle}`}>
+            <input type="checkbox" checked={markerSnap} onChange={(e) => setMarkerSnap(e.target.checked)} />
+            <span className="t-label">격자점에 붙이기</span>
+            <span className={`${styles.snapToggleHint} t-caption`}>{markerSnap ? '칸 가운데에 딱 맞춰요' : '누른 자리 그대로 놓여요'}</span>
+          </label>
           {markerMode !== 'obstacle' && (
             <div className={styles.contextSection}>
               <h3 className="t-label">모양</h3>
@@ -548,7 +616,7 @@ export default function PalettePanel() {
           {markerMode !== 'obstacle' && (
             <p className={`${styles.contextHint} t-caption`}>
               {markerMode === 'goal' ? '도착지는 여러 곳에 놓을 수 있고, 같은 곳을 다시 누르면 삭제됩니다.' : '새 출발지를 놓으면 기존 출발지가 이동합니다.'}
-              {' '}격자점이 아닌 곳에 놓아도 정답 코드는 가장 가까운 격자점으로 계산해요.
+              {' '}칸 경계에 걸쳐 놓아도 정답 코드는 가장 가까운 격자점으로 계산해요.
             </p>
           )}
           <KeyHints items={MARKER_KEYS} />
@@ -653,6 +721,39 @@ export default function PalettePanel() {
     return <p className={`${styles.contextHint} ${styles.contextHintFirst} t-caption`}>{help.hint}</p>
   }
 
+  /** 내 이미지 그리드: 올린 이미지들 + 끝의 ＋ 추가 칸(누르거나 파일을 끌어 놓기). */
+  function renderMyImageGrid() {
+    return (
+      <div className={styles.grid}>
+        {myImageItems.map((item) => (
+          <PaletteTile
+            key={item.id}
+            item={item}
+            selected={stampTileId === item.id}
+            onSelect={handleSelect}
+            onDragStart={handleDragStart}
+            onRemove={(target) => void handleRemoveMyImage(target)}
+          />
+        ))}
+        <div className={styles.tileSlot}>
+          <button
+            type="button"
+            className={`${styles.addImageTile} ${userAssetDragActive ? styles.userImageDropzoneActive : ''}`}
+            onClick={openFilePicker}
+            onDragOver={handleUserAssetDragOver}
+            onDragLeave={() => setUserAssetDragActive(false)}
+            onDrop={handleUserAssetDrop}
+            aria-label="내 이미지 추가 (파일 선택 또는 끌어 놓기)"
+            title="내 이미지 추가 — 파일을 고르거나 여기에 끌어 놓으세요"
+          >
+            <Upload size={20} aria-hidden="true" />
+            <span className="t-micro">{uploading ? '올리는 중' : '추가'}</span>
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   function renderGridContent() {
     if (isSearching) {
       if (searchResults.length === 0) {
@@ -682,8 +783,8 @@ export default function PalettePanel() {
     }
 
     if (activeCategory === 'all') {
-      // '전체': 테마별 소제목 + 그리드를 차례로. 내 이미지는 올린 것이 있을 때만.
-      const userEntries = Object.entries(doc?.userAssets ?? {})
+      // '전체': 맨 위에 "내 이미지"(＋ 추가 칸 포함, 항상 보임 — docs/07 §2.3), 그 아래 테마별 소제목 + 그리드.
+      // 예전에는 올린 이미지가 없으면 내 이미지 묶음 자체가 안 보여 어디서 올리는지 알 수 없었습니다.
       const sections: { key: string; title: string; items: PaletteItem[] }[] = [
         ...TILES_BY_THEME.map((group) => ({
           key: group.theme,
@@ -691,12 +792,11 @@ export default function PalettePanel() {
           items: group.tiles.map((tile) => ({ id: tile.id, name: tile.name, url: tile.url })),
         })),
         { key: 'icon', title: '아이콘', items: ICONS.map((icon) => ({ id: icon.id, name: icon.name, url: icon.url })) },
-        ...(userEntries.length > 0
-          ? [{ key: 'myImages', title: '내 이미지', items: userEntries.map(([key, asset]) => ({ id: `asset:${key}`, name: asset.name, url: asset.dataUrl })) }]
-          : []),
       ]
       return (
         <>
+          <h3 className={`${styles.gridSectionTitle} t-micro`}>내 이미지</h3>
+          {renderMyImageGrid()}
           {sections.map((section, sectionIndex) => (
             <Fragment key={section.key}>
               <h3 className={`${styles.gridSectionTitle} t-micro`}>{section.title}</h3>
@@ -736,41 +836,13 @@ export default function PalettePanel() {
     }
 
     if (activeCategory === 'myImages') {
-      const entries = Object.entries(doc?.userAssets ?? {})
-      if (entries.length === 0) {
-        return (
-          <div className={styles.userImageEmpty}>
-            <button
-              type="button"
-              className={`${styles.userImageDropzone} ${userAssetDragActive ? styles.userImageDropzoneActive : ''}`}
-              onClick={openFilePicker}
-              onDragOver={handleUserAssetDragOver}
-              onDragLeave={() => setUserAssetDragActive(false)}
-              onDrop={handleUserAssetDrop}
-              aria-label="이미지 파일 선택 또는 놓기"
-            >
-              <Upload size={20} aria-hidden="true" />
-              <span className="t-caption">이미지를 놓으세요</span>
-            </button>
-          </div>
-        )
-      }
       return (
-        <div className={styles.grid}>
-          {entries.map(([key, asset], index) => {
-            const id = `asset:${key}`
-            return (
-              <PaletteTile
-                key={key}
-                item={{ id, name: asset.name, url: asset.dataUrl }}
-                selected={stampTileId === id}
-                onSelect={handleSelect}
-                onDragStart={handleDragStart}
-                showCoachMark={coachMarkVisible && index === 0}
-              />
-            )
-          })}
-        </div>
+        <>
+          {renderMyImageGrid()}
+          <p className={`${styles.goalNameHint} t-caption`}>
+            올린 이미지는 이 브라우저에 보관돼 다른 맵에서도 보여요. 정사각형으로 잘려 타일 한 칸(50mm)에 맞춰집니다.
+          </p>
+        </>
       )
     }
 
@@ -915,12 +987,15 @@ function PaletteTile({
   selected,
   onSelect,
   onDragStart,
+  onRemove,
   showCoachMark = false,
 }: {
   item: PaletteItem
   selected: boolean
   onSelect: (item: PaletteItem) => void
   onDragStart: (e: DragEvent<HTMLButtonElement>, item: PaletteItem) => void
+  /** 내 이미지에만: 마우스를 올리면 오른쪽 위에 × 버튼(목록에서 빼기). */
+  onRemove?: (item: PaletteItem) => void
   showCoachMark?: boolean
 }) {
   // 타일 집기(I)로 고른 타일이 그리드 아래쪽에 있으면 선택 표시가 안 보입니다.
@@ -951,6 +1026,17 @@ function PaletteTile({
           )}
         </button>
       </Tooltip>
+      {onRemove && (
+        <button
+          type="button"
+          className={styles.removeImage}
+          aria-label={`${item.name} 목록에서 빼기`}
+          title="내 이미지 목록에서 빼기"
+          onClick={() => onRemove(item)}
+        >
+          <X size={12} strokeWidth={3} aria-hidden="true" />
+        </button>
+      )}
       {showCoachMark && (
         <span className={`${styles.coachMark} t-caption`} role="status">
           타일을 고르고 칸을 클릭하세요

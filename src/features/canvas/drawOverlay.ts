@@ -17,7 +17,7 @@ import { obstaclesOf } from '@/lib/model/obstacles'
 import { drawStrokePath, splineControlHandles } from './strokeGeometry'
 import { findPrintPlan } from '@/lib/print/plan'
 import type { PrintPlanOption } from '@/lib/print/plan'
-import { measureLabelBoxMmCached } from './hitTest'
+import { markerBoxMm, measureLabelBoxMmCached } from './hitTest'
 import { stubVector } from './eraseTarget'
 import type { EraseTarget } from './eraseTarget'
 
@@ -191,6 +191,18 @@ function drawEraseHover(ctx: CanvasRenderingContext2D, viewport: Viewport, doc: 
       const center = viewport.mapToScreen(o.cx, o.cy)
       ctx.beginPath()
       ctx.arc(center.x, center.y, viewport.mmToPx(o.d / 2), 0, Math.PI * 2)
+      ctx.globalAlpha = ERASE_FILL_ALPHA
+      ctx.fill()
+      ctx.globalAlpha = 1
+      ctx.lineWidth = 2
+      ctx.stroke()
+    }
+  } else if (target.kind === 'start' || target.kind === 'goal') {
+    const marker = target.kind === 'start' ? doc.markers.start : doc.markers.goals[target.index]
+    if (marker) {
+      const box = markerBoxMm(marker, pitch)
+      const center = viewport.mapToScreen(box.cx, box.cy)
+      traceRotatedRect(ctx, center.x, center.y, viewport.mmToPx(box.w), viewport.mmToPx(box.h), 0)
       ctx.globalAlpha = ERASE_FILL_ALPHA
       ctx.fill()
       ctx.globalAlpha = 1

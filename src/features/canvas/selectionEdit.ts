@@ -8,8 +8,8 @@
 import type { Cell, Label, MapDoc, Obstacle, Prop, Stroke } from '@/lib/model/types'
 import type { Selection } from '@/features/editor/editorStore'
 import { shiftStroke } from '@/lib/model/resize'
-import { obstaclesOf } from '@/lib/model/obstacles'
-import { cellAtMm } from './gridMath'
+import { markerPositionMm, obstaclesOf } from '@/lib/model/obstacles'
+import { cellAtMm, nearestNode } from './gridMath'
 import { strokeBounds } from './strokeGeometry'
 
 /** 크기 핸들 위치. hx·hy가 -1이면 왼쪽·위, 1이면 오른쪽·아래, 0이면 그 축의 가운데(변 핸들). */
@@ -221,11 +221,40 @@ export function translateSelection(
     list[selection.index] = { ...o, cx: o.cx + dx, cy: o.cy + dy }
     return { doc: { ...doc, obstacles: list }, selection }
   }
+  if (selection.kind === 'start' || selection.kind === 'goal') {
+    return { doc: moveMarker(doc, selection, dx, dy), selection }
+  }
   const index = doc.strokes.findIndex((stroke) => stroke.id === selection.id)
   if (index < 0) return { doc, selection }
   const strokes = doc.strokes.slice()
   strokes[index] = shiftStroke(strokes[index], dx, dy)
   return { doc: { ...doc, strokes }, selection }
+}
+
+/** 출발·도착을 끌어 놓을 때 격자점에 딱 붙는 거리(mm). 칸 경계에 걸쳐 놓는 것은 막지 않을 만큼 작게. */
+export const MARKER_NODE_SNAP_MM = 4
+
+/**
+ * 출발·도착을 (dx, dy)mm 옮깁니다(docs/07 §2.2). 칸 경계에 걸쳐도 되는 자유 위치(at)가 되고,
+ * 격자점 4mm 안이면 격자점에 붙습니다(at 없음). 정답 코드가 쓰는 cell은 늘 가장 가까운 격자점으로 맞춥니다.
+ */
+function moveMarker(doc: MapDoc, selection: { kind: 'start' } | { kind: 'goal'; index: number }, dx: number, dy: number): MapDoc {
+  const { cols, rows, pitch } = doc.board
+  const marker = selection.kind === 'start' ? doc.markers.start : doc.markers.goals[selection.index]
+  if (!marker) return doc
+  const [x0, y0] = markerPositionMm(marker, pitch)
+  const x = Math.min(cols * pitch, Math.max(0, round(x0 + dx)))
+  const y = Math.min(rows * pitch, Math.max(0, round(y0 + dy)))
+  const cell = nearestNode(x, y, cols, rows, pitch)
+  const nodeX = cell[0] * pitch + pitch / 2
+  const nodeY = cell[1] * pitch + pitch / 2
+  const snapped = Math.hypot(x - nodeX, y - nodeY) <= MARKER_NODE_SNAP_MM
+  const { at: _oldAt, ...rest } = marker
+  const moved = snapped ? { ...rest, cell } : { ...rest, cell, at: [x, y] as [number, number] }
+  if (selection.kind === 'start') return { ...doc, markers: { ...doc.markers, start: moved as typeof doc.markers.start } }
+  const goals = doc.markers.goals.slice()
+  goals[selection.index] = moved as (typeof goals)[number]
+  return { ...doc, markers: { ...doc.markers, goals } }
 }
 
 // ── 복사·붙여넣기 ───────────────────────────────────────────────────────
@@ -256,6 +285,8 @@ export function copySelection(doc: MapDoc, selection: Selection): ClipItem | nul
     const o = obstaclesOf(doc)[selection.index]
     return o ? { kind: 'obstacle', item: structuredClone(o) } : null
   }
+  // 출발은 하나뿐이고, 도착은 M 도구로 놓는 편이 이름·순서가 덜 헷갈려 복사하지 않습니다.
+  if (selection.kind === 'start' || selection.kind === 'goal') return null
   const stroke = findStroke(doc, selection.id)
   return stroke ? { kind: 'stroke', item: structuredClone(stroke) } : null
 }

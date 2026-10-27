@@ -27,6 +27,11 @@ export function obstaclePreset(kind: ObstacleKind): ObstaclePreset {
   return OBSTACLE_PRESETS.find((preset) => preset.kind === kind) ?? OBSTACLE_PRESETS[0]
 }
 
+/** 장애물 가운데에 찍을 이름. 화면·PDF·인스펙터가 모두 이 함수로 정합니다(docs/07 §2.1). */
+export function obstacleLabel(obstacle: Obstacle): string {
+  return obstacle.name ?? obstaclePreset(obstacle.kind).name
+}
+
 /** 예전 파일에는 obstacles가 없으므로 항상 이 함수로 읽습니다. */
 export function obstaclesOf(doc: MapDoc): Obstacle[] {
   return doc.obstacles ?? []

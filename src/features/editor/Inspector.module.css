@@ -383,3 +383,15 @@
   overflow: hidden;
   color: var(--c-text-2);
 }
+
+/* 입력칸 + 작은 버튼을 한 줄에(장애물 이름 · 기본 이름). 입력칸이 남는 폭을 다 씁니다. */
+.inlineControl {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.inlineControl > :first-child {
+  flex: 1;
+  min-width: 0;
+}
