@@ -216,6 +216,8 @@ export interface StartMarker {
    *  2026-10-26 추가(선택 필드라 예전 파일도 그대로 열림). */
   at?: Point
   look?: MarkerLook
+  /** 이름표 글자. 없거나 빈 글자면 "출발". 2026-10-27 추가(docs/08 §3.3) */
+  name?: string
 }
 
 /** 도착 지점(FR-4.4). 복수 지정 가능. */

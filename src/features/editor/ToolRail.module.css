@@ -21,8 +21,11 @@
 }
 
 .toolButton {
-  width: 44px;
-  height: 44px;
+  /* 아이콘 + 늘 보이는 이름(docs/08 §3.1). 아이콘만 있으면 이름을 보려고 마우스를 올려야 합니다. */
+  width: 56px;
+  height: 50px;
+  flex-direction: column;
+  gap: 3px;
   border-radius: var(--r-md);
   border: none;
   background: transparent;
@@ -30,6 +33,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: 0;
   position: relative;
   cursor: pointer;
   transition: background var(--t-fast), color var(--t-fast);
@@ -126,4 +130,15 @@
 .shapeMenuItemActive {
   background: var(--c-primary-soft);
   color: var(--c-primary);
+}
+
+/* 버튼 아래 이름. 11px 600, 한 줄(넘치면 자름). 선택된 도구는 아이콘과 같은 보라. */
+.toolLabel {
+  max-width: 54px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: clip;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: -0.02em;
 }

@@ -401,7 +401,7 @@ export function drawMarkersLayer(ctx: CanvasRenderingContext2D, viewport: Viewpo
 
     if (doc.markers.start.look === 'hamster') {
       drawHamsterMarker(ctx, viewport, p.x, p.y, heading)
-      drawMarkerCaption(ctx, p.x, p.y, hamsterRadiusPx, 0, labelSizePx, '출발', captionHaloPx)
+      drawMarkerCaption(ctx, p.x, p.y, hamsterRadiusPx, 0, labelSizePx, doc.markers.start.name || '출발', captionHaloPx)
     } else {
       ctx.save()
       // 밑의 굵은 격자선이 원 안을 관통하면 방향 화살표와 한 덩어리로 보여 알아보기
@@ -435,7 +435,7 @@ export function drawMarkersLayer(ctx: CanvasRenderingContext2D, viewport: Viewpo
       ctx.fill()
       ctx.restore()
 
-      drawMarkerCaption(ctx, p.x, p.y, outerRadiusPx, ringWidthPx, labelSizePx, '출발', captionHaloPx)
+      drawMarkerCaption(ctx, p.x, p.y, outerRadiusPx, ringWidthPx, labelSizePx, doc.markers.start.name || '출발', captionHaloPx)
       ctx.restore()
     }
   }

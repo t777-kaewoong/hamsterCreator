@@ -101,7 +101,8 @@ const TOOL_HELP: Record<ToolId, { title: string; description: string; hint?: str
   eraser: { title: '지우개', description: '빨갛게 보이는 것을 누르거나 문질러 지웁니다.', hint: '격자선은 한 토막씩 지워져요. + 모양의 왼쪽 팔을 누르면 ㅏ 모양이 됩니다. 끌면 처음 누른 것과 같은 종류만 지워요.', icon: Eraser },
   text: { title: '글자', description: '글자를 넣을 위치를 클릭한 뒤 바로 입력합니다.', hint: '입력 후 오른쪽 선택 항목에서 크기·색·회전을 바꿀 수 있어요.', icon: Type },
   pen: { title: '펜', description: '클릭한 점을 직선이나 곡선으로 잇습니다. 아무 데나 긋는 트랙 선이에요.', icon: PenTool },
-  freeDraw: { title: '자유 그리기', description: '캔버스를 드래그한 궤적대로 트랙을 만듭니다.', hint: '완성된 곡선은 선택 도구에서 정점을 수정할 수 있어요.', icon: Pencil },
+  // 자유 그리기는 펜의 "자유" 모드라 머리글도 펜과 같습니다(docs/08 §3.2).
+  freeDraw: { title: '펜', description: '클릭한 점을 직선이나 곡선으로 잇거나, 끈 궤적대로 그립니다.', icon: PenTool },
 }
 
 /** 키 칩 + 짧은 설명 한 줄(docs/06 §3.3). keys가 여럿이면 "+"로 잇습니다. */
@@ -141,7 +142,9 @@ const MARKER_KEYS: KeyHint[] = [
 const PEN_MODES: { id: PenMode; label: string; icon: LucideIcon }[] = [
   { id: 'line', label: '직선', icon: Slash },
   { id: 'curve', label: '곡선', icon: Spline },
+  { id: 'free', label: '자유', icon: Pencil },
 ]
+const FREE_KEYS: KeyHint[] = [{ keys: ['끌기'], text: '끈 궤적대로 선 하나' }]
 
 /** 코치 마크는 앱을 다시 열어도 되풀이하지 않습니다(§9.15). 초안 저장 키와 분리해,
  *  초안을 지우거나 새 맵을 만들어도 이미 배운 안내가 다시 나타나지 않게 합니다. */
@@ -247,6 +250,10 @@ export default function PalettePanel() {
   const markerLook = useEditorStore((s) => s.markerLook)
   const obstacleKind = useEditorStore((s) => s.obstacleKind)
   const setObstacleKind = useEditorStore((s) => s.setObstacleKind)
+  const startName = useEditorStore((s) => s.startName)
+  const goalName = useEditorStore((s) => s.goalName)
+  const obstacleName = useEditorStore((s) => s.obstacleName)
+  const setPlaceName = useEditorStore((s) => s.setPlaceName)
   const markerSnap = useEditorStore((s) => s.markerSnap)
   const setMarkerSnap = useEditorStore((s) => s.setMarkerSnap)
   const penMode = useEditorStore((s) => s.penMode)
@@ -449,6 +456,11 @@ export default function PalettePanel() {
   }
 
   const header = TOOL_HELP[activeTool]
+  // 출발·도착·장애물 "붙일 이름" 칸이 지금 모드에서 어느 값을 다루는지.
+  const placeNameKey = markerMode === 'start' ? 'startName' : markerMode === 'goal' ? 'goalName' : 'obstacleName'
+  const placeNameValue = markerMode === 'start' ? startName : markerMode === 'goal' ? goalName : obstacleName
+  const placeNamePlaceholder =
+    markerMode === 'start' ? '출발' : markerMode === 'goal' ? '자동 (도착1, 도착2 …)' : (OBSTACLE_PRESETS.find((p) => p.kind === obstacleKind)?.name ?? '')
 
   return (
     <div className={styles.panel}>
@@ -537,6 +549,23 @@ export default function PalettePanel() {
               onClick={() => setMarkerMode('obstacle')}
             />
           </div>
+          {/* 붙일 이름(docs/08 §3.3): 놓기 전에 이름을 정해 두면 그 이름표로 붙습니다. */}
+          <div className={styles.contextSection}>
+            <Input
+              label="붙일 이름"
+              value={placeNameValue}
+              placeholder={placeNamePlaceholder}
+              aria-label="붙일 이름"
+              onChange={(event) => setPlaceName(placeNameKey, event.target.value)}
+            />
+            <p className={`${styles.goalNameHint} t-caption`}>
+              {markerMode === 'goal'
+                ? '적은 이름으로 다음 도착지가 붙고, 칸은 다시 비워져요.'
+                : markerMode === 'obstacle'
+                  ? '같은 이름으로 여러 개를 연달아 붙일 수 있어요. 비우면 종류 이름.'
+                  : '비우면 "출발". 놓은 뒤에는 오른쪽 선택 항목에서도 고칠 수 있어요.'}
+            </p>
+          </div>
           {/* 격자점에 붙일지(docs/07 §2.2). 끄면 칸 경계에 걸쳐 놓을 수 있습니다. Alt는 이번만 반대로. */}
           <label className={`${styles.mixToggle} ${styles.snapToggle}`}>
             <input type="checkbox" checked={markerSnap} onChange={(e) => setMarkerSnap(e.target.checked)} />
@@ -624,10 +653,10 @@ export default function PalettePanel() {
       )
     }
 
-    if (activeTool === 'pen') {
+    if (activeTool === 'pen' || activeTool === 'freeDraw') {
       return (
         <>
-          <div className={styles.choiceGrid} role="group" aria-label="펜 모드">
+          <div className={`${styles.choiceGrid} ${styles.choiceGrid3}`} role="group" aria-label="펜 모드">
             {PEN_MODES.map((mode) => (
               <ContextChoice key={mode.id} icon={mode.icon} label={mode.label} selected={penMode === mode.id} onClick={() => setPenMode(mode.id)} />
             ))}
@@ -635,9 +664,11 @@ export default function PalettePanel() {
           <p className={`${styles.contextHint} t-caption`}>
             {penMode === 'line'
               ? '클릭할 때마다 꺾인 직선이 이어집니다. 한 번 끌면 직선 하나. 끝점은 격자점 가까이에서 격자점에 붙어요.'
-              : '클릭한 점들을 부드러운 곡선으로 잇습니다. 완성된 곡선은 선택 도구에서 정점을 고칠 수 있어요.'}
+              : penMode === 'curve'
+                ? '클릭한 점들을 부드러운 곡선으로 잇습니다. 완성된 곡선은 선택 도구에서 정점을 고칠 수 있어요.'
+                : '캔버스를 끈 궤적대로 트랙을 그립니다. 손떨림은 자동으로 다듬어지고, 선택 도구에서 정점을 고칠 수 있어요.'}
           </p>
-          <KeyHints items={PEN_KEYS} />
+          <KeyHints items={penMode === 'free' ? FREE_KEYS : PEN_KEYS} />
         </>
       )
     }

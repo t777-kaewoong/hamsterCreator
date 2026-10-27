@@ -1428,7 +1428,7 @@ export class ToolController {
    *  free(Alt)면 격자점에 붙이지 않고 그 자리에 놓습니다(후기 16번). 이때도 cell에는 가장 가까운
    *  격자점을 함께 적어 정답 코드·검증이 칸 단위로 계산되게 합니다. */
   private placeMarker(doc: MapDoc, mapPt: MapPoint, free: boolean): void {
-    const { markerMode, markerHeading, markerLook, obstacleKind } = useEditorStore.getState()
+    const { markerMode, markerHeading, markerLook, obstacleKind, startName, goalName, obstacleName } = useEditorStore.getState()
     // 팔레트 "격자점에 붙이기"가 꺼져 있으면 자유 위치. Alt는 그 반대(docs/07 §2.2).
     free = free !== !useEditorStore.getState().markerSnap
     const spot = this.markerSpot(doc, mapPt, free)
@@ -1444,13 +1444,29 @@ export class ToolController {
       const next =
         hitIndex >= 0
           ? list.filter((_, i) => i !== hitIndex)
-          : [...list, { kind: obstacleKind, cx: spot[0], cy: spot[1], d: obstaclePreset(obstacleKind).d }]
+          : [
+              ...list,
+              {
+                kind: obstacleKind,
+                cx: spot[0],
+                cy: spot[1],
+                d: obstaclePreset(obstacleKind).d,
+                // 팔레트 "붙일 이름"(docs/08 §3.3). 비어 있으면 종류 이름을 쓰도록 name을 두지 않습니다.
+                ...(obstacleName.trim() ? { name: obstacleName.trim() } : {}),
+              },
+            ]
       useEditorStore.getState().commitDoc({ ...doc, obstacles: next })
       return
     }
 
     if (markerMode === 'start') {
-      const nextStart: StartMarker = { cell: node, heading: markerHeading, look: markerLook, ...(at ? { at } : {}) }
+      const nextStart: StartMarker = {
+        cell: node,
+        heading: markerHeading,
+        look: markerLook,
+        ...(at ? { at } : {}),
+        ...(startName.trim() ? { name: startName.trim() } : {}),
+      }
       const nextGoals = doc.markers.goals.filter((g) => !near(markerPositionMm(g, pitch), 1))
       useEditorStore.getState().commitDoc({ ...doc, markers: { start: nextStart, goals: nextGoals } })
       return
@@ -1462,7 +1478,9 @@ export class ToolController {
     if (existingIndex >= 0) {
       nextGoals = doc.markers.goals.filter((_, i) => i !== existingIndex)
     } else {
-      nextGoals = [...doc.markers.goals, { cell: node, name: '', look: markerLook, ...(at ? { at } : {}) }]
+      nextGoals = [...doc.markers.goals, { cell: node, name: goalName.trim(), look: markerLook, ...(at ? { at } : {}) }]
+      // 도착지 이름은 한 번 쓰고 비웁니다 — 같은 이름 도착지가 여러 개 생기면 정답 화면에서 헷갈립니다.
+      if (goalName) useEditorStore.getState().setPlaceName('goalName', '')
     }
     // 새 도착점의 빈 name은 "자동 이름"을 뜻합니다. 기존 name은 파일에서 불러온 사용자
     // 이름일 수 있으므로 추가·삭제 때 다시 매기지 않습니다. 실제 표시명은 goalNames.ts가

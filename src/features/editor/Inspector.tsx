@@ -246,9 +246,19 @@ function MarkerFields({ doc, selection }: { doc: MapDoc; selection: { kind: 'sta
     useEditorStore.getState().setSelection(null)
   }
 
-  const title = isStart ? '출발' : goalNames[(selection as { index: number }).index]
+  const title = isStart ? doc.markers.start?.name || '출발' : goalNames[(selection as { index: number }).index]
   return (
     <Section title="선택 항목" aside={<NameChip name={title} />}>
+      {isStart && doc.markers.start && (
+        <Row label="이름" hint='비우면 "출발".'>
+          <DraftTextInput
+            label="출발 이름"
+            value={doc.markers.start.name ?? ''}
+            placeholder="출발"
+            onCommit={(value) => patch({ name: value })}
+          />
+        </Row>
+      )}
       {isStart && doc.markers.start && (
         <Row label="방향">
           <Segmented

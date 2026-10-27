@@ -14,7 +14,6 @@ import {
   Type,
   Flag,
   PenTool,
-  Pencil,
   Circle,
 } from 'lucide-react'
 import { Tooltip } from '@/components'
@@ -28,33 +27,39 @@ interface ToolDef {
   key: string
   /** 툴팁에 보여줄 도구 이름 */
   label: string
+  /** 버튼 아래에 늘 보이는 짧은 이름(4글자 안팎). docs/08 §3.1 */
+  short: string
   icon: LucideIcon
 }
 
 /**
- * 도구 묶음(docs/06 §2.1). 묶음 사이에 구분선을 긋습니다.
- * "무엇을 하는 도구인가"로 나눴습니다 — 고르기 / 길 그리기 / 꾸미기 / 미션 / 지우기.
- * 예전에는 격자 도구 8개 + 곡선 도구 3개 두 묶음뿐이라 지우개가 가운데, 출발·도착이
- * 꾸미기 도구 사이에 섞여 있었습니다(2026-10-26 후기 11번).
+ * 도구 묶음(docs/08 §3.1 — 유사 프로그램 조사 반영). 묶음 사이에 구분선을 긋습니다.
+ * - 선택은 맨 위(Excalidraw·Photoshop 공통).
+ * - 길 그리기: 격자선 · 펜(직선·곡선·자유) · 도형 · 지우개. 지우개는 그리기 도구 바로 옆에 둡니다
+ *   (그림판·맵 편집기 관례, 2026-10-27 후기 "지우개를 펜 근처로").
+ * - 꾸미기: 타일 · 타일 집기 · 글자.  - 미션: 출발·도착·장애물.
+ * 위에서 아래가 말판을 만드는 순서(길 → 꾸미기 → 미션)와 같습니다.
  */
 const TOOL_GROUPS: ToolDef[][] = [
-  [{ id: 'select', key: 'v', label: '선택', icon: MousePointer2 }],
+  [{ id: 'select', key: 'v', label: '선택', short: '선택', icon: MousePointer2 }],
   [
-    { id: 'lineDraw', key: 'l', label: '격자선 긋기', icon: Grid3x3 },
-    { id: 'pen', key: 'p', label: '펜 (직선·곡선)', icon: PenTool },
-    { id: 'freeDraw', key: 'd', label: '자유 그리기', icon: Pencil },
-    { id: 'shape', key: 'o', label: '도형', icon: Circle },
+    { id: 'lineDraw', key: 'l', label: '격자선 긋기', short: '격자선', icon: Grid3x3 },
+    { id: 'pen', key: 'p', label: '펜 (직선·곡선·자유)', short: '펜', icon: PenTool },
+    { id: 'shape', key: 'o', label: '도형', short: '도형', icon: Circle },
+    { id: 'eraser', key: 'e', label: '지우개', short: '지우개', icon: Eraser },
   ],
   [
-    { id: 'stamp', key: 'b', label: '타일 배치', icon: Stamp },
-    { id: 'eyedropper', key: 'i', label: '타일 집기', icon: Pipette },
-    { id: 'text', key: 't', label: '글자', icon: Type },
+    { id: 'stamp', key: 'b', label: '타일 배치', short: '타일', icon: Stamp },
+    { id: 'eyedropper', key: 'i', label: '타일 집기', short: '집기', icon: Pipette },
+    { id: 'text', key: 't', label: '글자', short: '글자', icon: Type },
   ],
-  [{ id: 'marker', key: 'm', label: '출발·도착·장애물', icon: Flag }],
-  [{ id: 'eraser', key: 'e', label: '지우개', icon: Eraser }],
+  [{ id: 'marker', key: 'm', label: '출발·도착·장애물', short: '출발·도착', icon: Flag }],
 ]
 
 const ALL_TOOLS = TOOL_GROUPS.flat()
+
+/** 자유 그리기(D)는 레일에 버튼이 없고 펜의 "자유" 모드입니다(docs/08 §3.2). D 키는 그대로 받습니다. */
+const FREE_DRAW_KEY = 'd'
 
 /** 지금 포커스가 글자를 입력받는 요소(입력창·텍스트영역·contentEditable)에 있는지 확인합니다.
  *  이럴 때는 "l"을 눌러 파일명을 고치다가 도구가 바뀌어버리면 안 되므로 단축키를 무시합니다. */
@@ -69,6 +74,12 @@ export default function ToolRail() {
   const activeTool = useEditorStore((s) => s.activeTool)
   const setTool = useEditorStore((s) => s.setTool)
 
+  // 펜 버튼을 누르면 마지막에 쓰던 펜 모드로 돌아갑니다(자유였으면 자유 그리기).
+  function handleSelect(id: ToolId) {
+    if (id === 'pen' && useEditorStore.getState().penMode === 'free') setTool('freeDraw')
+    else setTool(id)
+  }
+
   // 키보드 단축키. 입력창에 포커스가 있거나 Ctrl/Alt/Cmd가 눌려 있으면(다른 브라우저
   // 단축키와 겹치는 것을 피하기 위해) 무시합니다.
   useEffect(() => {
@@ -77,6 +88,11 @@ export default function ToolRail() {
       if (isTypingTarget(document.activeElement)) return
 
       const key = e.key.toLowerCase()
+      if (key === FREE_DRAW_KEY) {
+        e.preventDefault()
+        setTool('freeDraw')
+        return
+      }
       const tool = ALL_TOOLS.find((t) => t.key === key)
       if (!tool) return
 
@@ -97,7 +113,13 @@ export default function ToolRail() {
         <Fragment key={group[0].id}>
           {index > 0 && <div className={styles.divider} role="separator" />}
           {group.map((tool) => (
-            <ToolButton key={tool.id} tool={tool} active={activeTool === tool.id} onSelect={setTool} />
+            <ToolButton
+              key={tool.id}
+              tool={tool}
+              // 펜 버튼은 자유 모드(freeDraw)일 때도 켜짐으로 보입니다.
+              active={activeTool === tool.id || (tool.id === 'pen' && activeTool === 'freeDraw')}
+              onSelect={handleSelect}
+            />
           ))}
         </Fragment>
       ))}
@@ -124,7 +146,8 @@ function ToolButton({
         aria-pressed={active}
         onClick={() => onSelect(tool.id)}
       >
-        <Icon size={22} />
+        <Icon size={20} aria-hidden="true" />
+        <span className={`${styles.toolLabel} t-micro`}>{tool.short}</span>
       </button>
     </Tooltip>
   )

@@ -489,7 +489,7 @@ async function drawMarkers(context: RenderContext): Promise<void> {
   if (doc.markers.start?.look === 'hamster') {
     const center = markerPositionMm(doc.markers.start, doc.board.pitch)
     drawHamster(center, doc.markers.start.heading)
-    drawMarkerCaption(context, '출발', center[0], center[1] + HAMSTER_CAPTION_RADIUS_MM + 5)
+    drawMarkerCaption(context, doc.markers.start.name || '출발', center[0], center[1] + HAMSTER_CAPTION_RADIUS_MM + 5)
   } else if (doc.markers.start) {
     const center = markerPositionMm(doc.markers.start, doc.board.pitch)
     drawRing(center, outerRadiusMm, true)
@@ -504,7 +504,7 @@ async function drawMarkers(context: RenderContext): Promise<void> {
       [center[0] + direction[0] * back + perpendicular[0] * halfWidth, center[1] + direction[1] * back + perpendicular[1] * halfWidth],
       [center[0] + direction[0] * back - perpendicular[0] * halfWidth, center[1] + direction[1] * back - perpendicular[1] * halfWidth],
     ])
-    drawMarkerCaption(context, '출발', center[0], center[1] + outerRadiusMm + 5)
+    drawMarkerCaption(context, doc.markers.start.name || '출발', center[0], center[1] + outerRadiusMm + 5)
   }
 
   const goalNames = goalDisplayNames(doc.markers.goals)

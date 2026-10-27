@@ -34,8 +34,9 @@ export type ToolId =
  *  직선은 2026-10-26부터 펜(P)의 "직선" 모드로 옮겼습니다(docs/06 §2.4). */
 export type ShapeKind = 'circle' | 'ellipse' | 'roundedRect'
 
-/** P 도구가 클릭한 점들을 곧은 꺾은선으로 이을지(line), 부드러운 곡선으로 이을지(curve). */
-export type PenMode = 'line' | 'curve'
+/** P 도구 모드: 곧은 꺾은선(line), 부드러운 곡선(curve), 끈 궤적대로(free — 예전 자유 그리기 D).
+ *  free일 때 activeTool은 내부적으로 'freeDraw'입니다(동작 코드를 그대로 쓰려고). docs/08 §3.2 */
+export type PenMode = 'line' | 'curve' | 'free'
 
 /** M 도구로 다음에 배치할 것. Alt 키에 숨기지 않고 팔레트에서 직접 고릅니다. */
 export type MarkerMode = 'start' | 'goal' | 'obstacle'
@@ -117,6 +118,10 @@ interface EditorState {
   markerSnap: boolean
   /** P 도구 모드 */
   penMode: PenMode
+  /** 출발·도착·장애물을 놓을 때 붙일 이름(팔레트 "붙일 이름", docs/08 §3.3). 빈 글자면 기본 이름. */
+  startName: string
+  goalName: string
+  obstacleName: string
   /** 켜면 타일 칠하기·영역 채우기가 같은 테마 타일을 무작위로 섞습니다(예전 Alt+R). */
   mixFill: boolean
   /** 이 브라우저가 파일에 바로 덮어쓸 수 있는 방식인지(§4.4). 세션 내내 바뀌지 않는 값이라
@@ -178,6 +183,7 @@ interface EditorState {
   setMarkerLook: (look: MarkerLook) => void
   setObstacleKind: (kind: ObstacleKind) => void
   setMarkerSnap: (on: boolean) => void
+  setPlaceName: (which: 'startName' | 'goalName' | 'obstacleName', value: string) => void
   setPenMode: (mode: PenMode) => void
   setMixFill: (on: boolean) => void
   setDoc: (doc: MapDoc | null) => void
@@ -282,6 +288,9 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
   markerLook: 'basic',
   obstacleKind: 'paperCup',
   markerSnap: true,
+  startName: '',
+  goalName: '',
+  obstacleName: '',
   penMode: 'curve',
   mixFill: false,
   storeKind: mapStore.kind,
@@ -301,14 +310,22 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
   printPlannerOpen: false,
   answerOpen: false,
 
-  setTool: (id) => set({ activeTool: id }),
+  // 자유 그리기는 펜의 "자유" 모드입니다(docs/08 §3.2). D 키·자유 모드 → freeDraw, P 키는 펜의
+  // 마지막 직선·곡선 모드로 돌아갑니다(자유였으면 곡선).
+  setTool: (id) =>
+    set((state) => ({
+      activeTool: id,
+      penMode: id === 'freeDraw' ? 'free' : id === 'pen' && state.penMode === 'free' ? 'curve' : state.penMode,
+    })),
   setShape: (kind) => set({ activeShape: kind, activeTool: 'shape' }),
   setMarkerMode: (mode) => set({ markerMode: mode, activeTool: 'marker' }),
   setMarkerHeading: (heading) => set({ markerHeading: heading, markerMode: 'start', activeTool: 'marker' }),
   setMarkerLook: (look) => set({ markerLook: look }),
-  setObstacleKind: (kind) => set({ obstacleKind: kind, markerMode: 'obstacle', activeTool: 'marker' }),
+  // 종류를 바꾸면 붙일 이름은 비웁니다(종이컵용으로 적은 이름이 병뚜껑에 붙지 않게).
+  setObstacleKind: (kind) => set({ obstacleKind: kind, obstacleName: '', markerMode: 'obstacle', activeTool: 'marker' }),
   setMarkerSnap: (on) => set({ markerSnap: on }),
-  setPenMode: (mode) => set({ penMode: mode, activeTool: 'pen' }),
+  setPlaceName: (which, value) => set({ [which]: value } as Pick<EditorState, typeof which>),
+  setPenMode: (mode) => set({ penMode: mode, activeTool: mode === 'free' ? 'freeDraw' : 'pen' }),
   setMixFill: (on) => set({ mixFill: on }),
   setDoc: (doc) => set({ doc }),
   setSaveState: (saveState) => set({ saveState }),
