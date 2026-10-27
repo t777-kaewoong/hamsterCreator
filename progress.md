@@ -633,6 +633,7 @@ preview는 base를 `/`로 잡는데, dist/index.html 안의 자산 주소는 `/h
 - 격자선 도구: 종이 이음매를 건너는 토막은 누른 쪽 절반만 진입로로 켜고 끔(양쪽이면 격자선으로 합침, `sheetLines.setSeamHalf`). 종이별 진입로 넣기는 네 변 모두. 지우개가 맵 안쪽 진입로도 지움
 - 도착 햄스터 방향: `GoalMarker.heading?`, 팔레트 "도착 방향"(햄스터일 때), 인스펙터 방향 줄
 - 검증: tsc 0건, build·build:single, 회귀 31항목, 개발 서버 합성 클릭(상세 docs/10 §3)
+- **배포:** 커밋 `e1adfde` 푸시, GitHub Actions 배포 성공. 실서비스 번들에 새 문구(도착 방향·이음매 진입로) 확인, 콘솔 오류 0건
 
 ## Decisions
 - 2026-10-27 초안 이미지는 localStorage 대신 IndexedDB(초안 id별). 새 이미지 번호는 참조 중인 번호를 건너뜀
