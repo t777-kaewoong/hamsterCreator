@@ -258,6 +258,14 @@ export default function PalettePanel() {
   const setMarkerMode = useEditorStore((s) => s.setMarkerMode)
   const setMarkerHeading = useEditorStore((s) => s.setMarkerHeading)
   const goalHeading = useEditorStore((s) => s.goalHeading)
+  const markerUnder = useEditorStore((s) => s.markerUnder)
+  // 체크 상태는 지금 놓여 있는 출발(또는 모든 도착)의 실제 상태를 보여 줍니다. 아무것도 없으면 다음에 놓을 설정.
+  const markerUnderShown =
+    markerMode === 'start' && doc?.markers.start
+      ? Boolean(doc.markers.start.under)
+      : markerMode === 'goal' && doc && doc.markers.goals.length > 0
+        ? doc.markers.goals.every((goal) => goal.under)
+        : markerUnder
   const setGoalHeading = useEditorStore((s) => s.setGoalHeading)
   const markerLook = useEditorStore((s) => s.markerLook)
   const obstacleKind = useEditorStore((s) => s.obstacleKind)
@@ -383,6 +391,24 @@ export default function PalettePanel() {
         ...current,
         markers: { ...current.markers, goals: goals.map((goal) => ({ ...goal, look })) },
       })
+    }
+  }
+
+  /** "선 아래에 깔기"(출발·도착, docs/11). 모양 고르기와 같은 규칙으로 지금 있는 마커에도 적용합니다. */
+  function handleUnderToggle(on: boolean) {
+    useEditorStore.getState().setMarkerUnder(on)
+    const current = useEditorStore.getState().doc
+    if (!current) return
+    const { start, goals } = current.markers
+    const apply = <T extends { under?: boolean }>(marker: T): T => {
+      const { under: _old, ...rest } = marker
+      return (on ? { ...rest, under: true } : rest) as T
+    }
+    if (markerMode === 'start' && start && Boolean(start.under) !== on) {
+      useEditorStore.getState().commitDoc({ ...current, markers: { ...current.markers, start: apply(start) } })
+    }
+    if (markerMode === 'goal' && goals.some((goal) => Boolean(goal.under) !== on)) {
+      useEditorStore.getState().commitDoc({ ...current, markers: { ...current.markers, goals: goals.map(apply) } })
     }
   }
 
@@ -620,6 +646,12 @@ export default function PalettePanel() {
                   onClick={() => handleLookSelect('hamster')}
                 />
               </div>
+              {/* 선 위/아래(docs/11). 고르면 지금 있는 출발(또는 모든 도착)에도 바로 적용되고 이후 놓는 것도 따릅니다. */}
+              <label className={`${styles.mixToggle} ${styles.snapToggle}`}>
+                <input type="checkbox" checked={markerUnderShown} onChange={(e) => handleUnderToggle(e.target.checked)} />
+                <span className="t-label">선 아래에 깔기</span>
+                <span className={`${styles.snapToggleHint} t-caption`}>{markerUnderShown ? '선이 마커 위로 지나가요' : '마커가 선을 덮어요'}</span>
+              </label>
             </div>
           )}
           {markerMode === 'obstacle' && (

@@ -160,6 +160,8 @@ export function drawArtLayer(ctx: CanvasRenderingContext2D, viewport: Viewport, 
   drawCellArtGroup(ctx, viewport, doc, false)
   // "선 아래에 깔기"로 둔 자유 배치 그림도 이 레이어(격자선 아래)에 그립니다(docs/09 §2.4).
   drawPropsLayer(ctx, viewport, doc, false)
+  // 선 아래로 둔 출발·도착 몸통도 여기에(이름표는 맨 위 레이어에서, docs/11).
+  drawMarkersLayer(ctx, viewport, doc, false)
 }
 
 /** ④-1 낱개 물건(object) 칸 아트. 같은 cells 데이터지만 격자선 위에 합성합니다. */
@@ -387,7 +389,12 @@ function drawHamsterMarker(ctx: CanvasRenderingContext2D, viewport: Viewport, x:
   ctx.restore()
 }
 
-export function drawMarkersLayer(ctx: CanvasRenderingContext2D, viewport: Viewport, doc: MapDoc): void {
+/**
+ * 출발·도착 마커. aboveGrid=false면 "선 아래"(under)로 둔 마커의 몸통만 그리고(격자선 아래 레이어),
+ * aboveGrid=true면 나머지 몸통과 **모든 이름표**를 그립니다. 이름표는 선 아래 마커여도 늘 맨 위에
+ * 둡니다 — 검은 선에 가려 "출발"·도착지 이름을 못 읽게 되면 안 되기 때문입니다(docs/11).
+ */
+export function drawMarkersLayer(ctx: CanvasRenderingContext2D, viewport: Viewport, doc: MapDoc, aboveGrid = true): void {
   const { pitch } = doc.board
   const outerRadiusPx = viewport.mmToPx(MARKER_OUTER_DIAMETER_MM / 2)
   const innerRadiusPx = viewport.mmToPx(MARKER_INNER_DIAMETER_MM / 2)
@@ -395,51 +402,54 @@ export function drawMarkersLayer(ctx: CanvasRenderingContext2D, viewport: Viewpo
   const labelSizePx = viewport.mmToPx(MARKER_LABEL_SIZE_MM)
   const captionHaloPx = viewport.mmToPx(MARKER_CAPTION_HALO_MM)
   const hamsterRadiusPx = viewport.mmToPx(HAMSTER_CAPTION_RADIUS_MM)
+  /** 이번 호출에서 이 마커의 몸통을 그릴지. */
+  const drawsBody = (marker: { under?: boolean }) => (marker.under ? !aboveGrid : aboveGrid)
 
   if (doc.markers.start) {
-    const { heading } = doc.markers.start
+    const start = doc.markers.start
+    const { heading } = start
     // 자유 위치(at)로 놓았으면 그 자리, 아니면 격자점(docs/06 §2.6).
-    const [mx, my] = markerPositionMm(doc.markers.start, pitch)
+    const [mx, my] = markerPositionMm(start, pitch)
     const p = viewport.mapToScreen(mx, my)
+    const caption = start.name || '출발'
 
-    if (doc.markers.start.look === 'hamster') {
-      drawHamsterMarker(ctx, viewport, p.x, p.y, heading)
-      drawMarkerCaption(ctx, p.x, p.y, hamsterRadiusPx, 0, labelSizePx, doc.markers.start.name || '출발', captionHaloPx)
+    if (start.look === 'hamster') {
+      if (drawsBody(start)) drawHamsterMarker(ctx, viewport, p.x, p.y, heading)
+      if (aboveGrid) drawMarkerCaption(ctx, p.x, p.y, hamsterRadiusPx, 0, labelSizePx, caption, captionHaloPx)
     } else {
-      ctx.save()
-      // 밑의 굵은 격자선이 원 안을 관통하면 방향 화살표와 한 덩어리로 보여 알아보기
-      // 어렵습니다. 흰 바탕으로 먼저 가린 뒤 윤곽과 화살표를 그립니다.
-      ctx.fillStyle = MARKER_BACKGROUND
-      ctx.beginPath()
-      ctx.arc(p.x, p.y, outerRadiusPx, 0, Math.PI * 2)
-      ctx.fill()
-      ctx.strokeStyle = MARKER_COLOR
-      ctx.lineWidth = ringWidthPx
-      ctx.beginPath()
-      ctx.arc(p.x, p.y, outerRadiusPx, 0, Math.PI * 2)
-      ctx.stroke()
+      if (drawsBody(start)) {
+        ctx.save()
+        // 밑의 굵은 격자선이 원 안을 관통하면 방향 화살표와 한 덩어리로 보여 알아보기
+        // 어렵습니다. 흰 바탕으로 먼저 가린 뒤 윤곽과 화살표를 그립니다(선 아래로 두면 선이 그 위로 지나감).
+        ctx.fillStyle = MARKER_BACKGROUND
+        ctx.beginPath()
+        ctx.arc(p.x, p.y, outerRadiusPx, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.strokeStyle = MARKER_COLOR
+        ctx.lineWidth = ringWidthPx
+        ctx.beginPath()
+        ctx.arc(p.x, p.y, outerRadiusPx, 0, Math.PI * 2)
+        ctx.stroke()
 
-      // heading 방향을 가리키는 채운 삼각형 화살표. 원 반지름의 90%를 길이로 삼아
-      // 테두리 안쪽에 살짝 여유를 두고 들어가게 했습니다(PRD 미규정 — 임의로 정함).
-      const [dx, dy] = DIR_VECTOR[heading]
-      const angle = Math.atan2(dy, dx)
-      const triTip = outerRadiusPx * 0.68
-      const triBack = -outerRadiusPx * 0.22
-      const triHalfWidth = outerRadiusPx * 0.28
-      ctx.save()
-      ctx.translate(p.x, p.y)
-      ctx.rotate(angle)
-      ctx.fillStyle = MARKER_COLOR
-      ctx.beginPath()
-      ctx.moveTo(triTip, 0)
-      ctx.lineTo(triBack, triHalfWidth)
-      ctx.lineTo(triBack, -triHalfWidth)
-      ctx.closePath()
-      ctx.fill()
-      ctx.restore()
-
-      drawMarkerCaption(ctx, p.x, p.y, outerRadiusPx, ringWidthPx, labelSizePx, doc.markers.start.name || '출발', captionHaloPx)
-      ctx.restore()
+        // heading 방향을 가리키는 채운 삼각형 화살표. 원 반지름의 90%를 길이로 삼아
+        // 테두리 안쪽에 살짝 여유를 두고 들어가게 했습니다(PRD 미규정 — 임의로 정함).
+        const [dx, dy] = DIR_VECTOR[heading]
+        const angle = Math.atan2(dy, dx)
+        const triTip = outerRadiusPx * 0.68
+        const triBack = -outerRadiusPx * 0.22
+        const triHalfWidth = outerRadiusPx * 0.28
+        ctx.translate(p.x, p.y)
+        ctx.rotate(angle)
+        ctx.fillStyle = MARKER_COLOR
+        ctx.beginPath()
+        ctx.moveTo(triTip, 0)
+        ctx.lineTo(triBack, triHalfWidth)
+        ctx.lineTo(triBack, -triHalfWidth)
+        ctx.closePath()
+        ctx.fill()
+        ctx.restore()
+      }
+      if (aboveGrid) drawMarkerCaption(ctx, p.x, p.y, outerRadiusPx, ringWidthPx, labelSizePx, caption, captionHaloPx)
     }
   }
 
@@ -450,28 +460,29 @@ export function drawMarkersLayer(ctx: CanvasRenderingContext2D, viewport: Viewpo
 
     // 도착 햄스터는 도착했을 때 바라볼 방향으로 그립니다(없으면 위, docs/10).
     if (goal.look === 'hamster') {
-      drawHamsterMarker(ctx, viewport, p.x, p.y, goal.heading ?? 'N')
-      drawMarkerCaption(ctx, p.x, p.y, hamsterRadiusPx, 0, labelSizePx, goalNames[index], captionHaloPx)
+      if (drawsBody(goal)) drawHamsterMarker(ctx, viewport, p.x, p.y, goal.heading ?? 'N')
+      if (aboveGrid) drawMarkerCaption(ctx, p.x, p.y, hamsterRadiusPx, 0, labelSizePx, goalNames[index], captionHaloPx)
       return
     }
 
-    ctx.save()
-    ctx.fillStyle = MARKER_BACKGROUND
-    ctx.beginPath()
-    ctx.arc(p.x, p.y, outerRadiusPx, 0, Math.PI * 2)
-    ctx.fill()
-    ctx.strokeStyle = MARKER_COLOR
-    ctx.lineWidth = ringWidthPx
-    // 겹원(과녁) — 바깥 원과 안쪽 원을 각각 그립니다.
-    ctx.beginPath()
-    ctx.arc(p.x, p.y, outerRadiusPx, 0, Math.PI * 2)
-    ctx.stroke()
-    ctx.beginPath()
-    ctx.arc(p.x, p.y, innerRadiusPx, 0, Math.PI * 2)
-    ctx.stroke()
-
-    drawMarkerCaption(ctx, p.x, p.y, outerRadiusPx, ringWidthPx, labelSizePx, goalNames[index], captionHaloPx)
-    ctx.restore()
+    if (drawsBody(goal)) {
+      ctx.save()
+      ctx.fillStyle = MARKER_BACKGROUND
+      ctx.beginPath()
+      ctx.arc(p.x, p.y, outerRadiusPx, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.strokeStyle = MARKER_COLOR
+      ctx.lineWidth = ringWidthPx
+      // 겹원(과녁) — 바깥 원과 안쪽 원을 각각 그립니다.
+      ctx.beginPath()
+      ctx.arc(p.x, p.y, outerRadiusPx, 0, Math.PI * 2)
+      ctx.stroke()
+      ctx.beginPath()
+      ctx.arc(p.x, p.y, innerRadiusPx, 0, Math.PI * 2)
+      ctx.stroke()
+      ctx.restore()
+    }
+    if (aboveGrid) drawMarkerCaption(ctx, p.x, p.y, outerRadiusPx, ringWidthPx, labelSizePx, goalNames[index], captionHaloPx)
   })
 }
 

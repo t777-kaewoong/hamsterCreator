@@ -306,6 +306,15 @@ function MarkerFields({ doc, selection }: { doc: MapDoc; selection: { kind: 'sta
           aria-label="마커 모양"
         />
       </Row>
+      <Row label="선과 순서" hint="선 아래로 두면 격자선이 마커 위로 지나가요. 이름표는 늘 보여요.">
+        <Segmented
+          fullWidth
+          options={LAYER_OPTIONS}
+          value={marker.under ? 'under' : 'over'}
+          onChange={(v) => patch({ under: v === 'under' ? true : undefined })}
+          aria-label="마커와 선의 위아래 순서"
+        />
+      </Row>
       <Row label="위치" hint={marker.at ? '자유 위치 · 정답 코드는 가장 가까운 격자점으로 계산해요.' : '격자점에 놓여 있어요. 캔버스에서 끌면 자유롭게 옮겨져요.'}>
         <Pair>
           <DraftNumberInput label="가로 위치 X" value={x} onCommit={(value) => moveTo(value, y)} />

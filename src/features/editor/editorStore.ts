@@ -115,6 +115,8 @@ interface EditorState {
   markerHeading: Direction
   /** 도착 햄스터가 바라볼 방향(docs/10). */
   goalHeading: Direction
+  /** 켜면 출발·도착 몸통을 격자선 아래에 깝니다(이름표는 늘 위, docs/11). */
+  markerUnder: boolean
   /** 출발·도착을 놓을 때 쓸 모양(docs/06 §2.6) */
   markerLook: MarkerLook
   /** 장애물 모드에서 놓을 종류 */
@@ -192,6 +194,7 @@ interface EditorState {
   setMarkerMode: (mode: MarkerMode) => void
   setMarkerHeading: (heading: Direction) => void
   setGoalHeading: (heading: Direction) => void
+  setMarkerUnder: (on: boolean) => void
   setMarkerLook: (look: MarkerLook) => void
   setObstacleKind: (kind: ObstacleKind) => void
   setMarkerSnap: (on: boolean) => void
@@ -301,6 +304,7 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
   markerMode: 'start',
   markerHeading: 'N',
   goalHeading: 'N',
+  markerUnder: false,
   markerLook: 'basic',
   obstacleKind: 'paperCup',
   markerSnap: true,
@@ -340,6 +344,7 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
   setMarkerMode: (mode) => set({ markerMode: mode, activeTool: 'marker' }),
   setMarkerHeading: (heading) => set({ markerHeading: heading, markerMode: 'start', activeTool: 'marker' }),
   setGoalHeading: (heading) => set({ goalHeading: heading, markerMode: 'goal', activeTool: 'marker' }),
+  setMarkerUnder: (on) => set({ markerUnder: on }),
   setMarkerLook: (look) => set({ markerLook: look }),
   // 종류를 바꾸면 붙일 이름은 비웁니다(종이컵용으로 적은 이름이 병뚜껑에 붙지 않게).
   setObstacleKind: (kind) => set({ obstacleKind: kind, obstacleName: '', markerMode: 'obstacle', activeTool: 'marker' }),

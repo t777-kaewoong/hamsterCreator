@@ -223,6 +223,8 @@ export interface StartMarker {
   look?: MarkerLook
   /** 이름표 글자. 없거나 빈 글자면 "출발". 2026-10-27 추가(docs/08 §3.3) */
   name?: string
+  /** true면 마커 몸통을 격자선 아래에 깝니다(이름표는 늘 위). 2026-10-27 추가(docs/11) */
+  under?: boolean
 }
 
 /** 도착 지점(FR-4.4). 복수 지정 가능. */
@@ -236,6 +238,8 @@ export interface GoalMarker {
   /** 햄스터 모양일 때 로봇이 바라보는 방향(도착했을 때의 자세). 없으면 위(N).
    *  2026-10-27 추가 — 정답 계산에는 쓰지 않습니다(docs/10). */
   heading?: Direction
+  /** StartMarker.under와 같은 의미(docs/11) */
+  under?: boolean
 }
 
 /** 출발·도착 마커 모음. */

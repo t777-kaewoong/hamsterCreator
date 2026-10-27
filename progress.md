@@ -635,6 +635,12 @@ preview는 base를 `/`로 잡는데, dist/index.html 안의 자산 주소는 `/h
 - 검증: tsc 0건, build·build:single, 회귀 31항목, 개발 서버 합성 클릭(상세 docs/10 §3)
 - **배포:** 커밋 `e1adfde` 푸시, GitHub Actions 배포 성공. 실서비스 번들에 새 문구(도착 방향·이음매 진입로) 확인, 콘솔 오류 0건
 
+### 2026-10-27 사용자 후기 8차 — 출발·도착 선 위/아래 (docs/11)
+
+- `StartMarker.under?`·`GoalMarker.under?`: 몸통만 격자선 아래, 이름표는 늘 위(화면 `drawMarkersLayer(aboveGrid)`·PDF `drawMarkers(aboveGrid)`)
+- 팔레트 "선 아래에 깔기"(실제 상태 표시, 지금 마커에 바로 적용), 인스펙터 "선과 순서"
+- 검증: tsc 0건, build·build:single, 회귀 31항목, 개발 서버 화면 확인(상세 docs/11 §3)
+
 ## Decisions
 - 2026-10-27 초안 이미지는 localStorage 대신 IndexedDB(초안 id별). 새 이미지 번호는 참조 중인 번호를 건너뜀
 - 2026-10-27 도구 레일은 아이콘 + 늘 보이는 이름. 지우개는 그리기 도구 묶음 끝(그림판 관례)

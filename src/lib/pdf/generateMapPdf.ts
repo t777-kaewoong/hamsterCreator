@@ -441,8 +441,10 @@ function drawMarkerCaption(context: RenderContext, text: string, xMm: number, yM
   )
 }
 
-async function drawMarkers(context: RenderContext): Promise<void> {
+/** aboveGrid=false: "선 아래" 마커 몸통만, true: 나머지 몸통 + 모든 이름표(화면 drawMarkersLayer와 같은 규칙, docs/11). */
+async function drawMarkers(context: RenderContext, aboveGrid: boolean): Promise<void> {
   const { doc, page, layout } = context
+  const drawsBody = (marker: { under?: boolean }) => (marker.under ? !aboveGrid : aboveGrid)
   const outerRadiusMm = 17
   const ringWidth = pt(3)
   const drawRing = (center: Point, radiusMm: number, fillBackground = false) => {
@@ -489,36 +491,40 @@ async function drawMarkers(context: RenderContext): Promise<void> {
 
   if (doc.markers.start?.look === 'hamster') {
     const center = markerPositionMm(doc.markers.start, doc.board.pitch)
-    drawHamster(center, doc.markers.start.heading)
-    drawMarkerCaption(context, doc.markers.start.name || '출발', center[0], center[1] + HAMSTER_CAPTION_RADIUS_MM + 5)
+    if (drawsBody(doc.markers.start)) drawHamster(center, doc.markers.start.heading)
+    if (aboveGrid) drawMarkerCaption(context, doc.markers.start.name || '출발', center[0], center[1] + HAMSTER_CAPTION_RADIUS_MM + 5)
   } else if (doc.markers.start) {
     const center = markerPositionMm(doc.markers.start, doc.board.pitch)
-    drawRing(center, outerRadiusMm, true)
-    const vectors: Record<Direction, Point> = { N: [0, -1], E: [1, 0], S: [0, 1], W: [-1, 0] }
-    const direction = vectors[doc.markers.start.heading]
-    const perpendicular: Point = [-direction[1], direction[0]]
-    const tip = outerRadiusMm * 0.68
-    const back = -outerRadiusMm * 0.22
-    const halfWidth = outerRadiusMm * 0.28
-    fillPolygon(context, [
-      [center[0] + direction[0] * tip, center[1] + direction[1] * tip],
-      [center[0] + direction[0] * back + perpendicular[0] * halfWidth, center[1] + direction[1] * back + perpendicular[1] * halfWidth],
-      [center[0] + direction[0] * back - perpendicular[0] * halfWidth, center[1] + direction[1] * back - perpendicular[1] * halfWidth],
-    ])
-    drawMarkerCaption(context, doc.markers.start.name || '출발', center[0], center[1] + outerRadiusMm + 5)
+    if (drawsBody(doc.markers.start)) {
+      drawRing(center, outerRadiusMm, true)
+      const vectors: Record<Direction, Point> = { N: [0, -1], E: [1, 0], S: [0, 1], W: [-1, 0] }
+      const direction = vectors[doc.markers.start.heading]
+      const perpendicular: Point = [-direction[1], direction[0]]
+      const tip = outerRadiusMm * 0.68
+      const back = -outerRadiusMm * 0.22
+      const halfWidth = outerRadiusMm * 0.28
+      fillPolygon(context, [
+        [center[0] + direction[0] * tip, center[1] + direction[1] * tip],
+        [center[0] + direction[0] * back + perpendicular[0] * halfWidth, center[1] + direction[1] * back + perpendicular[1] * halfWidth],
+        [center[0] + direction[0] * back - perpendicular[0] * halfWidth, center[1] + direction[1] * back - perpendicular[1] * halfWidth],
+      ])
+    }
+    if (aboveGrid) drawMarkerCaption(context, doc.markers.start.name || '출발', center[0], center[1] + outerRadiusMm + 5)
   }
 
   const goalNames = goalDisplayNames(doc.markers.goals)
   doc.markers.goals.forEach((goal, index) => {
     const center = markerPositionMm(goal, doc.board.pitch)
     if (goal.look === 'hamster') {
-      drawHamster(center, goal.heading ?? 'N')
-      drawMarkerCaption(context, goalNames[index], center[0], center[1] + HAMSTER_CAPTION_RADIUS_MM + 5)
+      if (drawsBody(goal)) drawHamster(center, goal.heading ?? 'N')
+      if (aboveGrid) drawMarkerCaption(context, goalNames[index], center[0], center[1] + HAMSTER_CAPTION_RADIUS_MM + 5)
       return
     }
-    drawRing(center, outerRadiusMm, true)
-    drawRing(center, 11)
-    drawMarkerCaption(context, goalNames[index], center[0], center[1] + outerRadiusMm + 5)
+    if (drawsBody(goal)) {
+      drawRing(center, outerRadiusMm, true)
+      drawRing(center, 11)
+    }
+    if (aboveGrid) drawMarkerCaption(context, goalNames[index], center[0], center[1] + outerRadiusMm + 5)
   })
 }
 
@@ -692,13 +698,14 @@ async function drawMapContent(context: RenderContext): Promise<void> {
 
   await drawCellGroup(context, false)
   await drawProps(context, false)
+  await drawMarkers(context, false)
   for (const item of doc.strokes) drawStroke(context, item)
   drawGrid(context)
   await drawCellGroup(context, true)
   await drawProps(context, true)
   for (const label of doc.labels) drawCenteredText(context, label)
   drawObstacles(context)
-  await drawMarkers(context)
+  await drawMarkers(context, true)
   page.pushOperators(popGraphicsState())
 }
 
