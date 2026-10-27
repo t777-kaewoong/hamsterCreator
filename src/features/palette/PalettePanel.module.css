@@ -594,3 +594,40 @@
   color: var(--c-danger);
   border-color: var(--c-danger);
 }
+
+/* 타일 아래 고정 영역의 "놓는 자리" 줄: 라벨 + 3칸 선택(docs/09 §2.1). */
+.footerRow {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  align-items: center;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-2);
+}
+
+/* 격자선 도구의 종이 고르기 도식(docs/09 §2.2). 종이 배치 그대로 칸을 늘어놓고 번호를 씁니다. */
+.sheetPicker {
+  display: grid;
+  gap: 4px;
+  margin: var(--sp-2) 0 var(--sp-3);
+}
+
+.sheetChip {
+  height: 34px;
+  border: 1.5px dashed var(--c-seam, var(--c-border-strong));
+  border-radius: var(--r-sm);
+  background: var(--c-surface);
+  color: var(--c-text-2);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.sheetChip:hover {
+  background: var(--c-primary-soft);
+}
+
+.sheetChipSelected {
+  border-style: solid;
+  border-color: var(--c-primary);
+  background: var(--c-primary-soft);
+  color: var(--c-primary);
+}

@@ -44,7 +44,7 @@ import {
 } from '@/lib/markers/hamsterArt'
 import { findPrintPlan } from '@/lib/print/plan'
 import type { PrintPlanOption, TileRegion } from '@/lib/print/plan'
-import { getTile, isTileAboveLine } from '@/lib/tiles/catalog'
+import { getTile, isPlacedAboveLine } from '@/lib/tiles/catalog'
 import { splineControlHandles } from '@/features/canvas/strokeGeometry'
 import { loadPdfFontBytes } from './pdfResources'
 
@@ -243,7 +243,7 @@ async function drawCellGroup(context: RenderContext, aboveGrid: boolean): Promis
     const cell = context.doc.cells[index]
     if (!cell) continue
     // 선 위에 얹을지는 isTileAboveLine 하나로 판단합니다(catalog.ts 주석 참고).
-    const isObject = isTileAboveLine(cell.art)
+    const isObject = isPlacedAboveLine(cell.art, cell.under)
     if (isObject !== aboveGrid) continue
     const image = await imageFor(context, cell.art)
     drawTransformedImage(context, image, (index % cols) * pitch, Math.floor(index / cols) * pitch, pitch, pitch, cell.rot, cell.flip)
@@ -365,8 +365,9 @@ function drawGrid(context: RenderContext): void {
   }
 }
 
-async function drawProps(context: RenderContext): Promise<void> {
+async function drawProps(context: RenderContext, aboveGrid: boolean): Promise<void> {
   for (const prop of context.doc.props) {
+    if (isPlacedAboveLine(prop.asset, prop.under) !== aboveGrid) continue
     const image = await imageFor(context, prop.asset)
     drawTransformedImage(context, image, prop.x, prop.y, prop.w, prop.h, prop.rot, prop.flip ?? false)
   }
@@ -690,10 +691,11 @@ async function drawMapContent(context: RenderContext): Promise<void> {
   )
 
   await drawCellGroup(context, false)
+  await drawProps(context, false)
   for (const item of doc.strokes) drawStroke(context, item)
   drawGrid(context)
   await drawCellGroup(context, true)
-  await drawProps(context)
+  await drawProps(context, true)
   for (const label of doc.labels) drawCenteredText(context, label)
   drawObstacles(context)
   await drawMarkers(context)

@@ -91,6 +91,14 @@ export function isTileAboveLine(art: string): boolean {
   return getTile(art)?.aboveLine ?? true
 }
 
+/**
+ * 칸 타일·자유 배치 그림 하나를 선 위에 그릴지. 사용자가 "선 아래"로 정한 것(under)은 선 아래,
+ * 아니면 타일 기본값(isTileAboveLine). 화면·PDF·썸네일이 모두 이 함수로 판단합니다(docs/09 §2.4).
+ */
+export function isPlacedAboveLine(art: string, under?: boolean): boolean {
+  return under ? false : isTileAboveLine(art)
+}
+
 /** id로 타일 하나 찾기. 없으면 undefined */
 export function getTile(id: string): TileDef | undefined {
   return TILES.find((t) => t.id === id)

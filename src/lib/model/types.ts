@@ -56,6 +56,9 @@ export interface Cell {
   rot: 0 | 90 | 180 | 270
   /** 좌우 반전 여부(FR-3.4, F 키) */
   flip: boolean
+  /** true면 격자선·곡선 아래에 깝니다(바닥 무늬처럼 선이 위로 보임). 없으면 선 위.
+   *  2026-10-27 추가(docs/09 §2.4). */
+  under?: boolean
 }
 
 /** 격자 엣지(칸과 칸 사이에 실제로 존재하는 통로/선).
@@ -178,6 +181,8 @@ export interface Prop {
    *  추가했습니다. 선택 필드라 이 필드가 없는 예전 파일도 그대로 열리고(false로 취급),
    *  parseMap도 props 배열 존재 여부만 검사해서 깨지지 않습니다(임의 확장 — PRD 갱신 필요). */
   flip?: boolean
+  /** Cell.under와 같은 의미(선 아래에 깔기). 2026-10-27 추가 */
+  under?: boolean
 }
 
 /** 텍스트 라벨(FR-4.1, FR-4.2). */

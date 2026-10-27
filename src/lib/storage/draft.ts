@@ -15,10 +15,12 @@
 //
 // userAssets를 초안에서 빼는 이유: localStorage는 브라우저마다 다르지만 보통 도메인당
 // 약 5MB로 한도가 작습니다(PRD §4.3). 사용자 이미지는 base64라 원본보다 커지고 여러 장이면
-// 금방 한도를 넘기므로, 초안에는 "구조"만 담고 이미지는 뺍니다. 그래서 초안을 복구하면
-// 이미지 자리는 비어 있을 수 있고, 사용자가 다시 첨부해야 할 수 있습니다 — 정식 저장(파일)에는
-// 항상 이미지가 그대로 들어갑니다.
+// 금방 한도를 넘기므로, localStorage 초안에는 "구조"만 담습니다.
+// [2026-10-27] 이미지는 draftAssets.ts가 IndexedDB에 초안 id별로 따로 보관하고, 복구할 때
+// loadDraftAssets()로 다시 붙입니다. 예전에는 이미지가 그냥 사라져서, 복구 뒤 새 이미지를 올리면
+// 비어 있던 번호(u1)를 새 그림이 받아 기존에 놓은 칸이 전부 새 그림으로 바뀌었습니다.
 import type { MapDoc } from '../model/types'
+import { pruneDraftAssets, saveDraftAssets } from './draftAssets'
 
 const STORAGE_KEY = 'hamsterS.drafts.v1'
 const MAX_DRAFTS = 5
@@ -137,6 +139,7 @@ export function clearDraft(id: string): void {
   try {
     const remaining = readAll().filter((d) => d.id !== id)
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(remaining))
+    pruneDraftAssets(remaining.map((d) => d.id))
   } catch {
     // 지우기 실패는 치명적이지 않으므로 조용히 무시합니다.
   }
@@ -184,11 +187,15 @@ function persistNow(id: string, doc: MapDoc): void {
     doc: withoutAssets,
   }
 
+  const isNewSlot = !readAll().some((d) => d.id === id)
   writeWithQuotaRetry((drafts) => {
     const withoutCurrent = drafts.filter((d) => d.id !== id)
     // 지금 막 저장한 것을 맨 앞(최신)에 두고, 최근 5개까지만 남깁니다.
     return [record, ...withoutCurrent].slice(0, MAX_DRAFTS)
   })
+  // 이미지는 IndexedDB에(draftAssets.ts). 새 슬롯이 생기면 밀려난 오래된 초안의 이미지도 정리합니다.
+  saveDraftAssets(id, doc.userAssets)
+  if (isNewSlot) pruneDraftAssets(readAll().map((d) => d.id))
 }
 
 /**

@@ -432,9 +432,9 @@ export class ToolController {
         this.lastPaintedIndex = null
         this.lastPointerMapPt = mapPt
         this.lastFreePropCenter = null
-        // FR-3.8 자유 배치: Alt를 누른 채 시작했으면 격자를 무시하고 props에 놓습니다.
-        // (2026-10-26 Shift에서 Alt로 옮김 — Shift가 영역 채우기가 됐기 때문)
-        if (this.gestureAlt) this.paintFreePropAt(mapPt)
+        // FR-3.8 자유 배치: Alt를 누른 채 시작했거나 팔레트 "놓는 자리"가 반 칸·자유면 props에 놓습니다
+        // (docs/09 §2.1). 아니면 칸에 칠합니다.
+        if (this.freeSpot(doc, mapPt, this.gestureAlt)) this.paintFreePropAt(mapPt)
         else this.paintStampAt(mapPt)
         break
       }
@@ -577,7 +577,7 @@ export class ToolController {
       case 'shape': {
         this.activeGesture = 'shape'
         this.gestureSnapshot = structuredClone(doc)
-        this.shapeStart = clampToBoard(doc, mapPt.mx, mapPt.my)
+        this.shapeStart = this.shapePoint(doc, mapPt)
         const { activeShape } = useEditorStore.getState()
         this.overlay.shapeDraft = buildShapeStroke(activeShape, this.shapeStart, this.shapeStart, true, e.shiftKey, '__shape_draft__')
         break
@@ -618,7 +618,7 @@ export class ToolController {
         // 절반이라 한 칸을 지나가는 동안 최소 2개 샘플이 찍혀서, 마우스가 아무리 빨리
         // 움직여도(합성 이벤트로 셀 3~4개를 한 번에 건너뛰어도) 지나간 칸을 하나도 놓치지
         // 않습니다. 같은 칸을 여러 샘플이 가리켜도 paintStampAt 내부 중복 방지로 걸러집니다.
-        if (this.gestureAlt) {
+        if (this.freeSpot(doc, mapPt, this.gestureAlt)) {
           // FR-3.8: 자유 배치는 격자 개념이 없어서 노드/칸 보간이 아니라 mm 경로를
           // 그대로 보간하고, 각 샘플에서 paintFreePropAt이 "최소 간격" 판단을 합니다.
           if (prevPt) {
@@ -704,7 +704,7 @@ export class ToolController {
           this.overlay.shapeDraft = buildShapeStroke(
             activeShape,
             this.shapeStart,
-            clampToBoard(doc, mapPt.mx, mapPt.my),
+            this.shapePoint(doc, mapPt),
             !this.dragMoved,
             e.shiftKey,
             '__shape_draft__',
@@ -828,7 +828,7 @@ export class ToolController {
           const stroke = buildShapeStroke(
             activeShape,
             this.shapeStart,
-            clampToBoard(fresh, mapPt.mx, mapPt.my),
+            this.shapePoint(fresh, mapPt),
             !this.dragMoved,
             e.shiftKey,
             createStrokeId(fresh),
@@ -1029,8 +1029,9 @@ export class ToolController {
     // FR-3.8: 지금 Alt를 누르고 있으면 격자 스냅 대신 커서를 그대로 따라다니는 자유 배치
     // 고스트를 보여줍니다(2026-10-26 Shift → Alt). 격자 범위 밖이어도 자유 배치는 상관없어
     // cellAtMm(범위 검사)을 거치지 않고 바로 반환합니다.
-    if (activeTool === 'stamp' && stampTileId && this.isAltDown && !this.isShiftDown) {
-      this.overlay.freePropGhost = { mx: mapPt.mx, my: mapPt.my, tileId: stampTileId, rot: stampRot, flip: stampFlip }
+    const freeGhost = activeTool === 'stamp' && stampTileId && !this.isShiftDown ? this.freeSpot(doc, mapPt, this.isAltDown) : null
+    if (activeTool === 'stamp' && stampTileId && freeGhost) {
+      this.overlay.freePropGhost = { mx: freeGhost.mx, my: freeGhost.my, tileId: stampTileId, rot: stampRot, flip: stampFlip }
       return
     }
 
@@ -1168,10 +1169,35 @@ export class ToolController {
     // 바뀌었는지" 판단도 흐려집니다.
     if (index === this.lastPaintedIndex) return
     this.lastPaintedIndex = index
-    const cellValue: Cell = { art: this.pickStampArt(stampTileId), rot: stampRot, flip: stampFlip }
+    const cellValue: Cell = { art: this.pickStampArt(stampTileId), rot: stampRot, flip: stampFlip, ...this.underFlag() }
     const nextCells = doc.cells.slice()
     nextCells[index] = cellValue
     this.commitDocChange({ ...doc, cells: nextCells }, true)
+  }
+
+  /** 도형 모서리 점: 종이 안으로 제한하고, "반 칸 격자에 맞추기"가 켜져 있으면 25mm 격자점에 붙입니다. */
+  private shapePoint(doc: MapDoc, mapPt: MapPoint): MapPoint {
+    const p = clampToBoard(doc, mapPt.mx, mapPt.my)
+    if (!useEditorStore.getState().shapeSnap) return p
+    const step = doc.board.pitch / 2
+    return { mx: Math.round(p.mx / step) * step, my: Math.round(p.my / step) * step }
+  }
+
+  /** 팔레트 "선 아래에 깔기"가 켜져 있으면 새 타일·그림에 under를 붙입니다(docs/09 §2.4). */
+  private underFlag(): { under?: true } {
+    return useEditorStore.getState().stampUnder ? { under: true } : {}
+  }
+
+  /**
+   * 타일을 칸 대신 자유 배치 그림으로 놓을 자리(그림 중심, mm). 팔레트 "놓는 자리"가 칸이고
+   * Alt도 아니면 null(칸에 칠함). 반 칸이면 25mm 격자점에 붙여 선·칸 경계에 정확히 걸치게 합니다(docs/09 §2.1).
+   */
+  private freeSpot(doc: MapDoc, mapPt: MapPoint, alt: boolean): MapPoint | null {
+    const { placeSnap } = useEditorStore.getState()
+    if (alt || placeSnap === 'free') return { mx: Math.round(mapPt.mx), my: Math.round(mapPt.my) }
+    if (placeSnap === 'cell') return null
+    const step = doc.board.pitch / 2
+    return { mx: Math.round(mapPt.mx / step) * step, my: Math.round(mapPt.my / step) * step }
   }
 
   /**
@@ -1193,12 +1219,15 @@ export class ToolController {
     const doc = this.getDoc()
     const { stampTileId, stampRot, stampFlip } = useEditorStore.getState()
     if (!doc || !stampTileId) return
+    // 놓는 자리 규칙(반 칸·자유·Alt)을 따르고, 칸 모드에서 불렸다면(호출부가 Alt로 판단) 자유로 놓습니다.
+    const spot = this.freeSpot(doc, mapPt, this.gestureAlt) ?? this.freeSpot(doc, mapPt, true)
+    if (!spot) return
     if (this.lastFreePropCenter) {
-      const dist = Math.hypot(mapPt.mx - this.lastFreePropCenter.mx, mapPt.my - this.lastFreePropCenter.my)
+      const dist = Math.hypot(spot.mx - this.lastFreePropCenter.mx, spot.my - this.lastFreePropCenter.my)
       if (dist < doc.board.pitch) return
     }
-    this.lastFreePropCenter = { mx: mapPt.mx, my: mapPt.my }
-    const prop = buildFreeProp(stampTileId, mapPt.mx, mapPt.my, doc.board.pitch, stampRot, stampFlip)
+    this.lastFreePropCenter = spot
+    const prop = { ...buildFreeProp(this.pickStampArt(stampTileId), spot.mx, spot.my, doc.board.pitch, stampRot, stampFlip), ...this.underFlag() }
     this.commitDocChange({ ...doc, props: [...doc.props, prop] }, true)
   }
 
@@ -1264,7 +1293,7 @@ export class ToolController {
     for (let r = r0; r <= r1; r++) {
       for (let c = c0; c <= c1; c++) {
         const index = r * doc.board.cols + c
-        nextCells[index] = { art: this.pickStampArt(stampTileId), rot: stampRot, flip: stampFlip }
+        nextCells[index] = { art: this.pickStampArt(stampTileId), rot: stampRot, flip: stampFlip, ...this.underFlag() }
       }
     }
     this.commitDocChange({ ...doc, cells: nextCells }, true)
@@ -1322,8 +1351,9 @@ export class ToolController {
     this.overlay.freePropGhost = null
     if (doc && stampTileId) {
       const mapPt = this.viewport.screenToMap(sx, sy)
-      if (freeKey) {
-        this.overlay.freePropGhost = { mx: mapPt.mx, my: mapPt.my, tileId: stampTileId, rot: stampRot, flip: stampFlip }
+      const spot = this.freeSpot(doc, mapPt, freeKey)
+      if (spot) {
+        this.overlay.freePropGhost = { mx: spot.mx, my: spot.my, tileId: stampTileId, rot: stampRot, flip: stampFlip }
       } else {
         const cell = cellAtMm(mapPt.mx, mapPt.my, doc.board.cols, doc.board.rows, doc.board.pitch)
         if (cell) this.overlay.stampGhost = { c: cell.c, r: cell.r, tileId: stampTileId, rot: stampRot, flip: stampFlip }
@@ -1357,16 +1387,17 @@ export class ToolController {
       const before = structuredClone(doc)
       let next: MapDoc | null = null
 
-      if (freeKey) {
-        // FR-3.8: Alt를 누른 채 놓으면 격자 무시하고 props에 자유 배치.
-        const prop = buildFreeProp(assetId, mapPt.mx, mapPt.my, doc.board.pitch, stampRot, stampFlip)
+      const spot = this.freeSpot(doc, mapPt, freeKey)
+      if (spot) {
+        // FR-3.8: Alt를 누른 채 놓거나 "놓는 자리"가 반 칸·자유면 props에 놓습니다.
+        const prop = { ...buildFreeProp(assetId, spot.mx, spot.my, doc.board.pitch, stampRot, stampFlip), ...this.underFlag() }
         next = { ...doc, props: [...doc.props, prop] }
       } else {
         const cell = cellAtMm(mapPt.mx, mapPt.my, doc.board.cols, doc.board.rows, doc.board.pitch)
         if (cell) {
           const index = cell.r * doc.board.cols + cell.c
           const nextCells = doc.cells.slice()
-          nextCells[index] = { art: assetId, rot: stampRot, flip: stampFlip }
+          nextCells[index] = { art: assetId, rot: stampRot, flip: stampFlip, ...this.underFlag() }
           next = { ...doc, cells: nextCells }
         }
       }

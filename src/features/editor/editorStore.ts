@@ -38,6 +38,9 @@ export type ShapeKind = 'circle' | 'ellipse' | 'roundedRect'
  *  free일 때 activeTool은 내부적으로 'freeDraw'입니다(동작 코드를 그대로 쓰려고). docs/08 §3.2 */
 export type PenMode = 'line' | 'curve' | 'free'
 
+/** 타일 도구가 그림을 놓는 자리(docs/09 §2.1): 칸에 맞춤 / 반 칸(25mm) 격자점 / 자유(1mm). */
+export type PlaceSnap = 'cell' | 'half' | 'free'
+
 /** M 도구로 다음에 배치할 것. Alt 키에 숨기지 않고 팔레트에서 직접 고릅니다. */
 export type MarkerMode = 'start' | 'goal' | 'obstacle'
 
@@ -122,6 +125,12 @@ interface EditorState {
   startName: string
   goalName: string
   obstacleName: string
+  /** 타일 도구가 그림을 놓는 자리. 반 칸·자유면 자유 배치 그림(props)으로 놓입니다. */
+  placeSnap: PlaceSnap
+  /** 켜면 새로 놓는 타일·그림을 격자선 아래에 깝니다(docs/09 §2.4). */
+  stampUnder: boolean
+  /** 켜면 도형을 그릴 때 모서리가 반 칸(25mm) 격자에 붙습니다. */
+  shapeSnap: boolean
   /** 켜면 타일 칠하기·영역 채우기가 같은 테마 타일을 무작위로 섞습니다(예전 Alt+R). */
   mixFill: boolean
   /** 이 브라우저가 파일에 바로 덮어쓸 수 있는 방식인지(§4.4). 세션 내내 바뀌지 않는 값이라
@@ -186,6 +195,9 @@ interface EditorState {
   setPlaceName: (which: 'startName' | 'goalName' | 'obstacleName', value: string) => void
   setPenMode: (mode: PenMode) => void
   setMixFill: (on: boolean) => void
+  setPlaceSnap: (mode: PlaceSnap) => void
+  setStampUnder: (on: boolean) => void
+  setShapeSnap: (on: boolean) => void
   setDoc: (doc: MapDoc | null) => void
   setSaveState: (saveState: SaveState) => void
   /**
@@ -293,6 +305,9 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
   obstacleName: '',
   penMode: 'curve',
   mixFill: false,
+  placeSnap: 'cell',
+  stampUnder: false,
+  shapeSnap: false,
   storeKind: mapStore.kind,
   canOverwrite: mapStore.canOverwrite,
   saveState: 'saved',
@@ -327,6 +342,9 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
   setPlaceName: (which, value) => set({ [which]: value } as Pick<EditorState, typeof which>),
   setPenMode: (mode) => set({ penMode: mode, activeTool: mode === 'free' ? 'freeDraw' : 'pen' }),
   setMixFill: (on) => set({ mixFill: on }),
+  setPlaceSnap: (mode) => set({ placeSnap: mode }),
+  setStampUnder: (on) => set({ stampUnder: on }),
+  setShapeSnap: (on) => set({ shapeSnap: on }),
   setDoc: (doc) => set({ doc }),
   setSaveState: (saveState) => set({ saveState }),
   setPrintPlannerOpen: (printPlannerOpen) => set({ printPlannerOpen }),
@@ -413,10 +431,18 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
     if (!doc) return null
     // "u1"부터 시작해 비어있는 번호를 찾습니다. 파일을 열고 닫는 동안 삭제된 번호가
     // 있을 수 있어 항상 개수+1이 아니라 실제로 안 쓰인 번호를 찾습니다.
+    // [2026-10-27] 그림이 없어도 칸·자유 배치 그림이 아직 가리키는 번호는 건너뜁니다. 예전에는
+    // 초안 복구로 그림만 사라진 u1을 새 이미지가 받아, 기존에 놓은 칸이 전부 새 그림으로 바뀌었습니다.
+    const referenced = new Set<string>()
+    for (const cell of doc.cells) if (cell?.art.startsWith('asset:')) referenced.add(cell.art.slice('asset:'.length))
+    for (const prop of doc.props) if (prop.asset.startsWith('asset:')) referenced.add(prop.asset.slice('asset:'.length))
     let n = 1
-    while (doc.userAssets[`u${n}`]) n += 1
+    while (doc.userAssets[`u${n}`] || referenced.has(`u${n}`)) n += 1
     const key = `u${n}`
-    set({ doc: { ...doc, userAssets: { ...doc.userAssets, [key]: asset } } })
+    const next = { ...doc, userAssets: { ...doc.userAssets, [key]: asset } }
+    set({ doc: next })
+    // 이미지를 넣은 것도 초안에 바로 남깁니다(놓기 전에 창을 닫아도 그림을 잃지 않게).
+    saveDraft(next)
     return key
   },
 }))

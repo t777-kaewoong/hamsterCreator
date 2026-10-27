@@ -20,7 +20,7 @@ import {
   HAMSTER_OUTLINE_MM,
   HEADING_DEGREES,
 } from '@/lib/markers/hamsterArt'
-import { isTileAboveLine } from '@/lib/tiles/catalog'
+import { isPlacedAboveLine } from '@/lib/tiles/catalog'
 import type { MapPoint, Viewport } from './viewport'
 import type { TokenName } from './cssTokens'
 import { parseShadowToken } from './cssTokens'
@@ -135,7 +135,7 @@ function drawCellArtGroup(
   doc.cells.forEach((cell, index) => {
     if (!cell) return
     // 선 위에 얹을지는 isTileAboveLine 하나로 판단합니다(catalog.ts 주석 참고).
-    const isObject = isTileAboveLine(cell.art)
+    const isObject = isPlacedAboveLine(cell.art, cell.under)
     if (isObject !== aboveGrid) return
     const bitmap = tileBitmapCache.get(cell.art, doc.userAssets)
     if (!bitmap) return // 아직 디코드 전 — 로드 완료 알림이 두 아트 레이어를 다시 dirty 표시함
@@ -158,6 +158,8 @@ function drawCellArtGroup(
 /** ② 바닥·블록 칸 아트. 50×50mm 칸에 그리며 격자선 아래에 합성합니다. */
 export function drawArtLayer(ctx: CanvasRenderingContext2D, viewport: Viewport, doc: MapDoc): void {
   drawCellArtGroup(ctx, viewport, doc, false)
+  // "선 아래에 깔기"로 둔 자유 배치 그림도 이 레이어(격자선 아래)에 그립니다(docs/09 §2.4).
+  drawPropsLayer(ctx, viewport, doc, false)
 }
 
 /** ④-1 낱개 물건(object) 칸 아트. 같은 cells 데이터지만 격자선 위에 합성합니다. */
@@ -180,8 +182,9 @@ export function drawCellObjectsLayer(ctx: CanvasRenderingContext2D, viewport: Vi
  *  아이콘 id·"asset:u1")을 씁니다. 내장 타일·아이콘은 미리 디코드하고 사용자 이미지는
  *  현재 문서의 userAssets에서 찾아 필요할 때 디코드하므로 세 종류가 같은 경로로 그려집니다.
  */
-export function drawPropsLayer(ctx: CanvasRenderingContext2D, viewport: Viewport, doc: MapDoc): void {
+export function drawPropsLayer(ctx: CanvasRenderingContext2D, viewport: Viewport, doc: MapDoc, aboveGrid = true): void {
   for (const prop of doc.props) {
+    if (isPlacedAboveLine(prop.asset, prop.under) !== aboveGrid) continue
     const bitmap = tileBitmapCache.get(prop.asset, doc.userAssets)
     if (!bitmap) continue // 아직 디코드 전이거나(로드 완료 시 다시 그려짐) 캐시에 없는 종류
 

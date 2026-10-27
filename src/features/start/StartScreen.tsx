@@ -10,6 +10,7 @@ import { Button, useToast } from '@/components'
 import type { MapDoc } from '@/lib/model/types'
 import { parseMap } from '@/lib/model/serialize'
 import { clearDraft, isDraftAvailable, listDrafts, loadDraft } from '@/lib/storage/draft'
+import { loadDraftAssets } from '@/lib/storage/draftAssets'
 import type { DraftSummary } from '@/lib/storage/draft'
 import { mapStore } from '@/features/editor/editorStore'
 import { UserCancelledError } from '@/lib/storage'
@@ -76,9 +77,12 @@ export default function StartScreen({ onOpen }: StartScreenProps) {
     setLatestDraft(listDrafts()[0] ?? null)
   }, [])
 
-  function handleRecoverDraft() {
+  async function handleRecoverDraft() {
     if (!latestDraft) return
-    const doc = loadDraft(latestDraft.id)
+    const loaded = loadDraft(latestDraft.id)
+    // 초안의 사용자 이미지는 IndexedDB에 따로 있습니다(draftAssets.ts). 함께 붙여야 칸에 놓인
+    // 그림이 비지 않고, 다음에 올리는 이미지가 기존 번호를 덮어쓰지 않습니다.
+    const doc = loaded ? { ...loaded, userAssets: await loadDraftAssets(latestDraft.id) } : null
     if (!doc) {
       // 배너를 보여준 시점과 복구를 누른 시점 사이에 초안이 지워졌거나 손상됐을 때만
       // 일어나는 드문 경우입니다.

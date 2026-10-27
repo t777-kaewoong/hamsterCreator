@@ -68,6 +68,12 @@ export default function Inspector() {
 // 공용 UI 조각
 // ────────────────────────────────────────────────────────────────────────
 
+/** 타일·그림과 격자선의 위아래(docs/09 §2.4). */
+const LAYER_OPTIONS: SegmentedOption[] = [
+  { value: 'over', label: '선 위' },
+  { value: 'under', label: '선 아래' },
+]
+
 const ROTATION_OPTIONS: SegmentedOption[] = [
   { value: '0', label: '0°' },
   { value: '90', label: '90°' },
@@ -400,6 +406,30 @@ function CellFields({ doc, index }: { doc: MapDoc; index: number }) {
     useEditorStore.getState().setSelection(null)
   }
 
+  /**
+   * 칸 타일을 같은 자리의 자유 배치 그림으로 바꿉니다(docs/09 §2.1). 칸 타일은 칸 단위로만
+   * 옮겨지므로, 선에 반 걸쳐 놓으려면 먼저 칸에서 떼어 냅니다. 바꾼 그림이 선택된 채로 남습니다.
+   */
+  function handleDetach() {
+    if (!cell) return
+    const { cols, pitch } = doc.board
+    const nextCells = doc.cells.slice()
+    nextCells[index] = null
+    const prop: Prop = {
+      asset: cell.art,
+      x: (index % cols) * pitch,
+      y: Math.floor(index / cols) * pitch,
+      w: pitch,
+      h: pitch,
+      rot: cell.rot,
+      flip: cell.flip,
+      ...(cell.under ? { under: true } : {}),
+    }
+    const props = [...doc.props, prop]
+    useEditorStore.getState().commitDoc({ ...doc, cells: nextCells, props })
+    useEditorStore.getState().setSelection({ kind: 'prop', index: props.length - 1 })
+  }
+
   return (
     <Section title="선택 항목" aside={<NameChip name={name} />}>
       <Row label="회전">
@@ -412,6 +442,20 @@ function CellFields({ doc, index }: { doc: MapDoc; index: number }) {
         />
       </Row>
       <ToggleRow label="좌우 반전" checked={cell.flip} onChange={(v) => updateCell({ flip: v })} />
+      <Row label="선과 순서">
+        <Segmented
+          fullWidth
+          options={LAYER_OPTIONS}
+          value={cell.under ? 'under' : 'over'}
+          onChange={(v) => updateCell({ under: v === 'under' ? true : undefined })}
+          aria-label="선과의 위아래 순서"
+        />
+      </Row>
+      <Row label="" hint="떼면 끌어서 선에 반 걸쳐 놓거나 크기를 바꿀 수 있어요.">
+        <Button variant="secondary" size="sm" onClick={handleDetach}>
+          칸에서 떼기
+        </Button>
+      </Row>
       <DeleteRow onDelete={handleDelete} />
     </Section>
   )
@@ -458,6 +502,15 @@ function PropFields({ doc, index }: { doc: MapDoc; index: number }) {
           <Input unit="mm" type="number" value={prop.w} onChange={numberField('w')} aria-label="너비" />
           <Input unit="mm" type="number" value={prop.h} onChange={numberField('h')} aria-label="높이" />
         </Pair>
+      </Row>
+      <Row label="선과 순서">
+        <Segmented
+          fullWidth
+          options={LAYER_OPTIONS}
+          value={prop.under ? 'under' : 'over'}
+          onChange={(v) => updateProp({ under: v === 'under' ? true : undefined })}
+          aria-label="선과의 위아래 순서"
+        />
       </Row>
       <Row label="회전">
         <Input

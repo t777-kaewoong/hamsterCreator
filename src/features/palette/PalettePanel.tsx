@@ -35,18 +35,21 @@ import {
   Upload,
   X,
 } from 'lucide-react'
-import { Button, Input, Tooltip, useToast } from '@/components'
+import { Button, Input, Segmented, Tooltip, useToast } from '@/components'
+import type { SegmentedOption } from '@/components'
 import { TILES, TILES_BY_THEME } from '@/lib/tiles/catalog'
 import { ICONS } from '@/lib/icons/catalog'
 import { USER_ASSET_MAX_PX } from '@/lib/model/constants'
 import { goalDisplayNames, goalMarkerKey } from '@/lib/model/goalNames'
-import type { Direction, GoalMarker, MarkerLook, UserAsset } from '@/lib/model/types'
+import type { Direction, GoalMarker, MapDoc, MarkerLook, UserAsset } from '@/lib/model/types'
 import { OBSTACLE_PRESETS } from '@/lib/model/obstacles'
 import { HAMSTER_IMAGE_URL } from '@/lib/markers/hamsterArt'
 import { useEditorStore } from '@/features/editor/editorStore'
-import type { PenMode, ShapeKind, ToolId } from '@/features/editor/editorStore'
+import type { PenMode, PlaceSnap, ShapeKind, ToolId } from '@/features/editor/editorStore'
 import { sampleStroke, strokeBounds } from '@/features/canvas/strokeGeometry'
 import { allBoundaryStubs } from '@/lib/model/stubs'
+import { addSheetStubs, clearSheet, fillSheetEdges, sheetRegions } from '@/lib/model/sheetLines'
+import type { SheetRegion } from '@/lib/model/sheetLines'
 import { addLibraryImage, listLibraryImages, removeLibraryImage } from '@/lib/storage/imageLibrary'
 import type { LibraryImage } from '@/lib/storage/imageLibrary'
 import { TRACK_PRESETS } from './trackPresets'
@@ -114,7 +117,7 @@ interface KeyHint {
 const STAMP_KEYS: KeyHint[] = [
   { keys: ['클릭·드래그'], text: '칸에 칠하기' },
   { keys: ['Shift', '드래그'], text: '사각 영역 채우기' },
-  { keys: ['Alt'], text: '격자 무시하고 자유 배치' },
+  { keys: ['Alt'], text: '이번만 자유 자리에 놓기' },
   { keys: ['R'], text: '회전 · F 좌우 반전' },
   { keys: ['우클릭'], text: '같은 타일 다시 찍기' },
 ]
@@ -137,6 +140,13 @@ const SHAPE_KEYS: KeyHint[] = [{ keys: ['Shift'], text: '정원 · 정사각' }]
 const MARKER_KEYS: KeyHint[] = [
   { keys: ['Alt', '클릭'], text: '격자점 붙이기를 이번만 반대로' },
   { keys: ['V', '끌기'], text: '선택 도구로 놓은 것을 자유롭게 옮기기' },
+]
+
+/** 타일을 놓는 자리(docs/09 §2.1). 반 칸 = 25mm 격자점이라 선·칸 경계에 정확히 반 걸칩니다. */
+const PLACE_OPTIONS: SegmentedOption[] = [
+  { value: 'cell', label: '칸' },
+  { value: 'half', label: '반 칸' },
+  { value: 'free', label: '자유' },
 ]
 
 const PEN_MODES: { id: PenMode; label: string; icon: LucideIcon }[] = [
@@ -259,6 +269,12 @@ export default function PalettePanel() {
   const penMode = useEditorStore((s) => s.penMode)
   const setPenMode = useEditorStore((s) => s.setPenMode)
   const mixFill = useEditorStore((s) => s.mixFill)
+  const placeSnap = useEditorStore((s) => s.placeSnap)
+  const setPlaceSnap = useEditorStore((s) => s.setPlaceSnap)
+  const stampUnder = useEditorStore((s) => s.stampUnder)
+  const setStampUnder = useEditorStore((s) => s.setStampUnder)
+  const shapeSnap = useEditorStore((s) => s.shapeSnap)
+  const setShapeSnap = useEditorStore((s) => s.setShapeSnap)
   const setMixFill = useEditorStore((s) => s.setMixFill)
   const addUserAsset = useEditorStore((s) => s.addUserAsset)
   const { show: showToast } = useToast()
@@ -455,6 +471,9 @@ export default function PalettePanel() {
     if (lastKey) setStampTile(`asset:${lastKey}`)
   }
 
+  // 격자선 도구에서 고른 종이(docs/09 §2.2). 종이 수가 줄면 마지막 종이로 맞춥니다.
+  const [selectedSheet, setSelectedSheet] = useState(0)
+
   const header = TOOL_HELP[activeTool]
   // 출발·도착·장애물 "붙일 이름" 칸이 지금 모드에서 어느 값을 다루는지.
   const placeNameKey = markerMode === 'start' ? 'startName' : markerMode === 'goal' ? 'goalName' : 'obstacleName'
@@ -493,6 +512,16 @@ export default function PalettePanel() {
           )}
           <div className={styles.gridArea}>{renderGridContent()}</div>
           <div className={styles.stampFooter}>
+            {/* 놓는 자리(docs/09 §2.1): 칸 / 반 칸(선에 걸치기) / 자유 */}
+            <div className={styles.footerRow}>
+              <span className="t-label">놓는 자리</span>
+              <Segmented fullWidth options={PLACE_OPTIONS} value={placeSnap} onChange={(v) => setPlaceSnap(v as PlaceSnap)} aria-label="놓는 자리" />
+            </div>
+            <label className={styles.mixToggle}>
+              <input type="checkbox" checked={stampUnder} onChange={(e) => setStampUnder(e.target.checked)} />
+              <span className="t-label">선 아래에 깔기</span>
+              <span className={`${styles.snapToggleHint} t-caption`}>{stampUnder ? '선이 그림 위로 보여요' : '그림이 선을 덮어요'}</span>
+            </label>
             <label className={styles.mixToggle}>
               <input type="checkbox" checked={mixFill} onChange={(e) => setMixFill(e.target.checked)} />
               <span className="t-label">같은 테마 섞어 칠하기</span>
@@ -690,6 +719,11 @@ export default function PalettePanel() {
               <ContextChoice key={shape.id} icon={shape.icon} label={shape.label} selected={activeShape === shape.id} onClick={() => setShape(shape.id)} />
             ))}
           </div>
+          <label className={`${styles.mixToggle} ${styles.snapToggle}`}>
+            <input type="checkbox" checked={shapeSnap} onChange={(e) => setShapeSnap(e.target.checked)} />
+            <span className="t-label">반 칸 격자에 맞추기</span>
+            <span className={`${styles.snapToggleHint} t-caption`}>25mm 단위</span>
+          </label>
           <KeyHints items={SHAPE_KEYS} />
           <p className={`${styles.contextHint} t-caption`}>{TOOL_HELP.shape.hint}</p>
           <div className={styles.contextSection}>
@@ -707,11 +741,56 @@ export default function PalettePanel() {
       // A4 5×4만 해도 18번, A0 23×16이면 78번이라 일괄 버튼을 함께 둡니다(FR-2.4).
       const stubCount = doc ? doc.stubs.length : 0
       const fullCount = doc ? (doc.board.cols + doc.board.rows) * 2 : 0
+      // 종이 한 장 단위 일괄 작업(docs/09 §2.2). 종이 번호는 화면의 종이 경계·출력 계획기와 같습니다.
+      const sheets = doc ? sheetRegions(doc) : null
+      const sheet = sheets ? sheets.regions[Math.min(selectedSheet, sheets.regions.length - 1)] : null
+      const applySheet = (make: (current: MapDoc, region: SheetRegion) => Partial<MapDoc>) => {
+        const current = useEditorStore.getState().doc
+        if (!current || !sheet) return
+        useEditorStore.getState().commitDoc({ ...current, ...make(current, sheet) })
+      }
       return (
         <>
           <p className={`${styles.contextHint} ${styles.contextHintFirst} t-caption`}>{TOOL_HELP.lineDraw.hint}</p>
+          {sheets && sheet && (
+            <div className={styles.contextSection}>
+              <h3 className="t-label">종이별로 한꺼번에</h3>
+              <div
+                className={styles.sheetPicker}
+                style={{ gridTemplateColumns: `repeat(${sheets.tilesX}, minmax(0, 1fr))` }}
+                role="group"
+                aria-label="종이 고르기"
+              >
+                {sheets.regions.map((region, index) => (
+                  <button
+                    key={region.code}
+                    type="button"
+                    className={`${styles.sheetChip} ${region.code === sheet.code ? styles.sheetChipSelected : ''} t-micro`}
+                    aria-pressed={region.code === sheet.code}
+                    onClick={() => setSelectedSheet(index)}
+                  >
+                    {region.code}
+                  </button>
+                ))}
+              </div>
+              <div className={styles.stubActions}>
+                <Button variant="secondary" size="sm" onClick={() => applySheet((current, region) => ({ edges: fillSheetEdges(current, region) }))}>
+                  격자선 채우기
+                </Button>
+                <Button variant="secondary" size="sm" onClick={() => applySheet((current, region) => ({ stubs: addSheetStubs(current, region) }))}>
+                  진입로 넣기
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => applySheet((current, region) => clearSheet(current, region))}>
+                  비우기
+                </Button>
+              </div>
+              <p className={`${styles.contextHint} t-caption`}>
+                {sheet.code}번 종이({sheet.cols}×{sheet.rows}칸)에만 적용돼요. 진입로는 맵 바깥 테두리에 닿은 곳에만 생깁니다.
+              </p>
+            </div>
+          )}
           <div className={styles.contextSection}>
-            <h3 className="t-label">경계 진입로</h3>
+            <h3 className="t-label">모든 종이 · 경계 진입로</h3>
             <div className={styles.stubActions}>
               <Button
                 variant="secondary"
