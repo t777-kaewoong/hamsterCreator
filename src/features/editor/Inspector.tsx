@@ -23,6 +23,7 @@ import type { ReactNode } from 'react'
 import { ChevronRight, CircleAlert, CircleCheck, Minus, Plus, Trash2, TriangleAlert } from 'lucide-react'
 import { Button, Input, Segmented } from '@/components'
 import { TILE_SCALE_OPTIONS, scaleValueOf } from '@/lib/tiles/tileScale'
+import { detachCellToProp } from '@/features/canvas/selectionEdit'
 import type { SegmentedOption } from '@/components'
 import { useEditorStore } from './editorStore'
 import { useMapIssues } from './useMapIssues'
@@ -454,24 +455,12 @@ function CellFields({ doc, index }: { doc: MapDoc; index: number }) {
    * 옮겨지므로, 선에 반 걸쳐 놓으려면 먼저 칸에서 떼어 냅니다. 바꾼 그림이 선택된 채로 남습니다.
    */
   function handleDetach() {
-    if (!cell) return
-    const { cols, pitch } = doc.board
-    const nextCells = doc.cells.slice()
-    nextCells[index] = null
-    const prop: Prop = {
-      asset: cell.art,
-      x: (index % cols) * pitch,
-      y: Math.floor(index / cols) * pitch,
-      w: pitch,
-      h: pitch,
-      rot: cell.rot,
-      flip: cell.flip,
-      ...(cell.under ? { under: true } : {}),
-    }
-    const props = [...doc.props, prop]
-    useEditorStore.getState().commitDoc({ ...doc, cells: nextCells, props })
-    useEditorStore.getState().setSelection({ kind: 'prop', index: props.length - 1 })
+    const detached = detachCellToProp(doc, index)
+    if (!detached) return
+    useEditorStore.getState().commitDoc(detached.doc)
+    useEditorStore.getState().setSelection({ kind: 'prop', index: detached.propIndex })
   }
+
 
   return (
     <Section title="선택 항목" aside={<NameChip name={name} />}>
@@ -497,7 +486,7 @@ function CellFields({ doc, index }: { doc: MapDoc; index: number }) {
           aria-label="선과의 위아래 순서"
         />
       </Row>
-      <Row label="" hint="떼면 끌어서 선에 반 걸쳐 놓거나 크기를 바꿀 수 있어요.">
+      <Row label="" hint="떼면 끌어서 선에 반 걸쳐 놓을 수 있어요. 크기는 모서리를 끌어도 바뀌어요.">
         <Button variant="secondary" size="sm" onClick={handleDetach}>
           칸에서 떼기
         </Button>

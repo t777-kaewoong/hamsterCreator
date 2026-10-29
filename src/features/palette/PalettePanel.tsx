@@ -38,7 +38,6 @@ import {
 import { Button, Input, Segmented, Tooltip, useToast } from '@/components'
 import type { SegmentedOption } from '@/components'
 import { TILES, TILES_BY_THEME } from '@/lib/tiles/catalog'
-import { TILE_SCALE_OPTIONS } from '@/lib/tiles/tileScale'
 import { drawSpeedSign, normalizeSignNumber } from '@/lib/tiles/speedSign'
 import { ICONS } from '@/lib/icons/catalog'
 import { USER_ASSET_MAX_PX } from '@/lib/model/constants'
@@ -122,6 +121,7 @@ const STAMP_KEYS: KeyHint[] = [
   { keys: ['Alt'], text: '이번만 자유 자리에 놓기' },
   { keys: ['R'], text: '회전 · F 좌우 반전' },
   { keys: ['우클릭'], text: '같은 타일 다시 찍기' },
+  { keys: ['선택(V)'], text: '놓은 타일 모서리를 끌어 크기 조절' },
 ]
 const PEN_KEYS: KeyHint[] = [
   { keys: ['Enter'], text: '완료 (더블클릭도 됨)' },
@@ -284,8 +284,6 @@ export default function PalettePanel() {
   const placeSnap = useEditorStore((s) => s.placeSnap)
   const setPlaceSnap = useEditorStore((s) => s.setPlaceSnap)
   const stampUnder = useEditorStore((s) => s.stampUnder)
-  const stampScale = useEditorStore((s) => s.stampScale)
-  const setStampScale = useEditorStore((s) => s.setStampScale)
   const setStampUnder = useEditorStore((s) => s.setStampUnder)
   const shapeSnap = useEditorStore((s) => s.shapeSnap)
   const setShapeSnap = useEditorStore((s) => s.setShapeSnap)
@@ -598,21 +596,21 @@ export default function PalettePanel() {
               <span className="t-label">놓는 자리</span>
               <Segmented fullWidth options={PLACE_OPTIONS} value={placeSnap} onChange={(v) => setPlaceSnap(v as PlaceSnap)} aria-label="놓는 자리" />
             </div>
-            {/* 크기(docs/12 §2.2): 격자 칸 수. 1칸이 아니면 그림으로 놓여 나중에 끌어 옮길 수 있습니다. */}
-            <div className={styles.footerRow}>
-              <span className="t-label">크기(칸)</span>
-              <Segmented fullWidth options={TILE_SCALE_OPTIONS} value={String(stampScale)} onChange={(v) => setStampScale(Number(v))} aria-label="타일 크기(칸 수)" />
-            </div>
-            <label className={styles.mixToggle}>
+            <label className={styles.mixToggle} title={stampUnder ? '선이 그림 위로 보여요' : '그림이 선을 덮어요'}>
               <input type="checkbox" checked={stampUnder} onChange={(e) => setStampUnder(e.target.checked)} />
               <span className="t-label">선 아래에 깔기</span>
               <span className={`${styles.snapToggleHint} t-caption`}>{stampUnder ? '선이 그림 위로 보여요' : '그림이 선을 덮어요'}</span>
             </label>
-            <label className={styles.mixToggle}>
+            <label className={styles.mixToggle} title="같은 종류 타일 중에서 하나씩 무작위로 골라 칠해요">
               <input type="checkbox" checked={mixFill} onChange={(e) => setMixFill(e.target.checked)} />
-              <span className="t-label">같은 테마 섞어 칠하기</span>
+              <span className="t-label">랜덤으로 칠하기</span>
+              <span className={`${styles.snapToggleHint} t-caption`}>같은 종류 타일을 섞어요</span>
             </label>
-            <KeyHints items={STAMP_KEYS} />
+            {/* 단축키 목록은 접어 둡니다(docs/13 §2.2) — 타일 그리드 자리를 먼저 확보합니다. */}
+            <details className={styles.keyHintsFold}>
+              <summary className="t-caption">조작법 보기</summary>
+              <KeyHints items={STAMP_KEYS} />
+            </details>
           </div>
         </>
       ) : (

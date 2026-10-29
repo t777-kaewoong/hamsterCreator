@@ -294,9 +294,8 @@ export function drawOverlayLayer(
   //     2px 파선 테두리)은 같지만, 칸 좌상단이 아니라 "커서 = 이 오브젝트의 중심"이 되도록
   //     그립니다. 격자를 무시하는 배치라 stampGhost와 달리 칸 좌표(c, r) 대신 mm 좌표를 씁니다.
   if (overlay.freePropGhost) {
-    const { mx, my, tileId, rot, flip, sizeMm } = overlay.freePropGhost
+    const { mx, my, tileId, rot, flip } = overlay.freePropGhost
     const center = viewport.mapToScreen(mx, my)
-    const ghostPx = viewport.mmToPx(sizeMm)
     const bitmap = tileBitmapCache.get(tileId, doc.userAssets)
 
     if (bitmap) {
@@ -305,7 +304,7 @@ export function drawOverlayLayer(
       ctx.translate(center.x, center.y)
       if (rot !== 0) ctx.rotate((rot * Math.PI) / 180)
       if (flip) ctx.scale(-1, 1)
-      ctx.drawImage(bitmap, -ghostPx / 2, -ghostPx / 2, ghostPx, ghostPx)
+      ctx.drawImage(bitmap, -sizePx / 2, -sizePx / 2, sizePx, sizePx)
       ctx.restore()
     }
 
@@ -313,7 +312,7 @@ export function drawOverlayLayer(
     ctx.strokeStyle = tokens['--c-primary']
     ctx.lineWidth = 2
     ctx.setLineDash([4, 4])
-    ctx.strokeRect(center.x - ghostPx / 2, center.y - ghostPx / 2, ghostPx, ghostPx)
+    ctx.strokeRect(center.x - sizePx / 2, center.y - sizePx / 2, sizePx, sizePx)
     ctx.restore()
   }
 

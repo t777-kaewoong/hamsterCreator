@@ -70,17 +70,48 @@ export function editBoxOf(doc: MapDoc, selection: Selection): EditBox | null {
   return null
 }
 
-/** 이 선택에 그릴 크기 핸들. 원·장애물은 비율이 고정이라 모서리 4개만 둡니다. */
+/** 이 선택에 그릴 크기 핸들. 원·장애물은 비율이 고정이라 모서리 4개만 둡니다.
+ *  칸 타일도 핸들을 보여 줍니다 — 끌기 시작하면 그림으로 떼어 내 크기를 바꿉니다(docs/13 §2.1). */
 export function handlesFor(doc: MapDoc, selection: Selection): HandleId[] {
   if (!selection) return []
   if (selection.kind === 'obstacle') return CORNERS
-  if (selection.kind === 'prop') return [...CORNERS, ...EDGES]
+  if (selection.kind === 'prop' || selection.kind === 'cell') return [...CORNERS, ...EDGES]
   if (selection.kind === 'stroke') {
     const stroke = findStroke(doc, selection.id)
     if (stroke?.kind === 'circle') return CORNERS
     if (stroke?.kind === 'ellipse' || stroke?.kind === 'roundedRect') return [...CORNERS, ...EDGES]
   }
   return []
+}
+
+/** 칸 타일 한 칸의 상자(크기 핸들 위치 계산용). 칸 가운데 = 격자점(D2). */
+export function cellEditBox(doc: MapDoc, index: number): EditBox {
+  const { cols, pitch } = doc.board
+  return { cx: (index % cols) * pitch + pitch / 2, cy: Math.floor(index / cols) * pitch + pitch / 2, w: pitch, h: pitch, rot: 0 }
+}
+
+/**
+ * 칸 타일을 같은 자리·같은 크기의 자유 배치 그림으로 바꿉니다(docs/09 §2.1). 칸 타일은 늘 한 칸이라
+ * 크기를 바꾸거나 선에 반 걸쳐 놓으려면 먼저 떼어 내야 합니다. 새 그림은 props 맨 끝에 들어갑니다.
+ */
+export function detachCellToProp(doc: MapDoc, index: number): { doc: MapDoc; propIndex: number } | null {
+  const cell = doc.cells[index]
+  if (!cell) return null
+  const { cols, pitch } = doc.board
+  const cells = doc.cells.slice()
+  cells[index] = null
+  const prop: Prop = {
+    asset: cell.art,
+    x: (index % cols) * pitch,
+    y: Math.floor(index / cols) * pitch,
+    w: pitch,
+    h: pitch,
+    rot: cell.rot,
+    flip: cell.flip,
+    ...(cell.under ? { under: true } : {}),
+  }
+  const props = [...doc.props, prop]
+  return { doc: { ...doc, cells, props }, propIndex: props.length - 1 }
 }
 
 /** 원·장애물은 늘 가로세로가 같아야 합니다. */

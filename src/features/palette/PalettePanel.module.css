@@ -1,10 +1,8 @@
 /*
   PalettePanel.module.css — PRD §9.11 팔레트 패널 규격.
 
-  타일 그리드 치수는 PRD 반응형 규격과 함께 유지하세요:
-  패널 폭 280px, 좌우 여백 16px → 내부 폭 248px → 3열, 간격 8px → 타일 한 변 77px.
-  ((248 - 8*2) / 3 = 77.33 → 77px로 반올림, PRD 그대로)
-  1080px 미만에서는 패널 240px, 내부 폭 208px → 타일 한 변 65px입니다.
+  타일 그리드는 3열이고, 열 폭은 남은 폭을 똑같이 나눕니다(docs/13 §2.2).
+  패널 280px이면 타일 한 변 약 77px(스크롤 막대가 생기면 조금 작아짐), 1080px 미만 240px 패널이면 약 64px.
 */
 
 .panel {
@@ -185,29 +183,29 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 0 var(--sp-4) var(--sp-4);
 }
 
 .grid {
   display: grid;
-  /* 77px 고정 3열. %로 계산하면 반올림 오차가 타일마다 미세하게 달라져 줄이 안 맞을 수 있어
-     PRD가 이미 반올림해 준 77px을 그대로 고정값으로 씁니다. */
-  grid-template-columns: repeat(3, 77px);
-  grid-auto-rows: 77px;
+  /* 3열을 남은 폭에 나눠 채웁니다(docs/13 §2.2). 예전 77px 고정 열은 세로 스크롤 막대가 생기는
+     순간 폭이 모자라 셋째 열이 잘리고 가로 스크롤 막대까지 생겼습니다. */
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--sp-2);
 }
 
 /* ── 타일 한 칸 ──────────────────────────────────────────── */
 .tileSlot {
   position: relative;
-  width: 77px;
-  height: 77px;
+  width: 100%;
+  aspect-ratio: 1 / 1;
 }
 
 .tile {
   position: relative;
-  width: 77px;
-  height: 77px;
+  width: 100%;
+  height: 100%;
   padding: 0;
   overflow: hidden;
   background: var(--c-surface-2);
@@ -233,7 +231,9 @@
   background: var(--c-text);
   box-shadow: var(--e2);
   color: var(--c-text-inverse);
-  white-space: nowrap;
+  /* 타일 칸 영역은 가로로 넘치면 잘리므로(overflow-x: hidden) 말풍선은 좁은 폭에서 두 줄로 접습니다. */
+  width: max-content;
+  max-width: 140px;
   pointer-events: none;
 }
 
@@ -401,17 +401,11 @@
 }
 
 /* PRD §9.17: 최소 지원 폭 구간(1024~1079px)에서는 팔레트만 240px로 줄이고,
-   같은 3열 구조를 유지하도록 각 타일을 65px로 축소합니다. */
+   같은 3열 구조를 유지합니다(타일은 남은 폭에 맞춰 저절로 작아짐). */
 @media (max-width: 1079.98px) {
-  .grid {
-    grid-template-columns: repeat(3, 65px);
-    grid-auto-rows: 65px;
-  }
-
-  .tileSlot,
-  .tile {
-    width: 65px;
-    height: 65px;
+  /* 좁은 팔레트에서는 체크 칸 옆 보조 설명을 숨겨 한 줄을 지킵니다(설명은 마우스를 올리면 보임). */
+  .mixToggle .snapToggleHint {
+    display: none;
   }
 
   /* 240px 패널에서도 말풍선이 잘리지 않도록 첫 타일 오른쪽 가장자리에 2px 겹칩니다. */
@@ -543,7 +537,7 @@
   color: var(--c-text-3);
 }
 
-/* 내 이미지 ＋ 추가 칸(docs/07 §2.3): 타일과 같은 77px, 점선 테두리, 아이콘 20px + "추가". */
+/* 내 이미지 ＋ 추가 칸(docs/07 §2.3): 타일과 같은 크기, 점선 테두리, 아이콘 20px + "추가". */
 .addImageTile {
   width: 100%;
   height: 100%;
@@ -665,4 +659,24 @@
 .signInput:focus {
   outline: 2px solid var(--c-primary);
   outline-offset: -1px;
+}
+
+/* 타일 도구의 조작법 목록은 접어 둡니다(docs/13 §2.2). */
+.keyHintsFold {
+  margin-top: var(--sp-2);
+}
+
+.keyHintsFold summary {
+  width: fit-content;
+  color: var(--c-text-2);
+  cursor: pointer;
+  user-select: none;
+}
+
+.keyHintsFold summary:hover {
+  color: var(--c-primary);
+}
+
+.keyHintsFold .keyHints {
+  margin-top: var(--sp-2);
 }
