@@ -131,6 +131,8 @@ interface EditorState {
   obstacleName: string
   /** 타일 도구가 그림을 놓는 자리. 반 칸·자유면 자유 배치 그림(props)으로 놓입니다. */
   placeSnap: PlaceSnap
+  /** 타일 도구로 놓을 그림 크기(격자 칸 수, 1 = 50mm). 1이 아니면 자유 배치 그림으로 놓입니다(docs/12 §2.2). */
+  stampScale: number
   /** 켜면 새로 놓는 타일·그림을 격자선 아래에 깝니다(docs/09 §2.4). */
   stampUnder: boolean
   /** 켜면 도형을 그릴 때 모서리가 반 칸(25mm) 격자에 붙습니다. */
@@ -202,6 +204,7 @@ interface EditorState {
   setPenMode: (mode: PenMode) => void
   setMixFill: (on: boolean) => void
   setPlaceSnap: (mode: PlaceSnap) => void
+  setStampScale: (scale: number) => void
   setStampUnder: (on: boolean) => void
   setShapeSnap: (on: boolean) => void
   setDoc: (doc: MapDoc | null) => void
@@ -314,6 +317,7 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
   penMode: 'curve',
   mixFill: false,
   placeSnap: 'cell',
+  stampScale: 1,
   stampUnder: false,
   shapeSnap: false,
   storeKind: mapStore.kind,
@@ -353,6 +357,7 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
   setPenMode: (mode) => set({ penMode: mode, activeTool: mode === 'free' ? 'freeDraw' : 'pen' }),
   setMixFill: (on) => set({ mixFill: on }),
   setPlaceSnap: (mode) => set({ placeSnap: mode }),
+  setStampScale: (scale) => set({ stampScale: scale }),
   setStampUnder: (on) => set({ stampUnder: on }),
   setShapeSnap: (on) => set({ shapeSnap: on }),
   setDoc: (doc) => set({ doc }),

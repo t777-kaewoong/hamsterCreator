@@ -383,5 +383,159 @@
     "w": 433,
     "h": 433,
     "bytes": 14630
+  },
+  {
+    "id": "rescue-lightbar",
+    "name": "경광등",
+    "theme": "rescue",
+    "themeName": "소방",
+    "kind": "object",
+    "aboveLine": true,
+    "w": 433,
+    "h": 433,
+    "bytes": 24411
+  },
+  {
+    "id": "rescue-hydrant",
+    "name": "소화전",
+    "theme": "rescue",
+    "themeName": "소방",
+    "kind": "object",
+    "aboveLine": true,
+    "w": 433,
+    "h": 433,
+    "bytes": 32129
+  },
+  {
+    "id": "rescue-truck",
+    "name": "소방차",
+    "theme": "rescue",
+    "themeName": "소방",
+    "kind": "object",
+    "aboveLine": true,
+    "w": 433,
+    "h": 433,
+    "bytes": 40130
+  },
+  {
+    "id": "rescue-ambulance",
+    "name": "구급차",
+    "theme": "rescue",
+    "themeName": "소방",
+    "kind": "object",
+    "aboveLine": true,
+    "w": 433,
+    "h": 433,
+    "bytes": 35041
+  },
+  {
+    "id": "rescue-station",
+    "name": "119 안전센터",
+    "theme": "rescue",
+    "themeName": "소방",
+    "kind": "object",
+    "aboveLine": true,
+    "w": 433,
+    "h": 433,
+    "bytes": 31946
+  },
+  {
+    "id": "traffic-speed-30",
+    "name": "제한속도 30",
+    "theme": "traffic",
+    "themeName": "교통",
+    "kind": "object",
+    "aboveLine": true,
+    "w": 433,
+    "h": 433,
+    "bytes": 8847
+  },
+  {
+    "id": "traffic-speed-40",
+    "name": "제한속도 40",
+    "theme": "traffic",
+    "themeName": "교통",
+    "kind": "object",
+    "aboveLine": true,
+    "w": 433,
+    "h": 433,
+    "bytes": 8400
+  },
+  {
+    "id": "traffic-speed-50",
+    "name": "제한속도 50",
+    "theme": "traffic",
+    "themeName": "교통",
+    "kind": "object",
+    "aboveLine": true,
+    "w": 433,
+    "h": 433,
+    "bytes": 8772
+  },
+  {
+    "id": "traffic-speed-60",
+    "name": "제한속도 60",
+    "theme": "traffic",
+    "themeName": "교통",
+    "kind": "object",
+    "aboveLine": true,
+    "w": 433,
+    "h": 433,
+    "bytes": 8906
+  },
+  {
+    "id": "traffic-speed-80",
+    "name": "제한속도 80",
+    "theme": "traffic",
+    "themeName": "교통",
+    "kind": "object",
+    "aboveLine": true,
+    "w": 433,
+    "h": 433,
+    "bytes": 8978
+  },
+  {
+    "id": "traffic-speed-100",
+    "name": "제한속도 100",
+    "theme": "traffic",
+    "themeName": "교통",
+    "kind": "object",
+    "aboveLine": true,
+    "w": 433,
+    "h": 433,
+    "bytes": 8902
+  },
+  {
+    "id": "traffic-noentry",
+    "name": "진입금지",
+    "theme": "traffic",
+    "themeName": "교통",
+    "kind": "object",
+    "aboveLine": true,
+    "w": 433,
+    "h": 433,
+    "bytes": 4730
+  },
+  {
+    "id": "traffic-noway",
+    "name": "통행금지",
+    "theme": "traffic",
+    "themeName": "교통",
+    "kind": "object",
+    "aboveLine": true,
+    "w": 433,
+    "h": 433,
+    "bytes": 9202
+  },
+  {
+    "id": "traffic-stop",
+    "name": "정지",
+    "theme": "traffic",
+    "themeName": "교통",
+    "kind": "object",
+    "aboveLine": true,
+    "w": 433,
+    "h": 433,
+    "bytes": 7131
   }
 ]

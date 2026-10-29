@@ -2,6 +2,7 @@
 //
 // 로보메이션이 무료 배포한 `말판/board_game_pdf_ko/custom_objects.pdf`에서 뽑아낸
 // 50mm 타일 35종을 팔레트(§9.11)에서 쓸 수 있게 목록으로 만들어 둔 파일입니다.
+// 2026-10-29 소방 5종(사용자 제공 그림)·교통 표지판 9종(직접 그림)을 더해 49종입니다(docs/12).
 // 그림 파일은 src/assets/tiles/*.png 에 있고, 설명(이름·테마·분류)은 같은 폴더의
 // manifest.json 에 있습니다. 이 파일은 그 둘을 짝지어 주는 역할만 합니다.
 
@@ -75,7 +76,7 @@ function idFromPath(path: string): string {
 const urlById = new Map<string, string>()
 for (const [path, url] of Object.entries(urls)) urlById.set(idFromPath(path), url)
 
-/** 내장 타일 35종 전체 목록 */
+/** 내장 타일 전체 목록 */
 export const TILES: TileDef[] = (manifest as Omit<TileDef, 'url'>[]).map((t) => {
   const url = urlById.get(t.id)
   if (!url) throw new Error(`타일 그림 파일을 찾을 수 없습니다: ${t.id}.png`)
@@ -105,7 +106,7 @@ export function getTile(id: string): TileDef | undefined {
 }
 
 /** 팔레트 탭 순서. PRD §9.11의 테마 목록과 같은 순서로 둡니다 */
-export const THEME_ORDER = ['dungeon', 'forest', 'ice', 'adventure', 'candy', 'dino'] as const
+export const THEME_ORDER = ['dungeon', 'forest', 'ice', 'adventure', 'candy', 'dino', 'traffic', 'rescue'] as const
 
 /** 테마별로 묶은 목록. 팔레트가 탭마다 이걸 그대로 뿌리면 됩니다 */
 export const TILES_BY_THEME: { theme: string; themeName: string; tiles: TileDef[] }[] =

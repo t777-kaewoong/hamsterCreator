@@ -26,6 +26,7 @@ import type { TokenName } from './cssTokens'
 import { parseShadowToken } from './cssTokens'
 import { tileBitmapCache } from './tileBitmaps'
 import { drawStrokePath } from './strokeGeometry'
+import { LABEL_LINE_HEIGHT, labelLineOffset, labelLines } from '@/lib/model/labelText'
 
 /** 이 배율 미만이면 셀 경계 안내선을 숨깁니다(PRD §9.12 표). 너무 축소하면 안내선이
  *  다닥다닥 붙어 화면이 지저분해지기 때문입니다. */
@@ -225,11 +226,11 @@ export function measureLabelBoxMm(ctx: CanvasRenderingContext2D, label: Label): 
   ctx.save()
   ctx.font = `${LABEL_FONT_WEIGHT} ${label.size}px ${LABEL_FONT_FAMILY}`
   // 빈 텍스트(라벨을 막 만들어 아직 아무것도 안 친 상태)도 클릭으로 다시 잡을 수 있도록
-  // 공백 한 칸만큼의 최소 히트박스를 줍니다.
-  const text = label.text.length > 0 ? label.text : ' '
-  const wMm = ctx.measureText(text).width
+  // 공백 한 칸만큼의 최소 히트박스를 줍니다. 여러 줄이면 가장 긴 줄 폭 × 줄 수(docs/12 §2.1).
+  const lines = labelLines(label.text.length > 0 ? label.text : ' ')
+  const wMm = Math.max(...lines.map((line) => ctx.measureText(line || ' ').width))
   ctx.restore()
-  return { wMm, hMm: label.size }
+  return { wMm, hMm: label.size + (lines.length - 1) * label.size * LABEL_LINE_HEIGHT }
 }
 
 /**
@@ -258,6 +259,10 @@ export function drawLabelsLayer(
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
 
+    const lines = labelLines(label.text)
+    const drawLines = (draw: (line: string, y: number) => void) =>
+      lines.forEach((line, i) => draw(line, labelLineOffset(i, lines.length) * sizePx))
+
     if (label.onLine) {
       // FR-4.2 "선 위 흰 글씨" 모드(공식 자료의 +2/-3 스타일). 이 모드는 라벨이 검정
       // 격자선(8mm) 위에 놓이는 것을 전제로 하므로, 글자 뒤에 따로 검정 배경 알약을
@@ -269,12 +274,12 @@ export function drawLabelsLayer(
       ctx.lineWidth = sizePx * 0.08
       ctx.strokeStyle = tokens['--c-print-black']
       ctx.lineJoin = 'round'
-      ctx.strokeText(label.text, 0, 0)
+      drawLines((line, y) => ctx.strokeText(line, 0, y))
       ctx.fillStyle = '#ffffff'
-      ctx.fillText(label.text, 0, 0)
+      drawLines((line, y) => ctx.fillText(line, 0, y))
     } else {
       ctx.fillStyle = label.color
-      ctx.fillText(label.text, 0, 0)
+      drawLines((line, y) => ctx.fillText(line, 0, y))
     }
     ctx.restore()
   }

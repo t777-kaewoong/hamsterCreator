@@ -38,6 +38,8 @@ import {
 import { Button, Input, Segmented, Tooltip, useToast } from '@/components'
 import type { SegmentedOption } from '@/components'
 import { TILES, TILES_BY_THEME } from '@/lib/tiles/catalog'
+import { TILE_SCALE_OPTIONS } from '@/lib/tiles/tileScale'
+import { drawSpeedSign, normalizeSignNumber } from '@/lib/tiles/speedSign'
 import { ICONS } from '@/lib/icons/catalog'
 import { USER_ASSET_MAX_PX } from '@/lib/model/constants'
 import { goalDisplayNames, goalMarkerKey } from '@/lib/model/goalNames'
@@ -282,6 +284,8 @@ export default function PalettePanel() {
   const placeSnap = useEditorStore((s) => s.placeSnap)
   const setPlaceSnap = useEditorStore((s) => s.setPlaceSnap)
   const stampUnder = useEditorStore((s) => s.stampUnder)
+  const stampScale = useEditorStore((s) => s.stampScale)
+  const setStampScale = useEditorStore((s) => s.setStampScale)
   const setStampUnder = useEditorStore((s) => s.setStampUnder)
   const shapeSnap = useEditorStore((s) => s.shapeSnap)
   const setShapeSnap = useEditorStore((s) => s.setShapeSnap)
@@ -309,7 +313,7 @@ export default function PalettePanel() {
   const showsAssets = activeTool === 'stamp'
   const activeCategory = ASSET_CATEGORIES.some((category) => category.value === activeTheme) ? activeTheme : 'all'
 
-  // 검색어가 있으면 테마 탭을 무시하고 내장 타일 35종 전체를 이름으로 가로질러 찾습니다
+  // 검색어가 있으면 테마 탭을 무시하고 내장 타일 전체를 이름으로 가로질러 찾습니다
   // (PRD §9.11: "검색어가 있으면 모든 테마를 가로질러 이름으로 필터링").
   const searchResults = useMemo<PaletteItem[]>(() => {
     if (!isSearching) return []
@@ -499,6 +503,55 @@ export default function PalettePanel() {
     if (lastKey) setStampTile(`asset:${lastKey}`)
   }
 
+  // ── 숫자 표지판(docs/12 §2.3) ───────────────────────────────────────────
+  const [signNumber, setSignNumber] = useState('20')
+  const signText = normalizeSignNumber(signNumber)
+
+  /** 입력한 숫자로 제한속도 표지판을 그려 내 이미지에 넣고 바로 찍을 수 있게 고릅니다. */
+  async function handleMakeSign() {
+    if (!signText) {
+      showToast({ message: '숫자를 1~3자리로 넣어 주세요', tone: 'danger' })
+      return
+    }
+    const current = useEditorStore.getState().doc
+    if (!current) return
+    const asset = drawSpeedSign(signText)
+    const existing = Object.entries(current.userAssets).find(([, a]) => a.dataUrl === asset.dataUrl)
+    const key = existing ? existing[0] : addUserAsset(asset)
+    if (!key) return
+    setStampTile(`asset:${key}`)
+    await addLibraryImage(asset)
+    refreshLibrary()
+  }
+
+  function renderSignMaker() {
+    return (
+      <div className={styles.signMaker}>
+        <svg className={styles.signPreview} viewBox="0 0 100 100" aria-hidden="true">
+          <circle cx="50" cy="50" r="47" fill="#ed1c24" />
+          <circle cx="50" cy="50" r="37.6" fill="#fff" />
+          <text x="50" y="51" textAnchor="middle" dominantBaseline="central" fontFamily="Arial, sans-serif" fontWeight="700" fontSize={(signText ?? '?').length > 2 ? 30 : 40} fill="#111">
+            {signText ?? '?'}
+          </text>
+        </svg>
+        <input
+          className={styles.signInput}
+          inputMode="numeric"
+          maxLength={3}
+          value={signNumber}
+          onChange={(e) => setSignNumber(e.target.value.replace(/[^0-9]/g, ''))}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') void handleMakeSign()
+          }}
+          aria-label="표지판 숫자"
+        />
+        <Button size="sm" onClick={() => void handleMakeSign()}>
+          만들기
+        </Button>
+      </div>
+    )
+  }
+
   // 격자선 도구에서 고른 종이(docs/09 §2.2). 종이 수가 줄면 마지막 종이로 맞춥니다.
   const [selectedSheet, setSelectedSheet] = useState(0)
 
@@ -544,6 +597,11 @@ export default function PalettePanel() {
             <div className={styles.footerRow}>
               <span className="t-label">놓는 자리</span>
               <Segmented fullWidth options={PLACE_OPTIONS} value={placeSnap} onChange={(v) => setPlaceSnap(v as PlaceSnap)} aria-label="놓는 자리" />
+            </div>
+            {/* 크기(docs/12 §2.2): 격자 칸 수. 1칸이 아니면 그림으로 놓여 나중에 끌어 옮길 수 있습니다. */}
+            <div className={styles.footerRow}>
+              <span className="t-label">크기(칸)</span>
+              <Segmented fullWidth options={TILE_SCALE_OPTIONS} value={String(stampScale)} onChange={(v) => setStampScale(Number(v))} aria-label="타일 크기(칸 수)" />
             </div>
             <label className={styles.mixToggle}>
               <input type="checkbox" checked={stampUnder} onChange={(e) => setStampUnder(e.target.checked)} />
@@ -962,6 +1020,7 @@ export default function PalettePanel() {
           {sections.map((section, sectionIndex) => (
             <Fragment key={section.key}>
               <h3 className={`${styles.gridSectionTitle} t-micro`}>{section.title}</h3>
+              {section.key === 'traffic' && renderSignMaker()}
               <div className={styles.grid}>
                 {section.items.map((item, index) => (
                   <PaletteTile
@@ -1008,10 +1067,12 @@ export default function PalettePanel() {
       )
     }
 
-    // 나머지는 내장 6테마(던전·숲·얼음·모험·사탕·공룡) 중 하나입니다.
+    // 나머지는 내장 테마(던전·숲·얼음·모험·사탕·공룡·교통·소방) 중 하나입니다.
     const group = TILES_BY_THEME.find((g) => g.theme === activeCategory)
     const tiles = group?.tiles ?? []
     return (
+      <>
+      {activeCategory === 'traffic' && renderSignMaker()}
       <div className={styles.grid}>
         {tiles.map((tile, index) => (
           <PaletteTile
@@ -1024,6 +1085,7 @@ export default function PalettePanel() {
           />
         ))}
       </div>
+      </>
     )
   }
 }

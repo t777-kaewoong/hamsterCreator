@@ -631,3 +631,38 @@
   background: var(--c-primary-soft);
   color: var(--c-primary);
 }
+
+/* 숫자 표지판 만들기(docs/12 §2.3): 미리보기 원 + 숫자 칸 + 만들기 */
+.signMaker {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-2);
+  padding: var(--sp-2);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-md);
+  background: var(--c-surface);
+}
+
+.signPreview {
+  width: 40px;
+  height: 40px;
+}
+
+.signInput {
+  min-width: 0;
+  height: 32px;
+  padding: 0 var(--sp-2);
+  border: 1px solid var(--c-border-strong);
+  border-radius: var(--r-sm);
+  background: var(--c-surface);
+  color: var(--c-text);
+  font: 700 16px Pretendard, -apple-system, 'Segoe UI', 'Malgun Gothic', sans-serif;
+  text-align: center;
+}
+
+.signInput:focus {
+  outline: 2px solid var(--c-primary);
+  outline-offset: -1px;
+}

@@ -147,21 +147,72 @@
    중심이 오도록 transform으로 절반씩 당겨 배치합니다. PRD에 이 입력창 자체의 규격이
    없어(캔버스 위에 뜨는 임시 편집 UI라 §9.13 인스펙터 표에도 없음) 다른 입력창과
    비슷한 반경·그림자 토큰만 가져다 썼습니다(PRD 미규정 — 임의로 정함). */
-.labelInput {
+.labelCard {
   position: absolute;
-  transform: translate(-50%, -50%);
+  transform: translateX(-50%);
   z-index: 3;
-  min-width: 48px;
-  max-width: 240px;
-  padding: 2px 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 280px;
+  padding: 8px;
   border: 1.5px solid var(--c-primary);
-  border-radius: var(--r-sm);
+  border-radius: var(--r-md);
   box-shadow: var(--e2);
   background: var(--c-surface);
+}
+
+/* 글자 편집 칸(docs/12 §2.1): 읽기 좋은 16px, 줄 수만큼 늘어나고 8줄 넘으면 스크롤 */
+.labelInput {
+  display: block;
+  width: 100%;
+  min-height: 40px;
+  max-height: 200px;
+  padding: 6px 8px;
+  border: 1px solid var(--c-border-strong);
+  border-radius: var(--r-sm);
+  background: var(--c-surface);
   color: var(--c-text);
-  font: 600 14px Pretendard, -apple-system, 'Segoe UI', 'Malgun Gothic', sans-serif;
+  font: 600 16px/1.4 Pretendard, -apple-system, 'Segoe UI', 'Malgun Gothic', sans-serif;
   text-align: center;
+  resize: none;
+  overflow-y: auto;
   outline: none;
+}
+
+.labelInput:focus {
+  border-color: var(--c-primary);
+}
+
+.labelCardFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.labelCardHint {
+  color: var(--c-text-2);
+  font-size: 12px;
+}
+
+.labelCardDone {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: var(--c-primary);
+  color: #fff;
+  font: 600 13px Pretendard, -apple-system, 'Segoe UI', 'Malgun Gothic', sans-serif;
+  cursor: pointer;
+}
+
+.labelCardDone kbd {
+  font: 500 11px Pretendard, -apple-system, 'Segoe UI', sans-serif;
+  opacity: 0.8;
 }
 
 /* ── 종이 붙이기·떼기 알약 (docs/04 §3.2) ─────────────────────────────

@@ -22,6 +22,7 @@ import type { ChangeEvent, KeyboardEvent } from 'react'
 import type { ReactNode } from 'react'
 import { ChevronRight, CircleAlert, CircleCheck, Minus, Plus, Trash2, TriangleAlert } from 'lucide-react'
 import { Button, Input, Segmented } from '@/components'
+import { TILE_SCALE_OPTIONS, scaleValueOf } from '@/lib/tiles/tileScale'
 import type { SegmentedOption } from '@/components'
 import { useEditorStore } from './editorStore'
 import { useMapIssues } from './useMapIssues'
@@ -427,6 +428,28 @@ function CellFields({ doc, index }: { doc: MapDoc; index: number }) {
   }
 
   /**
+   * 크기(칸 수)를 바꿉니다(docs/12 §2.2). 칸 타일은 늘 1칸이라, 다른 크기를 고르면 그림으로 떼어 내면서
+   * 키웁니다. 정수 칸이면 이 칸의 왼쪽 위 모서리에 맞추고(2칸 = 이 칸부터 오른쪽·아래 2×2칸), ½·1½은 이 칸 가운데에 둡니다.
+   */
+  function handleScale(value: string) {
+    if (!cell) return
+    const scale = Number(value)
+    if (scale === 1) return
+    const { cols, pitch } = doc.board
+    const size = pitch * scale
+    const left = (index % cols) * pitch
+    const top = Math.floor(index / cols) * pitch
+    const x = Number.isInteger(scale) ? left : left + pitch / 2 - size / 2
+    const y = Number.isInteger(scale) ? top : top + pitch / 2 - size / 2
+    const nextCells = doc.cells.slice()
+    nextCells[index] = null
+    const prop: Prop = { asset: cell.art, x, y, w: size, h: size, rot: cell.rot, flip: cell.flip, ...(cell.under ? { under: true } : {}) }
+    const props = [...doc.props, prop]
+    useEditorStore.getState().commitDoc({ ...doc, cells: nextCells, props })
+    useEditorStore.getState().setSelection({ kind: 'prop', index: props.length - 1 })
+  }
+
+  /**
    * 칸 타일을 같은 자리의 자유 배치 그림으로 바꿉니다(docs/09 §2.1). 칸 타일은 칸 단위로만
    * 옮겨지므로, 선에 반 걸쳐 놓으려면 먼저 칸에서 떼어 냅니다. 바꾼 그림이 선택된 채로 남습니다.
    */
@@ -462,6 +485,9 @@ function CellFields({ doc, index }: { doc: MapDoc; index: number }) {
         />
       </Row>
       <ToggleRow label="좌우 반전" checked={cell.flip} onChange={(v) => updateCell({ flip: v })} />
+      <Row label="크기(칸)">
+        <Segmented fullWidth options={TILE_SCALE_OPTIONS} value="1" onChange={handleScale} aria-label="타일 크기(칸 수)" />
+      </Row>
       <Row label="선과 순서">
         <Segmented
           fullWidth
@@ -502,6 +528,18 @@ function PropFields({ doc, index }: { doc: MapDoc; index: number }) {
     }
   }
 
+  /** 크기(칸 수) 단추: 가운데를 그대로 두고 긴 변이 그 칸 수가 되게 비율을 지켜 바꿉니다(docs/12 §2.2). */
+  function handleScale(value: string) {
+    if (!prop) return
+    const long = doc.board.pitch * Number(value)
+    const ratio = long / Math.max(prop.w, prop.h)
+    const w = Math.round(prop.w * ratio)
+    const h = Math.round(prop.h * ratio)
+    const cx = prop.x + prop.w / 2
+    const cy = prop.y + prop.h / 2
+    updateProp({ x: Math.round(cx - w / 2), y: Math.round(cy - h / 2), w, h })
+  }
+
   function handleDelete() {
     const nextProps = doc.props.slice()
     nextProps.splice(index, 1)
@@ -516,6 +554,9 @@ function PropFields({ doc, index }: { doc: MapDoc; index: number }) {
           <Input unit="mm" type="number" value={prop.x} onChange={numberField('x')} aria-label="가로 위치 X" />
           <Input unit="mm" type="number" value={prop.y} onChange={numberField('y')} aria-label="세로 위치 Y" />
         </Pair>
+      </Row>
+      <Row label="크기(칸)">
+        <Segmented fullWidth options={TILE_SCALE_OPTIONS} value={scaleValueOf(prop.w, prop.h, doc.board.pitch)} onChange={handleScale} aria-label="그림 크기(칸 수)" />
       </Row>
       <Row label="크기">
         <Pair>
@@ -589,7 +630,14 @@ function LabelFields({ doc, index }: { doc: MapDoc; index: number }) {
   return (
     <Section title="선택 항목" aside={<NameChip name="글자" />}>
       <Row label="글자">
-        <Input value={label.text} onChange={(e) => updateLabel({ text: e.target.value })} aria-label="글자 내용" />
+        {/* 여러 줄(docs/12 §2.1): Enter로 줄을 바꿉니다 */}
+        <textarea
+          className={styles.labelTextarea}
+          rows={Math.min(6, Math.max(2, label.text.split('\n').length))}
+          value={label.text}
+          onChange={(e) => updateLabel({ text: e.target.value })}
+          aria-label="글자 내용"
+        />
       </Row>
       <Row label="크기">
         <Input

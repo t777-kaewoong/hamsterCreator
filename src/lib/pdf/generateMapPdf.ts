@@ -46,6 +46,7 @@ import { findPrintPlan } from '@/lib/print/plan'
 import type { PrintPlanOption, TileRegion } from '@/lib/print/plan'
 import { getTile, isPlacedAboveLine } from '@/lib/tiles/catalog'
 import { splineControlHandles } from '@/features/canvas/strokeGeometry'
+import { labelLineOffset, labelLines } from '@/lib/model/labelText'
 import { loadPdfFontBytes } from './pdfResources'
 
 const POINTS_PER_MM = 72 / 25.4
@@ -384,9 +385,16 @@ async function drawProps(context: RenderContext, aboveGrid: boolean): Promise<vo
 function drawCenteredText(context: RenderContext, label: Label, haloMm = 0): void {
   if (!label.text) return
   const size = pt(label.size)
-  const width = context.font.widthOfTextAtSize(label.text, size)
   const height = context.font.heightAtSize(size, { descender: true })
   const center = mapPoint(context.layout, [label.x, label.y])
+  // 여러 줄(docs/12 §2.1): 화면과 같은 줄 간격으로, 전체 묶음의 가운데가 라벨 좌표에 옵니다.
+  // PDF는 y가 위로 커지므로 화면의 줄 위치(아래로 +)에 −를 붙입니다.
+  const lines = labelLines(label.text)
+  const placed = lines.map((line, i) => ({
+    line,
+    x: -context.font.widthOfTextAtSize(line, size) / 2,
+    y: -height / 2 - labelLineOffset(i, lines.length) * size,
+  }))
   context.page.pushOperators(pushGraphicsState(), translate(center.x, center.y), rotateDegrees(-label.rot))
 
   if (haloMm > 0) {
@@ -396,24 +404,17 @@ function drawCenteredText(context: RenderContext, label: Label, haloMm = 0): voi
       setLineWidth(pt(haloMm)),
       setLineJoin(LineJoinStyle.Round),
     )
-    context.page.drawText(label.text, {
-      x: -width / 2,
-      y: -height / 2,
-      size,
-      font: context.font,
-      color: rgb(1, 1, 1),
-    })
+    for (const { line, x, y } of placed) {
+      if (line) context.page.drawText(line, { x, y, size, font: context.font, color: rgb(1, 1, 1) })
+    }
     // 다음 글자가 외곽선 모드로 새어 나가지 않도록 반드시 되돌립니다.
     context.page.pushOperators(setTextRenderingMode(TextRenderingMode.Fill))
   }
 
-  context.page.drawText(label.text, {
-    x: -width / 2,
-    y: -height / 2,
-    size,
-    font: context.font,
-    color: label.onLine ? rgb(1, 1, 1) : parseHexColor(label.color),
-  })
+  const color = label.onLine ? rgb(1, 1, 1) : parseHexColor(label.color)
+  for (const { line, x, y } of placed) {
+    if (line) context.page.drawText(line, { x, y, size, font: context.font, color })
+  }
   context.page.pushOperators(popGraphicsState())
 }
 

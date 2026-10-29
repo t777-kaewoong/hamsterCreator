@@ -44,6 +44,7 @@ import { computeMinimapSize, drawMinimap, shouldShowMinimap } from './minimap'
 import type { PixelSize } from './minimap'
 import { getTokens } from './cssTokens'
 import { tileBitmapCache } from './tileBitmaps'
+import { measureLabelBoxMmCached } from './hitTest'
 import styles from './CanvasViewport.module.css'
 
 /** 눈금자 두께(px). 코너 사각형도 이 크기의 정사각형입니다(PRD §9.12: "두께 24px"). */
@@ -174,7 +175,11 @@ export default function CanvasViewport() {
   // 클래스라 실제 <input>은 만들 수 없어서(파일 맨 위 주석 참고), onRequestLabelEdit
   // 콜백으로 "몇 번 라벨을 편집해야 하는지"만 여기로 넘겨받습니다.
   const [editingLabel, setEditingLabel] = useState<{ index: number; isNew: boolean } | null>(null)
-  const labelInputRef = useRef<HTMLInputElement>(null)
+  const labelInputRef = useRef<HTMLTextAreaElement>(null)
+  const labelCardRef = useRef<HTMLDivElement>(null)
+  // 편집을 시작할 때의 글자. 입력하는 동안 캔버스에 바로 보이도록 doc을 조용히(setDoc) 바꾸므로,
+  // 취소하면 이 값으로 되돌리고 확정하면 이 값을 실행취소 기준으로 씁니다(docs/12 §2.1).
+  const labelOriginalTextRef = useRef('')
   // Enter(확정)와 그로 인한 input unmount가 유발하는 blur(확정)가 거의 동시에 발생해
   // commitLabelEdit이 두 번 불릴 수 있습니다(첫 호출로 setEditingLabel(null)을 걸어도
   // 같은 렌더의 클로저가 이미 붙잡고 있는 값은 그대로라 두 번째 호출도 "아직 안 끝난
@@ -350,6 +355,7 @@ export default function CanvasViewport() {
       () => renderer.requestRender(drawMainLayer),
       (index, isNew) => {
         labelEditHandledRef.current = false
+        labelOriginalTextRef.current = useEditorStore.getState().doc?.labels[index]?.text ?? ''
         setEditingLabel({ index, isNew })
       },
     )
@@ -717,7 +723,29 @@ export default function CanvasViewport() {
     if (!el) return
     el.focus()
     el.select()
+    fitLabelInputHeight()
   }, [editingLabel])
+
+  /** 글자 칸 높이를 줄 수에 맞춥니다(최대 높이는 CSS가 막고 그 뒤로는 스크롤). */
+  function fitLabelInputHeight() {
+    const el = labelInputRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    // scrollHeight에는 테두리가 빠져 있어 그만큼 더해야 스크롤 막대가 생기지 않습니다.
+    el.style.height = `${el.scrollHeight + el.offsetHeight - el.clientHeight}px`
+  }
+
+  /** 입력하는 대로 캔버스의 글자도 바뀌게 합니다. 실행취소 기록은 확정할 때 한 번만 남깁니다. */
+  function handleLabelInput(text: string) {
+    fitLabelInputHeight()
+    const current = editingLabelRef.current
+    const currentDoc = useEditorStore.getState().doc
+    const label = current && currentDoc?.labels[current.index]
+    if (!current || !currentDoc || !label) return
+    const nextLabels = currentDoc.labels.slice()
+    nextLabels[current.index] = { ...label, text }
+    useEditorStore.getState().setDoc({ ...currentDoc, labels: nextLabels })
+  }
 
   /**
    * 라벨 편집을 끝냅니다. cancel=false면 입력창의 값을 doc에 반영(확정)하고,
@@ -757,8 +785,21 @@ export default function CanvasViewport() {
         useEditorStore.getState().setDoc({ ...currentDoc, labels: nextLabels })
         useEditorStore.getState().setSelection(null)
       }
-      // isNew가 아니면(기존 라벨을 고치던 중이었으면) 아무것도 안 바꾸고 그냥 편집만 닫습니다.
+      // isNew가 아니면(기존 라벨을 고치던 중이었으면) 입력하며 바뀐 글자를 처음 글자로 되돌립니다.
+      else {
+        const nextLabels = currentDoc.labels.slice()
+        nextLabels[current.index] = { ...label, text: labelOriginalTextRef.current }
+        useEditorStore.getState().setDoc({ ...currentDoc, labels: nextLabels })
+      }
       return
+    }
+
+    // 기존 라벨이면, 입력하는 동안 바뀐 doc을 처음 글자로 되돌려 둔 뒤 commitDoc합니다.
+    // 그래야 실행취소가 "고치기 전 글자"로 돌아갑니다(한 번의 편집 = 실행취소 한 칸).
+    if (!current.isNew) {
+      const restored = currentDoc.labels.slice()
+      restored[current.index] = { ...label, text: labelOriginalTextRef.current }
+      useEditorStore.getState().setDoc({ ...currentDoc, labels: restored })
     }
 
     const nextText = (inputEl?.value ?? label.text).trim()
@@ -875,29 +916,51 @@ export default function CanvasViewport() {
           (() => {
             const label = doc.labels[editingLabel.index]
             const screenPos = viewportRef.current.mapToScreen(label.x, label.y)
+            // 글자 바로 아래에 편집 카드를 띄워, 캔버스의 실제 글자(입력하는 대로 바뀜)를 가리지 않게 합니다.
+            const halfHeightPx = viewportRef.current.mmToPx(measureLabelBoxMmCached(label).hMm) / 2
             return (
-              <input
-                key={editingLabel.index}
-                ref={labelInputRef}
+              <div
+                ref={labelCardRef}
                 // 입력칸 안을 눌러 커서를 옮기는 것은 도구 입력이 아닙니다(handlePointerDown 참고).
                 data-canvas-ui=""
-                className={styles.labelInput}
+                className={styles.labelCard}
                 // labelInputTick 자체는 화면에 쓰이지 않지만, 이 값이 바뀌어야 위 style의
                 // 화면 좌표가 다시 계산됩니다(선언부 주석 참고). 속성으로 한 번 읽어 둡니다.
                 data-viewport-tick={labelInputTick}
-                style={{ left: screenPos.x, top: screenPos.y }}
-                defaultValue={label.text}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault()
+                style={{ left: screenPos.x, top: screenPos.y + halfHeightPx + 10 }}
+              >
+                <textarea
+                  key={editingLabel.index}
+                  ref={labelInputRef}
+                  className={styles.labelInput}
+                  rows={1}
+                  placeholder="글자를 입력하세요"
+                  defaultValue={label.text}
+                  onChange={(e) => handleLabelInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.nativeEvent.isComposing) return
+                    // Enter는 줄바꿈, Ctrl(⌘)+Enter는 완료(docs/12 §2.1).
+                    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                      e.preventDefault()
+                      commitLabelEdit(false)
+                    } else if (e.key === 'Escape') {
+                      e.preventDefault()
+                      commitLabelEdit(true)
+                    }
+                  }}
+                  onBlur={(e) => {
+                    // 카드 안의 "완료" 단추로 옮겨 가는 포커스는 편집을 끝내지 않습니다(그 단추가 끝냄).
+                    if (e.relatedTarget instanceof Node && labelCardRef.current?.contains(e.relatedTarget)) return
                     commitLabelEdit(false)
-                  } else if (e.key === 'Escape') {
-                    e.preventDefault()
-                    commitLabelEdit(true)
-                  }
-                }}
-                onBlur={() => commitLabelEdit(false)}
-              />
+                  }}
+                />
+                <div className={styles.labelCardFooter}>
+                  <span className={styles.labelCardHint}>Enter 줄바꿈 · Esc 취소</span>
+                  <button type="button" className={styles.labelCardDone} onClick={() => commitLabelEdit(false)}>
+                    완료 <kbd>Ctrl+Enter</kbd>
+                  </button>
+                </div>
+              </div>
             )
           })()
         )}

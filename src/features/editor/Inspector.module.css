@@ -395,3 +395,21 @@
   flex: 1;
   min-width: 0;
 }
+
+/* 글자 내용(여러 줄, docs/12 §2.1) */
+.labelTextarea {
+  width: 100%;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--c-border-strong);
+  border-radius: var(--r-md);
+  background: var(--c-surface);
+  color: var(--c-text);
+  font: 500 14px/1.4 Pretendard, -apple-system, 'Segoe UI', 'Malgun Gothic', sans-serif;
+  resize: vertical;
+}
+
+.labelTextarea:focus {
+  outline: 2px solid var(--c-primary);
+  outline-offset: -1px;
+}

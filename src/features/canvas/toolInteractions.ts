@@ -25,6 +25,7 @@ import type { Selection, ShapeKind } from '@/features/editor/editorStore'
 import type { LayerName } from './renderer'
 import type { MapPoint, Viewport } from './viewport'
 import { MARKER_OUTER_DIAMETER_MM, nodeCenterMm } from './drawBoard'
+import { snapScaledCenter } from '@/lib/tiles/tileScale'
 import { hitTest, markerBoxMm, measureLabelBoxMmCached } from './hitTest'
 import { closestEditableSegment, simplifyDouglasPeucker, splineControlHandles } from './strokeGeometry'
 import {
@@ -137,7 +138,7 @@ export interface OverlayState {
   stampGhost: { c: number; r: number; tileId: string; rot: 0 | 90 | 180 | 270; flip: boolean } | null
   /** Shift 자유 배치 고스트(FR-3.8) — 격자를 무시하고 커서(mm 좌표)를 그대로 따라다닙니다.
    *  stampGhost와 배타적으로 하나만 켜집니다(둘 다 "지금 뭘 어디에 찍을지" 미리보기이므로). */
-  freePropGhost: { mx: number; my: number; tileId: string; rot: 0 | 90 | 180 | 270; flip: boolean } | null
+  freePropGhost: { mx: number; my: number; tileId: string; rot: 0 | 90 | 180 | 270; flip: boolean; sizeMm: number } | null
   /** 선 긋기 드래그 중 러버밴드 미리보기(L 도구) */
   linePreview: { fromMx: number; fromMy: number; toMx: number; toMy: number } | null
   /** 영역 채우기 드래그 중 사각 범위(R 도구) */
@@ -198,14 +199,14 @@ function emptyOverlay(): OverlayState {
  * 크기(pitch, 기본 50mm)로 임의로 정했습니다 — 팔레트에서 고르는 타일과 같은 크기로
  * 보이는 편이 자연스럽다고 판단했습니다.
  */
-function buildFreeProp(assetId: string, centerMx: number, centerMy: number, pitch: number, rot: number, flip: boolean): Prop {
+function buildFreeProp(assetId: string, centerMx: number, centerMy: number, sizeMm: number, rot: number, flip: boolean): Prop {
   return {
     asset: assetId,
     // 1mm 단위로 맞춥니다(인스펙터에 긴 소수가 보이지 않게, docs/06 §2.5).
-    x: Math.round(centerMx - pitch / 2),
-    y: Math.round(centerMy - pitch / 2),
-    w: pitch,
-    h: pitch,
+    x: Math.round(centerMx - sizeMm / 2),
+    y: Math.round(centerMy - sizeMm / 2),
+    w: sizeMm,
+    h: sizeMm,
     rot,
     flip,
   }
@@ -1038,7 +1039,7 @@ export class ToolController {
     // cellAtMm(범위 검사)을 거치지 않고 바로 반환합니다.
     const freeGhost = activeTool === 'stamp' && stampTileId && !this.isShiftDown ? this.freeSpot(doc, mapPt, this.isAltDown) : null
     if (activeTool === 'stamp' && stampTileId && freeGhost) {
-      this.overlay.freePropGhost = { mx: freeGhost.mx, my: freeGhost.my, tileId: stampTileId, rot: stampRot, flip: stampFlip }
+      this.overlay.freePropGhost = { mx: freeGhost.mx, my: freeGhost.my, tileId: stampTileId, rot: stampRot, flip: stampFlip, sizeMm: this.stampSizeMm(doc) }
       return
     }
 
@@ -1200,11 +1201,28 @@ export class ToolController {
    * Alt도 아니면 null(칸에 칠함). 반 칸이면 25mm 격자점에 붙여 선·칸 경계에 정확히 걸치게 합니다(docs/09 §2.1).
    */
   private freeSpot(doc: MapDoc, mapPt: MapPoint, alt: boolean): MapPoint | null {
-    const { placeSnap } = useEditorStore.getState()
+    const { placeSnap, stampScale } = useEditorStore.getState()
     if (alt || placeSnap === 'free') return { mx: Math.round(mapPt.mx), my: Math.round(mapPt.my) }
-    if (placeSnap === 'cell') return null
+    if (placeSnap === 'cell') {
+      if (stampScale === 1) return null
+      // 1칸이 아닌 크기는 칸 타일로 못 놓으므로 그림으로 놓되, 모서리를 칸 경계에 붙입니다(docs/12 §2.2).
+      const size = this.stampSizeMm(doc)
+      const { pitch, cols, rows } = doc.board
+      // 가장자리 칸을 눌러도 종이 밖으로 삐져나가지 않게 종이 안으로 밀어 넣습니다(종이보다 크면 그대로).
+      const keepIn = (center: number, boardMm: number) =>
+        size >= boardMm ? center : Math.min(Math.max(center, size / 2), boardMm - size / 2)
+      return {
+        mx: keepIn(snapScaledCenter(mapPt.mx, size, pitch, stampScale), cols * pitch),
+        my: keepIn(snapScaledCenter(mapPt.my, size, pitch, stampScale), rows * pitch),
+      }
+    }
     const step = doc.board.pitch / 2
     return { mx: Math.round(mapPt.mx / step) * step, my: Math.round(mapPt.my / step) * step }
+  }
+
+  /** 팔레트 "크기"로 고른, 새로 놓을 그림 한 변(mm). */
+  private stampSizeMm(doc: MapDoc): number {
+    return doc.board.pitch * useEditorStore.getState().stampScale
   }
 
   /**
@@ -1231,10 +1249,10 @@ export class ToolController {
     if (!spot) return
     if (this.lastFreePropCenter) {
       const dist = Math.hypot(spot.mx - this.lastFreePropCenter.mx, spot.my - this.lastFreePropCenter.my)
-      if (dist < doc.board.pitch) return
+      if (dist < this.stampSizeMm(doc)) return
     }
     this.lastFreePropCenter = spot
-    const prop = { ...buildFreeProp(this.pickStampArt(stampTileId), spot.mx, spot.my, doc.board.pitch, stampRot, stampFlip), ...this.underFlag() }
+    const prop = { ...buildFreeProp(this.pickStampArt(stampTileId), spot.mx, spot.my, this.stampSizeMm(doc), stampRot, stampFlip), ...this.underFlag() }
     this.commitDocChange({ ...doc, props: [...doc.props, prop] }, true)
   }
 
@@ -1360,7 +1378,7 @@ export class ToolController {
       const mapPt = this.viewport.screenToMap(sx, sy)
       const spot = this.freeSpot(doc, mapPt, freeKey)
       if (spot) {
-        this.overlay.freePropGhost = { mx: spot.mx, my: spot.my, tileId: stampTileId, rot: stampRot, flip: stampFlip }
+        this.overlay.freePropGhost = { mx: spot.mx, my: spot.my, tileId: stampTileId, rot: stampRot, flip: stampFlip, sizeMm: this.stampSizeMm(doc) }
       } else {
         const cell = cellAtMm(mapPt.mx, mapPt.my, doc.board.cols, doc.board.rows, doc.board.pitch)
         if (cell) this.overlay.stampGhost = { c: cell.c, r: cell.r, tileId: stampTileId, rot: stampRot, flip: stampFlip }
@@ -1397,7 +1415,7 @@ export class ToolController {
       const spot = this.freeSpot(doc, mapPt, freeKey)
       if (spot) {
         // FR-3.8: Alt를 누른 채 놓거나 "놓는 자리"가 반 칸·자유면 props에 놓습니다.
-        const prop = { ...buildFreeProp(assetId, spot.mx, spot.my, doc.board.pitch, stampRot, stampFlip), ...this.underFlag() }
+        const prop = { ...buildFreeProp(assetId, spot.mx, spot.my, this.stampSizeMm(doc), stampRot, stampFlip), ...this.underFlag() }
         next = { ...doc, props: [...doc.props, prop] }
       } else {
         const cell = cellAtMm(mapPt.mx, mapPt.my, doc.board.cols, doc.board.rows, doc.board.pitch)
