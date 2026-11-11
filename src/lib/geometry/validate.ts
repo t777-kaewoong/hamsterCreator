@@ -447,7 +447,7 @@ function checkPrintSeams(doc: MapDoc): Issue[] {
     issues.push({
       code: 'seam-crosses-curve',
       severity: 'warn',
-      message: `현재 분할선이 자유곡선을 ${plan.curveCrossings}곳 가릅니다. 출력 계획기에서 다른 용지를 확인하세요.`,
+      message: `현재 분할선이 자유곡선을 ${plan.curveCrossings}곳 가릅니다. PDF 저장 화면에서 다른 용지를 확인하세요.`,
     })
   }
 

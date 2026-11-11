@@ -91,7 +91,7 @@ function pt(mm: number): number {
 
 function paperLayout(doc: MapDoc): Layout {
   if (doc.print.layout !== 'single') {
-    throw new PdfGenerationError('나눠 인쇄는 출력 계획기에서 지원합니다')
+    throw new PdfGenerationError('여러 장 PDF는 PDF 저장 화면에서 만듭니다')
   }
 
   const paper = PAPER_SIZES.find((candidate) => candidate.id === doc.print.sheet)
