@@ -86,5 +86,5 @@ export default function App() {
     )
   }
   if (screen === 'start') return <StartScreen onOpen={openDoc} />
-  return <EditorLayout onBack={backToStart} />
+  return <EditorLayout onBack={backToStart} onOpenDoc={(doc) => openDoc(doc)} />
 }

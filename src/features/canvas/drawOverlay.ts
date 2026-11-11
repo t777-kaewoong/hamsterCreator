@@ -320,18 +320,46 @@ export function drawOverlayLayer(
   //    L 도구는 인접 노드에 닿는 즉시 실제 엣지를 확정 짓기 때문에(즉시 반영), 이 선분은
   //    "다음 걸음이 이어질 방향"을 보여주는 역할을 합니다.
   if (overlay.linePreview) {
-    const { fromMx, fromMy, toMx, toMy } = overlay.linePreview
+    const { fromMx, fromMy, toMx, toMy, erase } = overlay.linePreview
     const a = viewport.mapToScreen(fromMx, fromMy)
     const b = viewport.mapToScreen(toMx, toMy)
     ctx.save()
     ctx.globalAlpha = LINE_PREVIEW_ALPHA
-    ctx.strokeStyle = tokens['--c-primary']
+    ctx.strokeStyle = erase ? tokens['--c-danger'] : tokens['--c-primary']
     ctx.lineWidth = Math.max(1, viewport.mmToPx(doc.board.lineWidth))
     ctx.lineCap = 'round'
     ctx.beginPath()
     ctx.moveTo(a.x, a.y)
     ctx.lineTo(b.x, b.y)
     ctx.stroke()
+    ctx.restore()
+  }
+
+  // ③-2 격자선 긋기 호버(docs/14 §2.5) — 누르면 바뀔 토막. 생기면 파랗게, 지워지면 빨갛게.
+  //      끝은 격자점에 작은 원을 찍어 "점에서 점으로 끈다"는 걸 함께 보여 줍니다.
+  if (overlay.lineHover) {
+    const { x0, y0, x1, y1, erase } = overlay.lineHover
+    const a = viewport.mapToScreen(x0, y0)
+    const b = viewport.mapToScreen(x1, y1)
+    const color = erase ? tokens['--c-danger'] : tokens['--c-primary']
+    ctx.save()
+    ctx.globalAlpha = 0.5
+    ctx.strokeStyle = color
+    ctx.lineWidth = Math.max(2, viewport.mmToPx(doc.board.lineWidth + 2))
+    ctx.lineCap = 'butt'
+    ctx.beginPath()
+    ctx.moveTo(a.x, a.y)
+    ctx.lineTo(b.x, b.y)
+    ctx.stroke()
+    ctx.globalAlpha = 1
+    ctx.fillStyle = '#fff'
+    ctx.lineWidth = 2
+    for (const p of [a, b]) {
+      ctx.beginPath()
+      ctx.arc(p.x, p.y, 4, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.stroke()
+    }
     ctx.restore()
   }
 

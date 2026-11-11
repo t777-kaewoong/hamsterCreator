@@ -5,7 +5,7 @@
 // 클릭하면 중간에 아무 대화상자도 없이 바로 편집기로 넘어갑니다(NFR-9) — 그 전환은 이
 // 컴포넌트가 하지 않고, 부모(App.tsx)가 onOpen(doc) 콜백을 받아 화면을 바꿔줍니다.
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Upload } from 'lucide-react'
+import { FolderOpen } from 'lucide-react'
 import { Button, useToast } from '@/components'
 import type { MapDoc } from '@/lib/model/types'
 import { parseMap } from '@/lib/model/serialize'
@@ -19,12 +19,14 @@ import { renderMapThumbnail } from './thumbnail'
 import { tileBitmapCache } from '@/features/canvas/tileBitmaps'
 import styles from './StartScreen.module.css'
 
-/** 프리셋 카드 썸네일을 렌더할 캔버스 CSS 크기. 카드 자체의 실제 폭은 화면 폭에 따라
- *  1fr로 늘었다 줄었다 하지만(최대 960px 안에서 4등분), <img>가 object-fit: contain으로
- *  담기므로 렌더 해상도가 카드의 정확한 실측 폭과 1px도 안 맞아도 비율만 맞으면 깨끗하게
- *  보입니다. 카드 하나의 대략적인 폭(960px 4등분, 16px 간격 3개)에 맞춰 224px로 잡았습니다. */
-const THUMB_CSS_W = 224
-const THUMB_CSS_H = 112
+/** 프리셋 카드 썸네일을 렌더할 캔버스 CSS 크기. 카드 2장이 720px 안에 나란히 놓이므로
+ *  (간격 24px) 카드 폭은 약 348px, 썸네일 영역 높이는 180px입니다(docs/14 §2.1).
+ *  <img>가 object-fit: contain이라 비율만 맞으면 깨끗하게 보입니다. */
+const THUMB_CSS_W = 312
+const THUMB_CSS_H = 160
+
+/** 출처 표기(docs/14 §2.1). 햄스터S 사진·말판 자료는 햄스터스쿨 튜토리얼 자료를 참고했습니다. */
+const SOURCE_URL = 'https://hamster.school/ko/tutorial/'
 
 export interface StartScreenProps {
   /** 프리셋 클릭 / 파일 열기 / 초안 복구로 문서가 정해졌을 때 호출됩니다.
@@ -171,10 +173,10 @@ export default function StartScreen({ onOpen }: StartScreenProps) {
   }, [])
 
   return (
-    <div className={styles.root}>
+    <div className={`${styles.root} ${dragActive ? styles.rootDragActive : ''}`}>
       {latestDraft && (
         <div className={styles.draftBanner} role="status">
-          <span className="t-body">
+          <span className={styles.draftText}>
             저장하지 않은 초안이 있습니다 — <strong>{latestDraft.title}</strong>
           </span>
           <div className={styles.draftActions}>
@@ -188,9 +190,10 @@ export default function StartScreen({ onOpen }: StartScreenProps) {
         </div>
       )}
 
-      <div className={styles.content}>
-        <h1 className={`${styles.title} t-display`}>햄스터S 말판 만들기</h1>
-        <p className={`${styles.subtitle} t-body`}>프리셋을 고르세요. 만들다가 종이를 이어 붙이거나 뗄 수 있어요</p>
+      <main className={styles.content}>
+        {/* 애플 제품 페이지처럼 큰 제목 한 줄 + 넓은 여백 + 큰 카드 두 장(docs/14 §2.1).
+            부제는 후기 11차에서 뺐습니다 — 카드 그림만 봐도 무엇을 고르는지 알 수 있습니다. */}
+        <h1 className={styles.title}>햄스터S 말판 만들기</h1>
 
         <div className={styles.presetGrid}>
           {START_PRESETS.map((preset) => (
@@ -204,29 +207,22 @@ export default function StartScreen({ onOpen }: StartScreenProps) {
                 <img src={thumbnails.get(preset.id)} alt="" className={styles.presetThumbImg} />
               </div>
               <div className={styles.presetInfo}>
-                <span className={`${styles.presetName} t-label`}>
-                  {preset.name}
-                  {preset.isDefault && <span className={`${styles.defaultBadge} t-micro`}>★기본</span>}
-                </span>
-                <span className={`${styles.presetSpec} t-micro`}>{preset.specLabel}</span>
+                <span className={styles.presetName}>{preset.name}</span>
+                <span className={styles.presetSpec}>{preset.specLabel}</span>
               </div>
             </button>
           ))}
         </div>
 
-        {/* 드롭존. 실제 드래그 앤 드롭은 위 window 이벤트가 처리하고, 이 버튼 자체는
-            "드래그를 모르는 사용자"를 위해 클릭하면 같은 파일 선택 대화상자를 엽니다
-            (마우스 드래그가 서툰 학생·저경력 사용자가 실제로 존재하므로). <button>으로
-            만들어 reset.css의 :focus-visible 링을 그대로 물려받고 Enter/Space로도
-            열리게 합니다. */}
-        <button
-          type="button"
-          className={`${styles.dropzone} ${dragActive ? styles.dropzoneActive : ''}`}
-          onClick={() => void openFilePicker()}
-        >
-          <Upload size={24} />
-          <span className="t-body">.hsmap.json 파일을 여기에 놓기</span>
-        </button>
+        {/* 파일 열기. 끌어 놓기는 창 전체(위 window 이벤트)에서 받으므로, 여기에는 커다란 점선
+            상자 대신 버튼 하나와 작은 안내만 둡니다. 드래그가 서툰 사용자는 버튼을 누르면 됩니다. */}
+        <div className={styles.openArea}>
+          <button type="button" className={styles.openButton} onClick={() => void openFilePicker()}>
+            <FolderOpen size={18} aria-hidden="true" />
+            말판 파일 열기
+          </button>
+          <span className={styles.openHint}>또는 .hsmap.json 파일을 창에 끌어 놓기</span>
+        </div>
 
         <input
           ref={fileInputRef}
@@ -242,13 +238,18 @@ export default function StartScreen({ onOpen }: StartScreenProps) {
 
         {/*
           최근 파일 목록(§9.8 항목 5)은 만들지 않았습니다. 이 앱에는 DB나 서버 저장소가
-          없어서(§4 "DB 없음") "최근에 연 파일이 무엇인지" 실제로 기록할 수단이 없습니다
-          (파일시스템 접근 권한을 매번 새로 받아야 하는 브라우저 보안 모델 때문에, 파일
-          경로만 기억해뒀다가 다음에 자동으로 다시 열 수도 없습니다). 있지도 않은 이력을
-          빈 상태로 보여주거나 꾸며낼 수는 없으므로, PRD §9.15의 "최근 파일 없음 → 해당
-          영역 자체를 숨김" 규칙을 그대로 적용해 이 영역을 아예 만들지 않았습니다.
+          없어서 "최근에 연 파일이 무엇인지" 실제로 기록할 수단이 없습니다. PRD §9.15의
+          "최근 파일 없음 → 해당 영역 자체를 숨김" 규칙을 그대로 적용했습니다.
         */}
-      </div>
+      </main>
+
+      <footer className={styles.footer}>
+        햄스터S 자료 출처:{' '}
+        <a href={SOURCE_URL} target="_blank" rel="noopener noreferrer">
+          햄스터스쿨(hamster.school) 튜토리얼
+        </a>
+        {' · '}일부 그림은 AI로 생성했습니다
+      </footer>
     </div>
   )
 }

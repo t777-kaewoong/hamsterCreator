@@ -35,7 +35,7 @@ import { resizeMapDoc } from '@/lib/model/resize'
 import { findPrintPlan } from '@/lib/print/plan'
 import type { PrintPlanOption } from '@/lib/print/plan'
 import { fitsOneSheet, withAutoLayout } from '@/lib/print/sheet'
-import { OBSTACLE_PRESETS, markerPositionMm, obstacleLabel, obstaclePreset, obstaclesOf } from '@/lib/model/obstacles'
+import { MARKER_SCALE_MAX, MARKER_SCALE_MIN, OBSTACLE_PRESETS, markerPositionMm, markerScale, obstacleLabel, obstaclePreset, obstaclesOf } from '@/lib/model/obstacles'
 import { goalDisplayNames } from '@/lib/model/goalNames'
 import { translateSelection } from '@/features/canvas/selectionEdit'
 import type {
@@ -209,6 +209,29 @@ const LOOK_OPTIONS: SegmentedOption[] = [
   { value: 'hamster', label: '햄스터' },
 ]
 
+/** 출발·도착 크기 [− 100% +] 실물(docs/14 §2.6). 10% 단위, 50~200%. */
+function MarkerScaleStepper({ value, onChange }: { value: number; onChange: (next: number) => void }) {
+  const percent = Math.round(value * 100)
+  const step = (delta: number) => {
+    const next = Math.round((value + delta) * 10) / 10
+    onChange(Math.min(MARKER_SCALE_MAX, Math.max(MARKER_SCALE_MIN, next)))
+  }
+  return (
+    <div className={styles.scaleStepper}>
+      <button type="button" className={styles.stepButton} aria-label="크기 줄이기" disabled={value <= MARKER_SCALE_MIN} onClick={() => step(-0.1)}>
+        <Minus size={16} />
+      </button>
+      <span className={`${styles.scaleReadout} t-label`}>{percent}%</span>
+      <button type="button" className={styles.stepButton} aria-label="크기 늘리기" disabled={value >= MARKER_SCALE_MAX} onClick={() => step(0.1)}>
+        <Plus size={16} />
+      </button>
+      <Button variant="ghost" size="sm" disabled={value === 1} onClick={() => onChange(1)}>
+        100%
+      </Button>
+    </div>
+  )
+}
+
 /**
  * 출발·도착(docs/07 §2.2). 캔버스에서 끌어 옮길 수 있고, 여기서는 위치를 mm로 정확히 넣거나
  * 격자점에 다시 맞춥니다. 위치를 바꾸면 정답 코드가 쓰는 칸(cell)도 가장 가까운 격자점으로 따라갑니다.
@@ -299,6 +322,12 @@ function MarkerFields({ doc, selection }: { doc: MapDoc; selection: { kind: 'sta
           />
         </Row>
       )}
+      <Row label="크기" hint={marker.look === 'hamster' ? '100% = 실제 햄스터S 크기(40mm). 캔버스에서 모서리를 끌어도 돼요.' : '캔버스에서 모서리를 끌어도 돼요.'}>
+        <MarkerScaleStepper
+          value={markerScale(marker)}
+          onChange={(next) => patch({ scale: next === 1 ? undefined : next })}
+        />
+      </Row>
       <Row label="모양">
         <Segmented
           fullWidth
@@ -1313,7 +1342,7 @@ function PaperSection() {
         <span />
         <div className={styles.rowControl}>
           <Button variant="secondary" size="sm" className={styles.fullButton} onClick={() => setPrintPlannerOpen(true)}>
-            출력 계획기 열기
+            PDF 저장 화면 열기
           </Button>
         </div>
       </div>

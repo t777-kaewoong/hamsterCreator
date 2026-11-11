@@ -1,29 +1,51 @@
 /*
-  StartScreen.module.css — PRD §9.8 시작 화면 규격.
+  StartScreen.module.css — 시작 화면(docs/14 §2.1, 2026-11-11 후기 11차 "애플스럽게").
 
-  치수는 전부 PRD가 px로 못 박아둔 값이라 임의로 바꾸지 마세요:
-  콘텐츠 최대 폭 960px · 상단 여백 64px · 프리셋 그리드 4열/간격16px/카드높이176px ·
-  썸네일 112px · 카드 하단 정보영역 64px · 드롭존 높이 96px · 드롭존 위 간격 24px.
+  애플 제품 페이지의 공식을 따릅니다: 밝은 회색 바탕(#F5F5F7), 아주 큰 제목, 넓은 여백,
+  모서리가 둥근 흰 카드 몇 장, 그림자는 옅게. 강조색은 버튼 한 곳에만 씁니다.
+  숫자를 바꿀 때는 docs/14 §2.1 표와 함께 고치세요.
 */
 
 .root {
+  --apple-bg: #f5f5f7;
+  --apple-text: #1d1d1f;
+  --apple-text-2: #6e6e73;
+  --apple-blue: #0071e3;
+  --apple-blue-hover: #0077ed;
+
   min-height: 100%;
   display: flex;
   flex-direction: column;
-  background: var(--c-bg);
+  background: var(--apple-bg);
+  color: var(--apple-text);
+  /* 끌어 놓는 중 테두리가 갑자기 생겨 내용이 밀리지 않도록 처음부터 투명 테두리를 둡니다. */
+  outline: 3px solid transparent;
+  outline-offset: -3px;
+  transition: outline-color var(--t-base);
 }
 
-/* ── 초안 복구 배너 (§9.16) ─────────────────────────────────────────── */
+/* 파일을 창에 끌고 있을 때 화면 전체 가장자리를 옅게 칠해 "여기 놓으면 된다"를 알립니다. */
+.rootDragActive {
+  outline-color: rgba(0, 113, 227, 0.55);
+}
+
+/* ── 초안 복구 배너 ─────────────────────────────────────────────── */
 .draftBanner {
   flex-shrink: 0;
-  height: 56px;
+  min-height: 52px;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: center;
-  gap: var(--sp-6);
-  padding: 0 var(--sp-6);
-  background: var(--c-warn-soft);
-  border-bottom: 1px solid var(--c-border);
+  gap: var(--sp-3) var(--sp-6);
+  padding: var(--sp-2) var(--sp-6);
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: saturate(180%) blur(20px);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+.draftText {
+  font-size: 14px;
+  color: var(--apple-text);
 }
 .draftActions {
   display: flex;
@@ -31,136 +53,152 @@
   flex-shrink: 0;
 }
 
-/* ── 콘텐츠 영역: 상단 중앙 정렬, 최대 폭 960px ─────────────────────── */
+/* ── 본문 ───────────────────────────────────────────────────────── */
 .content {
+  flex: 1;
   width: 100%;
-  max-width: 960px;
+  max-width: 720px;
   margin: 0 auto;
-  padding: 64px var(--sp-6) var(--sp-12);
+  padding: clamp(48px, 12vh, 120px) var(--sp-6) var(--sp-12);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 
 .title {
+  font-size: clamp(34px, 6vw, 48px);
+  line-height: 1.1;
+  font-weight: 700;
+  letter-spacing: -0.03em;
   text-align: center;
-  color: var(--c-text);
+  color: var(--apple-text);
 }
 
-/* 부제는 body 크기 + 보조 글자색 한 줄. PRD: "두 줄을 넘기지 않습니다" — 그래서 설명
-   문단을 붙이지 않고 딱 한 문장만 씁니다(StartScreen.tsx). */
-.subtitle {
-  margin-top: var(--sp-2);
-  text-align: center;
-  color: var(--c-text-2);
-}
-
-/* ── 프리셋 카드 그리드 ─────────────────────────────────────────────── */
+/* ── 프리셋 카드 두 장 ───────────────────────────────────────────── */
 .presetGrid {
-  margin-top: var(--sp-8);
+  width: 100%;
+  margin-top: clamp(32px, 6vh, 56px);
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: var(--sp-4);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sp-6);
 }
 
 .presetCard {
   display: flex;
   flex-direction: column;
-  height: 176px;
   padding: 0;
   overflow: hidden;
-  background: var(--c-surface);
-  border: 1px solid var(--c-border);
-  border-radius: var(--r-lg);
+  background: #fff;
+  border: none;
+  border-radius: 20px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
   cursor: pointer;
   text-align: left;
   transition:
-    border-color var(--t-fast),
-    transform var(--t-fast),
-    box-shadow var(--t-fast);
+    transform 240ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    box-shadow 240ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 .presetCard:hover {
-  border-color: var(--c-primary);
-  transform: translateY(-2px);
-  box-shadow: var(--e2);
+  transform: translateY(-4px);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.12);
+}
+.presetCard:active {
+  transform: translateY(-1px) scale(0.99);
 }
 
-/* 썸네일 영역: 캔버스 배경색(종이보다 어둡게 해서 종이를 띄우는 것과 같은 원리,
-   tokens.css의 --c-canvas-bg 설명 참고) 위에 실제로 렌더한 맵 이미지를 contain으로. */
 .presetThumb {
-  flex-shrink: 0;
-  height: 112px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--c-canvas-bg);
-  padding: var(--sp-2);
+  height: 180px;
+  margin: 8px 8px 0;
+  padding: 10px;
+  border-radius: 14px;
+  background: var(--apple-bg);
 }
 
+/* 썸네일은 배경이 투명한 그림(흰 종이만 그려짐)이라 회색 바탕 위에 종이가 떠 보입니다. */
 .presetThumbImg {
-  max-width: 100%;
-  max-height: 100%;
+  display: block;
+  width: 100%;
+  height: 100%;
   object-fit: contain;
-  /* PRD: "아트보드에 --e1 그림자를 줍니다" — 이미지 자체가 아트보드(종이)를 그대로 담고
-     있으므로, 이미지 태그에 바로 그림자를 얹으면 종이 모양 그대로 그림자가 집니다. */
-  box-shadow: var(--e1);
 }
 
 .presetInfo {
-  flex: 1;
-  min-height: 0;
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  gap: var(--sp-1);
-  padding: 0 var(--sp-3);
+  gap: 2px;
+  padding: 14px 18px 18px;
 }
 
 .presetName {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-1);
-  color: var(--c-text);
-}
-
-/* "A4 기본" 카드에만 붙는 ★기본 표시. 작은 알약 칩으로 — PRD가 정확한 모양을 정해주지
-   않아 다른 칩들과 통일감 있게 primary-soft 배경의 작은 칩으로 임의 결정했습니다. */
-.defaultBadge {
-  padding: 1px 6px;
-  border-radius: var(--r-pill);
-  background: var(--c-primary-soft);
-  color: var(--c-primary);
-  white-space: nowrap;
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--apple-text);
 }
 
 .presetSpec {
-  color: var(--c-text-3);
+  font-size: 13px;
+  color: var(--apple-text-2);
 }
 
-/* ── 파일 열기 드롭존 ───────────────────────────────────────────────── */
-.dropzone {
-  margin-top: var(--sp-6);
-  width: 100%;
-  height: 96px;
+/* ── 파일 열기 ──────────────────────────────────────────────────── */
+.openArea {
+  margin-top: var(--sp-10);
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: center;
   gap: var(--sp-2);
-  background: var(--c-surface-2);
-  border: 2px dashed var(--c-border-strong);
-  border-radius: var(--r-lg);
-  color: var(--c-text-2);
+}
+
+.openButton {
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 0 22px;
+  border: none;
+  border-radius: 980px;
+  background: var(--apple-blue);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 500;
   cursor: pointer;
-  transition:
-    border-color var(--t-fast),
-    background-color var(--t-fast);
+  transition: background-color var(--t-fast);
 }
-.dropzone:hover {
-  border-color: var(--c-border-strong);
-  background: var(--c-surface-3);
+.openButton:hover {
+  background: var(--apple-blue-hover);
 }
-.dropzoneActive {
-  border-color: var(--c-primary);
-  background: var(--c-primary-soft);
+
+.openHint {
+  font-size: 13px;
+  color: var(--apple-text-2);
 }
 
 .hiddenFileInput {
   display: none;
+}
+
+/* ── 출처(맨 아래 작은 글씨) ─────────────────────────────────────── */
+.footer {
+  flex-shrink: 0;
+  padding: var(--sp-4) var(--sp-6) var(--sp-6);
+  text-align: center;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #86868b;
+}
+.footer a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.footer a:hover {
+  color: var(--apple-text);
+}
+
+/* 좁은 화면(태블릿 세로)에서는 카드를 한 줄에 하나씩. */
+@media (max-width: 560px) {
+  .presetGrid {
+    grid-template-columns: 1fr;
+  }
 }

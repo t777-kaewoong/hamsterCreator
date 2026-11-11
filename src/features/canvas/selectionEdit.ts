@@ -8,7 +8,8 @@
 import type { Cell, Label, MapDoc, Obstacle, Prop, Stroke } from '@/lib/model/types'
 import type { Selection } from '@/features/editor/editorStore'
 import { shiftStroke } from '@/lib/model/resize'
-import { markerPositionMm, obstaclesOf } from '@/lib/model/obstacles'
+import { MARKER_SCALE_MAX, MARKER_SCALE_MIN, markerPositionMm, markerScale, obstaclesOf } from '@/lib/model/obstacles'
+import { markerBoxMm } from './hitTest'
 import { cellAtMm, nearestNode } from './gridMath'
 import { strokeBounds } from './strokeGeometry'
 
@@ -60,6 +61,12 @@ export function editBoxOf(doc: MapDoc, selection: Selection): EditBox | null {
     const o = obstaclesOf(doc)[selection.index]
     return o ? { cx: o.cx, cy: o.cy, w: o.d, h: o.d, rot: 0 } : null
   }
+  if (selection.kind === 'start' || selection.kind === 'goal') {
+    const marker = selection.kind === 'start' ? doc.markers.start : doc.markers.goals[selection.index]
+    if (!marker) return null
+    const box = markerBoxMm(marker, doc.board.pitch)
+    return { cx: box.cx, cy: box.cy, w: box.w, h: box.h, rot: 0 }
+  }
   if (selection.kind === 'stroke') {
     const stroke = findStroke(doc, selection.id)
     if (!stroke) return null
@@ -75,6 +82,8 @@ export function editBoxOf(doc: MapDoc, selection: Selection): EditBox | null {
 export function handlesFor(doc: MapDoc, selection: Selection): HandleId[] {
   if (!selection) return []
   if (selection.kind === 'obstacle') return CORNERS
+  // 출발·도착은 비율을 지킨 채 키우고 줄이므로 모서리 4개만(docs/14 §2.6).
+  if (selection.kind === 'start' || selection.kind === 'goal') return CORNERS
   if (selection.kind === 'prop' || selection.kind === 'cell') return [...CORNERS, ...EDGES]
   if (selection.kind === 'stroke') {
     const stroke = findStroke(doc, selection.id)
@@ -117,7 +126,7 @@ export function detachCellToProp(doc: MapDoc, index: number): { doc: MapDoc; pro
 /** 원·장애물은 늘 가로세로가 같아야 합니다. */
 export function isUniform(doc: MapDoc, selection: Selection): boolean {
   if (!selection) return false
-  if (selection.kind === 'obstacle') return true
+  if (selection.kind === 'obstacle' || selection.kind === 'start' || selection.kind === 'goal') return true
   return selection.kind === 'stroke' && findStroke(doc, selection.id)?.kind === 'circle'
 }
 
@@ -167,6 +176,27 @@ export function resizeBox(orig: EditBox, handle: HandleId, px: number, py: numbe
     h,
     rot: orig.rot,
   }
+}
+
+/**
+ * 출발·도착 크기 핸들(docs/14 §2.6). 다른 대상과 달리 **중심을 고정**합니다 — 출발·도착은 격자점에
+ * 놓이는 일이 많아, 맞은편 모서리를 고정하면 키우는 순간 격자점에서 벗어나 버리기 때문입니다.
+ * 끈 점이 상자 가운데에서 떨어진 정도(가로·세로 중 큰 쪽)를 배율로 씁니다. 5% 단위로 반올림.
+ */
+export function resizeMarkerScale(doc: MapDoc, selection: Selection, orig: EditBox, px: number, py: number): MapDoc {
+  if (!selection || (selection.kind !== 'start' && selection.kind !== 'goal')) return doc
+  const marker = selection.kind === 'start' ? doc.markers.start : doc.markers.goals[selection.index]
+  if (!marker) return doc
+  const ratio = Math.max(Math.abs(px - orig.cx) / (orig.w / 2), Math.abs(py - orig.cy) / (orig.h / 2))
+  const raw = markerScale(marker) * ratio
+  const scale = Math.min(MARKER_SCALE_MAX, Math.max(MARKER_SCALE_MIN, Math.round(raw * 20) / 20))
+  // 100%로 돌아오면 값을 빼 둡니다(예전 파일과 똑같이 저장되도록).
+  const { scale: _old, ...rest } = marker
+  const next = scale === 1 ? rest : { ...rest, scale }
+  if (selection.kind === 'start') return { ...doc, markers: { ...doc.markers, start: next as typeof doc.markers.start } }
+  const goals = doc.markers.goals.slice()
+  goals[selection.index] = next as (typeof goals)[number]
+  return { ...doc, markers: { ...doc.markers, goals } }
 }
 
 /** 새 상자를 선택 대상에 써 넣은 문서. */

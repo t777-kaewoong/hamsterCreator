@@ -680,3 +680,72 @@
 .keyHintsFold .keyHints {
   margin-top: var(--sp-2);
 }
+
+/* ── 격자선 긋기: 긋기/지우기 전환 + 그림 사용법(docs/14 §2.5) ── */
+.lineModeSwitch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 4px;
+  border-radius: var(--r-lg);
+  background: var(--c-surface-3);
+}
+.lineModeButton {
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  border: none;
+  border-radius: var(--r-md);
+  background: transparent;
+  color: var(--c-text-2);
+  cursor: pointer;
+  transition: background-color var(--t-fast), color var(--t-fast);
+}
+.lineModeButton:hover {
+  color: var(--c-text);
+}
+.lineModeOn {
+  background: var(--c-surface);
+  color: var(--c-primary);
+  box-shadow: var(--e1);
+}
+.lineModeEraseOn {
+  background: var(--c-surface);
+  color: var(--c-danger);
+  box-shadow: var(--e1);
+}
+.lineHowTo {
+  list-style: none;
+  margin: var(--sp-3) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.lineHowTo li {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-2);
+  border-radius: var(--r-md);
+  background: var(--c-surface-2);
+}
+.lineHowTo li svg {
+  width: 56px;
+  height: 32px;
+}
+.lineHowTo li .t-caption {
+  color: var(--c-text-2);
+  line-height: 1.4;
+}
+.lineHowTo li.lineHowToNote {
+  display: block;
+  background: transparent;
+  padding: 0 var(--sp-1);
+}
+.lineHowTo li.lineHowToNote .t-caption {
+  color: var(--c-text-3);
+}

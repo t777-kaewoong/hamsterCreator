@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowDown, ArrowUp, Clipboard, Download, MapPin, Route } from 'lucide-react'
+import { ArrowDown, ArrowUp, Clipboard, Construction, Download, MapPin, Route } from 'lucide-react'
 import { Button, Modal, Segmented, useToast } from '@/components'
 import { createGridAnswer, createLineTracerAnswer } from '@/lib/answer/generateAnswer'
 import type { GridAnswer } from '@/lib/answer/generateAnswer'
@@ -10,6 +10,14 @@ import { useEditorStore } from '@/features/editor/editorStore'
 import styles from './AnswerModal.module.css'
 
 type AnswerMode = 'grid' | 'line'
+
+/**
+ * 격자 정답을 보여 줄지(docs/14 §2.8).
+ * [2026-11-11 후기 11차] 지금 격자 정답은 격자선만 보고 타일·장애물을 전혀 인식하지 못해, 실제 말판과
+ * 다른 길을 정답으로 내놓습니다. 기능을 다시 만들 때까지 "기능 구현중" 안내만 보여 줍니다.
+ * 계산 코드(createGridAnswer)와 화면 코드는 그대로 두었으니 true로 바꾸면 예전 화면이 돌아옵니다.
+ */
+const GRID_ANSWER_READY = false
 
 function PathDiagram({ doc, answer }: { doc: MapDoc; answer: GridAnswer }) {
   const point = ([column, row]: NodeCoord) => `${column + 0.5},${row + 0.5}`
@@ -86,9 +94,9 @@ export default function AnswerModal() {
 
   if (!doc || !gridResult) return null
   const currentDoc = doc
-  const gridAnswer = gridResult.ok ? gridResult.answer : null
+  const gridAnswer = GRID_ANSWER_READY && gridResult.ok ? gridResult.answer : null
   const gridError = gridResult.ok ? null : gridResult.error
-  const modes = [{ value: 'grid', label: `격자 정답${gridResult.ok ? '' : ' · 확인 필요'}` }]
+  const modes = [{ value: 'grid', label: GRID_ANSWER_READY ? `격자 정답${gridResult.ok ? '' : ' · 확인 필요'}` : '격자 정답 · 구현중' }]
   if (lineAnswer) modes.push({ value: 'line', label: '라인트레이싱' })
   const activeMode = mode === 'line' && lineAnswer ? 'line' : 'grid'
   const activeCode = activeMode === 'line' ? lineAnswer?.pythonCode ?? '' : gridAnswer?.pythonCode ?? ''
@@ -97,7 +105,7 @@ export default function AnswerModal() {
     ? `트랙 ${(lineAnswer.lengthMm / 10).toFixed(1)}cm`
     : gridAnswer
       ? `${gridAnswer.moveCount}칸 · 회전 ${gridAnswer.rotationCount}회`
-      : '정답 생성 조건을 확인하세요'
+      : GRID_ANSWER_READY ? '정답 생성 조건을 확인하세요' : '격자 정답은 기능 구현중입니다'
 
   function moveGoal(index: number, direction: -1 | 1) {
     const nextIndex = index + direction
@@ -152,7 +160,15 @@ export default function AnswerModal() {
       <div className={styles.modalBody}>
         <Segmented options={modes} value={activeMode} onChange={(value) => setMode(value as AnswerMode)} aria-label="정답 종류" />
 
-        {activeMode === 'grid' && (
+        {activeMode === 'grid' && !GRID_ANSWER_READY && (
+          <div className={styles.pendingCard} role="status">
+            <Construction size={32} aria-hidden="true" />
+            <strong className="t-h2">기능 구현중</strong>
+            <p className="t-body">타일·장애물까지 인식하는 격자 정답은 준비 중이에요. 지금은 라인트레이싱 안내만 쓸 수 있어요.</p>
+          </div>
+        )}
+
+        {activeMode === 'grid' && GRID_ANSWER_READY && (
           <div className={styles.gridLayout}>
             <section className={styles.previewPane}>
               <div className={styles.sectionTitle}><Route size={17} /><h3 className="t-h2">최단 경로</h3></div>

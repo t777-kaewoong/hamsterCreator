@@ -37,6 +37,17 @@ export function obstaclesOf(doc: MapDoc): Obstacle[] {
   return doc.obstacles ?? []
 }
 
+/** 출발·도착 크기 배율 범위(docs/14 §2.6). 1 = 기본(햄스터는 실제 로봇 40mm). */
+export const MARKER_SCALE_MIN = 0.5
+export const MARKER_SCALE_MAX = 2
+
+/** 출발·도착의 크기 배율. 값이 없으면(예전 파일) 1, 범위를 벗어나면 잘라 냅니다. */
+export function markerScale(marker: { scale?: number }): number {
+  const value = marker.scale
+  if (typeof value !== 'number' || !Number.isFinite(value)) return 1
+  return Math.min(MARKER_SCALE_MAX, Math.max(MARKER_SCALE_MIN, value))
+}
+
 /** 출발·도착이 실제로 그려지는 위치(mm). 자유 위치(at)가 있으면 그 값, 없으면 격자점. */
 export function markerPositionMm(marker: Pick<StartMarker | GoalMarker, 'cell' | 'at'>, pitch: number): Point {
   if (marker.at) return [marker.at[0], marker.at[1]]

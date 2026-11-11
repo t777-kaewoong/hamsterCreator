@@ -133,6 +133,8 @@ interface EditorState {
   placeSnap: PlaceSnap
   /** 켜면 새로 놓는 타일·그림을 격자선 아래에 깝니다(docs/09 §2.4). */
   stampUnder: boolean
+  /** 격자선 긋기(L) 도구가 지우기 모드인지(docs/14 §2.5). Alt는 누르는 동안만 반대로 동작합니다. */
+  lineErase: boolean
   /** 켜면 도형을 그릴 때 모서리가 반 칸(25mm) 격자에 붙습니다. */
   shapeSnap: boolean
   /** 켜면 타일 칠하기·영역 채우기가 같은 테마 타일을 무작위로 섞습니다(예전 Alt+R). */
@@ -203,6 +205,7 @@ interface EditorState {
   setMixFill: (on: boolean) => void
   setPlaceSnap: (mode: PlaceSnap) => void
   setStampUnder: (on: boolean) => void
+  setLineErase: (on: boolean) => void
   setShapeSnap: (on: boolean) => void
   setDoc: (doc: MapDoc | null) => void
   setSaveState: (saveState: SaveState) => void
@@ -315,6 +318,7 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
   mixFill: false,
   placeSnap: 'cell',
   stampUnder: false,
+  lineErase: false,
   shapeSnap: false,
   storeKind: mapStore.kind,
   canOverwrite: mapStore.canOverwrite,
@@ -354,6 +358,7 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
   setMixFill: (on) => set({ mixFill: on }),
   setPlaceSnap: (mode) => set({ placeSnap: mode }),
   setStampUnder: (on) => set({ stampUnder: on }),
+  setLineErase: (on) => set({ lineErase: on }),
   setShapeSnap: (on) => set({ shapeSnap: on }),
   setDoc: (doc) => set({ doc }),
   setSaveState: (saveState) => set({ saveState }),

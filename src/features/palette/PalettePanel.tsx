@@ -100,7 +100,7 @@ const TOOL_HELP: Record<ToolId, { title: string; description: string; hint?: str
   marker: { title: '출발·도착·장애물', description: '종류를 고른 뒤 원하는 격자점을 클릭하세요.', icon: Flag },
   shape: { title: '도형', description: '도형을 고르고 캔버스에서 드래그해 크기를 정하세요.', hint: '다 그리면 선택 도구로 바뀌어 바로 옮기거나 크기를 바꿀 수 있어요.', icon: Circle },
   select: { title: '선택', description: '눌러서 고르고, 끌어서 옮기고, 핸들로 크기를 바꿉니다.', icon: MousePointer2 },
-  lineDraw: { title: '격자선 긋기', description: '격자점 사이를 드래그해 로봇이 칸 단위로 다니는 길을 잇습니다.', hint: '정답 코드는 이 선을 따라 계산해요. 격자 바깥이나 종이 이음매 쪽 반 칸을 클릭하면 진입로가 생깁니다. Alt는 지우기.', icon: Grid3x3 },
+  lineDraw: { title: '격자선 긋기', description: '로봇이 칸 단위로 다니는 길입니다. 파랗게 보이는 곳이 생기고, 빨갛게 보이는 곳이 지워져요.', icon: Grid3x3 },
   eyedropper: { title: '타일 집기', description: '캔버스에 놓인 타일을 클릭해 같은 타일을 가져옵니다.', hint: '타일을 집으면 자동으로 타일 배치 도구로 바뀝니다.', icon: Pipette },
   eraser: { title: '지우개', description: '빨갛게 보이는 것을 누르거나 문질러 지웁니다.', hint: '격자선은 한 토막씩 지워져요. + 모양의 왼쪽 팔을 누르면 ㅏ 모양이 됩니다. 끌면 처음 누른 것과 같은 종류만 지워요.', icon: Eraser },
   text: { title: '글자', description: '글자를 넣을 위치를 클릭한 뒤 바로 입력합니다.', hint: '입력 후 오른쪽 선택 항목에서 크기·색·회전을 바꿀 수 있어요.', icon: Type },
@@ -284,6 +284,7 @@ export default function PalettePanel() {
   const placeSnap = useEditorStore((s) => s.placeSnap)
   const setPlaceSnap = useEditorStore((s) => s.setPlaceSnap)
   const stampUnder = useEditorStore((s) => s.stampUnder)
+  const lineErase = useEditorStore((s) => s.lineErase)
   const setStampUnder = useEditorStore((s) => s.setStampUnder)
   const shapeSnap = useEditorStore((s) => s.shapeSnap)
   const setShapeSnap = useEditorStore((s) => s.setShapeSnap)
@@ -859,7 +860,26 @@ export default function PalettePanel() {
       }
       return (
         <>
-          <p className={`${styles.contextHint} ${styles.contextHintFirst} t-caption`}>{TOOL_HELP.lineDraw.hint}</p>
+          {/* 긋기/지우기 전환(docs/14 §2.5). 예전에는 지우기가 Alt 숨은 조작뿐이라 헷갈렸습니다. */}
+          <div className={styles.lineModeSwitch} role="radiogroup" aria-label="격자선 긋기 모드">
+            {([
+              { erase: false, label: '긋기', icon: Pencil },
+              { erase: true, label: '지우기', icon: Eraser },
+            ] as const).map(({ erase, label, icon: ModeIcon }) => (
+              <button
+                key={label}
+                type="button"
+                role="radio"
+                aria-checked={lineErase === erase}
+                className={`${styles.lineModeButton} ${lineErase === erase ? (erase ? styles.lineModeEraseOn : styles.lineModeOn) : ''}`}
+                onClick={() => useEditorStore.getState().setLineErase(erase)}
+              >
+                <ModeIcon size={18} aria-hidden="true" />
+                <span className="t-label">{label}</span>
+              </button>
+            ))}
+          </div>
+          <LineHowTo erase={lineErase} />
           {sheets && sheet && (
             <div className={styles.contextSection}>
               <h3 className="t-label">종이별로 한꺼번에</h3>
@@ -1301,4 +1321,68 @@ async function squareCropAndResize(file: File): Promise<UserAsset> {
   } finally {
     bitmap.close()
   }
+}
+
+/**
+ * 격자선 긋기 사용법 그림 3개(docs/14 §2.5). 글 한 덩어리 대신 "무엇을 하면 → 무엇이 된다"를
+ * 작은 그림으로 보여 줍니다. 지우기 모드면 선 색을 빨강으로 바꿔 같은 그림을 지우기 설명으로 씁니다.
+ */
+function LineHowTo({ erase }: { erase: boolean }) {
+  const color = erase ? 'var(--c-danger)' : 'var(--c-primary)'
+  const dot = (cx: number, cy: number) => <circle cx={cx} cy={cy} r="3" fill="#fff" stroke="var(--c-text-3)" strokeWidth="1.5" />
+  const items = [
+    {
+      key: 'drag',
+      text: erase ? '점에서 점으로 끌면 지나간 선이 지워져요' : '점에서 점으로 끌면 선이 이어져요',
+      svg: (
+        <svg viewBox="0 0 56 32" aria-hidden="true">
+          <path d="M8 24 H28 V8 H48" fill="none" stroke={color} strokeWidth="5" strokeOpacity="0.55" />
+          {dot(8, 24)}
+          {dot(28, 24)}
+          {dot(28, 8)}
+          {dot(48, 8)}
+          <path d="M44 3 l6 5 -6 5" fill="none" stroke="var(--c-text-2)" strokeWidth="1.5" />
+        </svg>
+      ),
+    },
+    {
+      key: 'click',
+      text: erase ? '선 한 토막을 누르면 지워져요' : '선 한 토막을 누르면 생기고, 다시 누르면 지워져요',
+      svg: (
+        <svg viewBox="0 0 56 32" aria-hidden="true">
+          <line x1="8" y1="16" x2="28" y2="16" stroke="var(--c-text)" strokeWidth="5" />
+          <line x1="28" y1="16" x2="48" y2="16" stroke={color} strokeWidth="5" strokeOpacity="0.55" />
+          {dot(8, 16)}
+          {dot(28, 16)}
+          {dot(48, 16)}
+          <path d="M38 13 l0 14 4 -4 4 6 2 -1 -4 -6 5 0 z" fill="var(--c-text)" stroke="#fff" strokeWidth="0.8" />
+        </svg>
+      ),
+    },
+    {
+      key: 'stub',
+      text: '종이 가장자리 반 칸을 누르면 진입로(밖으로 나가는 선)',
+      svg: (
+        <svg viewBox="0 0 56 32" aria-hidden="true">
+          <rect x="14" y="4" width="38" height="24" fill="#fff" stroke="var(--c-border-strong)" />
+          <line x1="14" y1="16" x2="30" y2="16" stroke={color} strokeWidth="5" strokeOpacity="0.55" />
+          <line x1="30" y1="16" x2="52" y2="16" stroke="var(--c-text)" strokeWidth="5" />
+          {dot(30, 16)}
+        </svg>
+      ),
+    },
+  ]
+  return (
+    <ul className={styles.lineHowTo}>
+      {items.map((item) => (
+        <li key={item.key}>
+          {item.svg}
+          <span className="t-caption">{item.text}</span>
+        </li>
+      ))}
+      <li className={styles.lineHowToNote}>
+        <span className="t-caption">Alt를 누르고 있으면 잠깐 {erase ? '긋기' : '지우기'}로 바뀌어요. 정답 코드는 이 선을 따라 계산해요.</span>
+      </li>
+    </ul>
+  )
 }

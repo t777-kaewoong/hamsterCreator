@@ -7,7 +7,7 @@
 // 않아 검사하지 않습니다 — 위치를 옮기는 인스펙터 UI가 아직 없고, M 도구가 클릭으로
 // 바로 지정/토글하는 방식이라 "먼저 선택한 뒤 조작"하는 흐름 자체가 필요 없습니다.
 import type { GoalMarker, Label, MapDoc, StartMarker } from '@/lib/model/types'
-import { markerPositionMm, obstaclesOf } from '@/lib/model/obstacles'
+import { markerPositionMm, markerScale, obstaclesOf } from '@/lib/model/obstacles'
 import { HAMSTER_IMAGE_H_MM, HAMSTER_IMAGE_W_MM } from '@/lib/markers/hamsterArt'
 import type { Selection } from '@/features/editor/editorStore'
 import { cellAtMm } from './gridMath'
@@ -68,11 +68,12 @@ function pointInRotatedRect(
  */
 export function markerBoxMm(marker: StartMarker | GoalMarker, pitch: number): { cx: number; cy: number; w: number; h: number } {
   const [cx, cy] = markerPositionMm(marker, pitch)
-  if (marker.look !== 'hamster') return { cx, cy, w: MARKER_OUTER_DIAMETER_MM, h: MARKER_OUTER_DIAMETER_MM }
+  const k = markerScale(marker)
+  if (marker.look !== 'hamster') return { cx, cy, w: MARKER_OUTER_DIAMETER_MM * k, h: MARKER_OUTER_DIAMETER_MM * k }
   const sideways = 'heading' in marker && (marker.heading === 'E' || marker.heading === 'W')
   return sideways
-    ? { cx, cy, w: HAMSTER_IMAGE_H_MM, h: HAMSTER_IMAGE_W_MM }
-    : { cx, cy, w: HAMSTER_IMAGE_W_MM, h: HAMSTER_IMAGE_H_MM }
+    ? { cx, cy, w: HAMSTER_IMAGE_H_MM * k, h: HAMSTER_IMAGE_W_MM * k }
+    : { cx, cy, w: HAMSTER_IMAGE_W_MM * k, h: HAMSTER_IMAGE_H_MM * k }
 }
 
 /** 장애물 점선 테두리를 잡았다고 볼 여유(mm)와, 가운데를 잡았다고 볼 반경(mm). */

@@ -10,7 +10,7 @@
 // 출발·도착 마커(markers, FR-4.3/4.4) · 자유곡선(strokes, FR-10).
 import type { Direction, Label, MapDoc } from '@/lib/model/types'
 import { goalDisplayNames } from '@/lib/model/goalNames'
-import { markerPositionMm, obstacleLabel, obstaclesOf } from '@/lib/model/obstacles'
+import { markerPositionMm, markerScale, obstacleLabel, obstaclesOf } from '@/lib/model/obstacles'
 import {
   HAMSTER_BODY_PATH,
   HAMSTER_CAPTION_RADIUS_MM,
@@ -377,9 +377,10 @@ function drawMarkerCaption(
  * 사진 테두리가 흐려 흰 종이 위에서 묻히므로 몸통 윤곽을 검은 선으로 한 번 더 긋습니다.
  */
 let hamsterBodyPath: Path2D | null = null
-function drawHamsterMarker(ctx: CanvasRenderingContext2D, viewport: Viewport, x: number, y: number, heading: Direction): void {
+function drawHamsterMarker(ctx: CanvasRenderingContext2D, viewport: Viewport, x: number, y: number, heading: Direction, k = 1): void {
   hamsterBodyPath ??= new Path2D(HAMSTER_BODY_PATH)
-  const scale = viewport.mmToPx(1)
+  // k = 출발·도착 크기 배율(docs/14 §2.6). 사진·윤곽을 통째로 키우거나 줄입니다.
+  const scale = viewport.mmToPx(1) * k
   const bitmap = tileBitmapCache.get(HAMSTER_IMAGE_ID)
   ctx.save()
   ctx.translate(x, y)
@@ -401,12 +402,13 @@ function drawHamsterMarker(ctx: CanvasRenderingContext2D, viewport: Viewport, x:
  */
 export function drawMarkersLayer(ctx: CanvasRenderingContext2D, viewport: Viewport, doc: MapDoc, aboveGrid = true): void {
   const { pitch } = doc.board
-  const outerRadiusPx = viewport.mmToPx(MARKER_OUTER_DIAMETER_MM / 2)
-  const innerRadiusPx = viewport.mmToPx(MARKER_INNER_DIAMETER_MM / 2)
-  const ringWidthPx = viewport.mmToPx(MARKER_RING_WIDTH_MM)
+  // 크기 배율(markerScale) 1일 때의 값. 마커마다 배율을 곱해 씁니다(docs/14 §2.6). 이름표 글자 크기는 그대로.
+  const outerBasePx = viewport.mmToPx(MARKER_OUTER_DIAMETER_MM / 2)
+  const innerBasePx = viewport.mmToPx(MARKER_INNER_DIAMETER_MM / 2)
+  const ringBasePx = viewport.mmToPx(MARKER_RING_WIDTH_MM)
   const labelSizePx = viewport.mmToPx(MARKER_LABEL_SIZE_MM)
   const captionHaloPx = viewport.mmToPx(MARKER_CAPTION_HALO_MM)
-  const hamsterRadiusPx = viewport.mmToPx(HAMSTER_CAPTION_RADIUS_MM)
+  const hamsterBasePx = viewport.mmToPx(HAMSTER_CAPTION_RADIUS_MM)
   /** 이번 호출에서 이 마커의 몸통을 그릴지. */
   const drawsBody = (marker: { under?: boolean }) => (marker.under ? !aboveGrid : aboveGrid)
 
@@ -417,10 +419,13 @@ export function drawMarkersLayer(ctx: CanvasRenderingContext2D, viewport: Viewpo
     const [mx, my] = markerPositionMm(start, pitch)
     const p = viewport.mapToScreen(mx, my)
     const caption = start.name || '출발'
+    const k = markerScale(start)
+    const outerRadiusPx = outerBasePx * k
+    const ringWidthPx = ringBasePx * k
 
     if (start.look === 'hamster') {
-      if (drawsBody(start)) drawHamsterMarker(ctx, viewport, p.x, p.y, heading)
-      if (aboveGrid) drawMarkerCaption(ctx, p.x, p.y, hamsterRadiusPx, 0, labelSizePx, caption, captionHaloPx)
+      if (drawsBody(start)) drawHamsterMarker(ctx, viewport, p.x, p.y, heading, k)
+      if (aboveGrid) drawMarkerCaption(ctx, p.x, p.y, hamsterBasePx * k, 0, labelSizePx, caption, captionHaloPx)
     } else {
       if (drawsBody(start)) {
         ctx.save()
@@ -462,11 +467,15 @@ export function drawMarkersLayer(ctx: CanvasRenderingContext2D, viewport: Viewpo
   doc.markers.goals.forEach((goal, index) => {
     const [mx, my] = markerPositionMm(goal, pitch)
     const p = viewport.mapToScreen(mx, my)
+    const k = markerScale(goal)
+    const outerRadiusPx = outerBasePx * k
+    const innerRadiusPx = innerBasePx * k
+    const ringWidthPx = ringBasePx * k
 
     // 도착 햄스터는 도착했을 때 바라볼 방향으로 그립니다(없으면 위, docs/10).
     if (goal.look === 'hamster') {
-      if (drawsBody(goal)) drawHamsterMarker(ctx, viewport, p.x, p.y, goal.heading ?? 'N')
-      if (aboveGrid) drawMarkerCaption(ctx, p.x, p.y, hamsterRadiusPx, 0, labelSizePx, goalNames[index], captionHaloPx)
+      if (drawsBody(goal)) drawHamsterMarker(ctx, viewport, p.x, p.y, goal.heading ?? 'N', k)
+      if (aboveGrid) drawMarkerCaption(ctx, p.x, p.y, hamsterBasePx * k, 0, labelSizePx, goalNames[index], captionHaloPx)
       return
     }
 

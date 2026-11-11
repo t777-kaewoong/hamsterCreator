@@ -26,8 +26,11 @@ function defaultPrintConfig(sheet: string, orientation: 'portrait' | 'landscape'
     layout: 'single',
     seam: 'butt',
     overlap: 0,
-    cropMarks: true,
-    scaleRuler: true,
+    // PDF에 넣을 부가 요소는 기본으로 모두 뺍니다(docs/14 §2.3, 후기 11차).
+    cropMarks: false,
+    scaleRuler: false,
+    assemblyGuide: false,
+    notice: false,
   }
 }
 

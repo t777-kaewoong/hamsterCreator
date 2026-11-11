@@ -3,7 +3,11 @@
 // 좌측: 뒤로가기 · 파일명(클릭하면 그 자리에서 편집) · 규격 칩 · 저장 상태 칩
 // 중앙: 실행취소 / 다시 실행 — editorStore의 undoStack/redoStack과 직접 연결됩니다.
 //       (M1-4) 스택이 비어있으면 버튼이 자동으로 비활성화됩니다.
-// 우측: 저장 · 미리보기 · 정답 · 인쇄
+// 우측: [열기 · 저장 ▾] │ 미리보기 · 정답 · PDF 저장
+//
+// [2026-11-11 후기 11차] 말판 파일(.hsmap.json)과 인쇄용 PDF가 둘 다 "파일을 만든다"는 점에서
+// 헷갈린다는 후기로, 말판 파일 쪽(열기·저장)을 한 묶음으로 왼쪽에, PDF 쪽을 구분선 오른쪽에 두고
+// "인쇄" 버튼 이름을 실제로 하는 일대로 "PDF 저장"으로 바꿨습니다(docs/14 §2.2).
 //
 // PRD §9.16: "실행취소 | 토스트 없음. 상단바 버튼 상태만 갱신" — 그래서 undo()/redo()는
 // 토스트를 띄우지 않고 버튼 disabled 상태만 자연스럽게 바뀝니다.
@@ -20,7 +24,7 @@
 // 먼저 Modal로 확인을 받습니다(작업 지시: window.confirm 대신 기존 Modal 컴포넌트 재사용).
 import { useEffect, useRef, useState } from 'react'
 import type { KeyboardEvent } from 'react'
-import { ChevronDown, ChevronLeft, Save, SaveAll, Undo2, Redo2, Eye, Printer, ListChecks } from 'lucide-react'
+import { ChevronDown, ChevronLeft, Save, SaveAll, Undo2, Redo2, Eye, FileDown, FolderOpen, ListChecks } from 'lucide-react'
 import { Button, Modal, StatusChip, Tooltip, useToast } from '@/components'
 import { PAPER_SIZES } from '@/lib/model/constants'
 import type { MapDoc } from '@/lib/model/types'
@@ -35,6 +39,8 @@ export interface TopBarProps {
   /** 뒤로가기(좌측 ChevronLeft) 클릭이 최종적으로 승인됐을 때 호출됩니다.
    *  저장 안 된 변경이 있으면 이 함수를 바로 부르지 않고 확인 모달을 먼저 띄웁니다. */
   onBack: () => void
+  /** 상단바 "열기"로 말판 파일을 연 뒤 호출합니다. 새 초안 슬롯·화면 상태는 App.tsx가 맞춥니다. */
+  onOpenDoc: (doc: MapDoc) => void
 }
 
 /** 지금 포커스가 글자 입력 요소에 있는지. Ctrl+Z로 텍스트 입력창의 되돌리기를 하는 중에
@@ -63,7 +69,7 @@ function asSingleSheet(doc: MapDoc): MapDoc {
   return doc.print.layout === 'single' ? doc : { ...doc, print: { ...doc.print, layout: 'single' } }
 }
 
-export default function TopBar({ onBack }: TopBarProps) {
+export default function TopBar({ onBack, onOpenDoc }: TopBarProps) {
   const { show } = useToast()
   const doc = useEditorStore((s) => s.doc)
   const setDoc = useEditorStore((s) => s.setDoc)
@@ -84,6 +90,8 @@ export default function TopBar({ onBack }: TopBarProps) {
   // 뒤로가기 확인 모달. saveState가 'unsaved'일 때만 이 모달을 거칩니다 — 저장된 상태라면
   // 되돌릴 게 없으므로 바로 나갑니다(PRD U7: 확인 모달은 정말 필요할 때만).
   const [confirmBackOpen, setConfirmBackOpen] = useState(false)
+  // 열기 확인 모달. 저장 안 된 변경이 있을 때만 거칩니다(뒤로가기와 같은 규칙).
+  const [confirmOpenOpen, setConfirmOpenOpen] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [isPreviewing, setIsPreviewing] = useState(false)
   // "저장 ▾" 메뉴(다른 이름으로 저장). docs/06 §2.7
@@ -120,6 +128,12 @@ export default function TopBar({ onBack }: TopBarProps) {
       if (key === 's') {
         e.preventDefault()
         void handleSave(e.shiftKey ? 'saveAs' : 'save')
+        return
+      }
+      // Ctrl+O: 브라우저의 "파일 열기"(로컬 파일을 탭으로 여는 것) 대신 말판 파일 열기.
+      if (key === 'o') {
+        e.preventDefault()
+        handleOpenClick()
         return
       }
       if (key !== 'z') return
@@ -171,8 +185,34 @@ export default function TopBar({ onBack }: TopBarProps) {
     }
   }
 
+  /** 열기 버튼. 저장 안 된 변경이 있으면 먼저 확인합니다 — 열면 지금 문서가 화면에서 바뀌기 때문입니다. */
+  function handleOpenClick() {
+    if (useEditorStore.getState().saveState === 'unsaved') {
+      setConfirmOpenOpen(true)
+      return
+    }
+    void openFromFile()
+  }
+
   /**
-   * 인쇄 = 출력 계획기 열기. PDF는 계획기의 "PDF 만들기"에서 만듭니다.
+   * 말판 파일(.hsmap.json) 열기(docs/14 §2.2). 시작 화면의 열기와 같은 저장소(mapStore)를 써서,
+   * 크롬·엣지에서는 연 파일에 그대로 "저장"이 덮어써집니다.
+   */
+  async function openFromFile() {
+    setConfirmOpenOpen(false)
+    try {
+      const opened = await mapStore.open()
+      onOpenDoc(opened)
+      show({ message: '말판 파일을 열었습니다' })
+    } catch (err) {
+      if (err instanceof UserCancelledError) return
+      const message = err instanceof Error ? err.message : '파일을 열지 못했습니다'
+      show({ message, tone: 'danger' })
+    }
+  }
+
+  /**
+   * PDF 저장 = PDF 저장 화면(옛 출력 계획기) 열기. PDF는 그 화면의 "PDF 저장"에서 만듭니다.
    *
    * [한 장이어도 바로 내려받지 않는 이유 — 2026-09-29 후기]
    * 조립 안내도·눈금자·안내 문구를 넣을지 PDF를 만들기 **전에** 고르고 싶다는 요청이라,
@@ -319,8 +359,17 @@ export default function TopBar({ onBack }: TopBarProps) {
             예전에는 "저장"과 아이콘만 있는 "다른 이름으로 저장"이 나란히 있었는데, 두 아이콘
             (Save·SaveAll)이 거의 같아 같은 버튼 두 개로 보였습니다(2026-10-26 후기 15번).
             내려받기 방식에서는 "저장"도 어차피 매번 새 파일이라 ▾를 두지 않습니다(FR-1.5). */}
+        <Tooltip content="말판 파일(.hsmap.json) 열기" shortcut="Ctrl+O" placement="bottom">
+          <Button variant="ghost" icon={<FolderOpen size={18} />} onClick={handleOpenClick}>
+            열기
+          </Button>
+        </Tooltip>
         <div className={styles.saveSplit} ref={saveSplitRef}>
-          <Tooltip content={canOverwrite ? '저장' : '내려받기'} shortcut="Ctrl+S" placement="bottom">
+          <Tooltip
+            content={canOverwrite ? '말판 파일(.hsmap.json)로 저장 — 나중에 이어서 고칠 수 있어요' : '말판 파일(.hsmap.json)로 내려받기 — 나중에 이어서 고칠 수 있어요'}
+            shortcut="Ctrl+S"
+            placement="bottom"
+          >
             <Button
               variant="secondary"
               icon={<Save size={18} />}
@@ -329,7 +378,7 @@ export default function TopBar({ onBack }: TopBarProps) {
               disabled={!doc || isSaving}
               aria-busy={isSaving}
             >
-              {canOverwrite ? '저장' : '내려받기'}
+              저장
             </Button>
           </Tooltip>
           {canOverwrite && (
@@ -379,16 +428,39 @@ export default function TopBar({ onBack }: TopBarProps) {
         <Button variant="secondary" icon={<ListChecks size={18} />} onClick={() => setAnswerOpen(true)} disabled={!doc}>
           정답
         </Button>
-        {/* PRD §9.9: 인쇄가 화면에서 유일한 primary 버튼 — 최종 목적지를 하나만 남긴다 */}
-        <Button
-          variant="primary"
-          icon={<Printer size={18} />}
-          onClick={handlePrint}
-          disabled={!doc}
-        >
-          인쇄
-        </Button>
+        {/* PRD §9.9: 화면에서 유일한 primary 버튼 — 최종 목적지(인쇄할 PDF)를 하나만 남긴다 */}
+        <Tooltip content="인쇄용 PDF 파일로 내려받기" placement="bottom">
+          <Button
+            variant="primary"
+            icon={<FileDown size={18} />}
+            onClick={handlePrint}
+            disabled={!doc}
+          >
+            PDF 저장
+          </Button>
+        </Tooltip>
       </div>
+
+      <Modal
+        open={confirmOpenOpen}
+        onClose={() => setConfirmOpenOpen(false)}
+        title="저장하지 않은 변경사항"
+        width={400}
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setConfirmOpenOpen(false)}>
+              취소
+            </Button>
+            <Button variant="danger" onClick={() => void openFromFile()}>
+              저장하지 않고 열기
+            </Button>
+          </>
+        }
+      >
+        <p className="t-body">
+          다른 말판 파일을 열면 지금 저장하지 않은 변경 내용이 화면에서 사라집니다(초안에는 남아요). 계속할까요?
+        </p>
+      </Modal>
 
       <Modal
         open={confirmBackOpen}

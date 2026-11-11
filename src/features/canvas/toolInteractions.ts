@@ -26,6 +26,7 @@ import type { LayerName } from './renderer'
 import type { MapPoint, Viewport } from './viewport'
 import { MARKER_OUTER_DIAMETER_MM, nodeCenterMm } from './drawBoard'
 import { hitTest, markerBoxMm, measureLabelBoxMmCached } from './hitTest'
+import { applyLineTarget, lineTargetAt, lineTargetExists, lineTargetSegment } from './lineTarget'
 import { closestEditableSegment, simplifyDouglasPeucker, splineControlHandles } from './strokeGeometry'
 import {
   areAdjacent,
@@ -34,15 +35,10 @@ import {
   edgeBetween,
   interpolateMmPoints,
   isInsideBoard,
-  nearestEdgeToPoint,
   nearestNode,
   setEdge,
-  stubAtPoint,
-  toggleEdge,
   type CellCoord,
 } from './gridMath'
-import { setStub, toggleStub } from '@/lib/model/stubs'
-import { crossesSeam, setSeamHalf } from '@/lib/model/sheetLines'
 import { applyErase, eraseGroupOf, findEraseTarget } from './eraseTarget'
 import type { EraseGroup, EraseTarget } from './eraseTarget'
 import {
@@ -56,6 +52,7 @@ import {
   isUniform,
   pasteClip,
   resizeBox,
+  resizeMarkerScale,
   translateSelection,
 } from './selectionEdit'
 import type { ClipItem, EditBox, HandleId } from './selectionEdit'
@@ -140,8 +137,10 @@ export interface OverlayState {
   /** Shift 자유 배치 고스트(FR-3.8) — 격자를 무시하고 커서(mm 좌표)를 그대로 따라다닙니다.
    *  stampGhost와 배타적으로 하나만 켜집니다(둘 다 "지금 뭘 어디에 찍을지" 미리보기이므로). */
   freePropGhost: { mx: number; my: number; tileId: string; rot: 0 | 90 | 180 | 270; flip: boolean } | null
-  /** 선 긋기 드래그 중 러버밴드 미리보기(L 도구) */
-  linePreview: { fromMx: number; fromMy: number; toMx: number; toMy: number } | null
+  /** 선 긋기 드래그 중 러버밴드 미리보기(L 도구). erase면 지우는 중이라 빨갛게. */
+  linePreview: { fromMx: number; fromMy: number; toMx: number; toMy: number; erase: boolean } | null
+  /** L 도구: 지금 누르면 바뀔 토막(mm 선분). erase면 빨갛게(지워짐), 아니면 파랗게(생김). docs/14 §2.5 */
+  lineHover: { x0: number; y0: number; x1: number; y1: number; erase: boolean } | null
   /** 영역 채우기 드래그 중 사각 범위(R 도구) */
   fillRect: { c0: number; r0: number; c1: number; r1: number } | null
   /** M(마커) 도구가 지금 누르면 무엇을 어디(mm)에 놓을지. 평소엔 가장 가까운 격자점,
@@ -181,6 +180,7 @@ function emptyOverlay(): OverlayState {
     stampGhost: null,
     freePropGhost: null,
     linePreview: null,
+    lineHover: null,
     fillRect: null,
     markerGhost: null,
     selectionBox: null,
@@ -667,10 +667,11 @@ export class ToolController {
         // 보간해서 지나간 노드를 전부 밟습니다(stepEdgesAlongPath가 매 샘플마다
         // this.lastNode를 갱신하므로, 아래 프리뷰 선은 항상 "가장 최근에 확정된 노드"에서
         // 시작합니다).
-        if (prevPt) this.stepEdgesAlongPath(doc, prevPt.mx, prevPt.my, mapPt.mx, mapPt.my, !this.gestureAlt)
+        if (prevPt) this.stepEdgesAlongPath(doc, prevPt.mx, prevPt.my, mapPt.mx, mapPt.my, !this.lineEraseNow())
+        this.overlay.lineHover = null
         if (this.lastNode) {
           const from = nodeCenterMm(this.lastNode[0], this.lastNode[1], doc.board.pitch)
-          this.overlay.linePreview = { fromMx: from.mx, fromMy: from.my, toMx: mapPt.mx, toMy: mapPt.my }
+          this.overlay.linePreview = { fromMx: from.mx, fromMy: from.my, toMx: mapPt.mx, toMy: mapPt.my, erase: this.lineEraseNow() }
         }
         this.lastPointerMapPt = mapPt
         break
@@ -773,31 +774,14 @@ export class ToolController {
       // 12번째를 늘리면 첫 화면이 그만큼 더 복잡해집니다(NFR-10).
       // Alt를 누르고 찍으면 지우기입니다(Alt+드래그가 이미 지우기라 같은 규칙).
       if (gestureKind === 'lineDraw' && !this.dragMoved) {
-        const stub = stubAtPoint(mapPt.mx, mapPt.my, doc.board.cols, doc.board.rows, doc.board.pitch)
+        // 누른 자리의 선분(격자선 토막·가장자리 진입로·이음매 절반)을 바꿉니다. 대상 고르기는
+        // 호버 미리보기와 같은 lineTargetAt이라, 파랗게/빨갛게 보이던 그 토막이 그대로 바뀝니다(docs/14 §2.5).
+        // 지우기 모드(또는 Alt)면 끄기만, 긋기 모드면 켜고 끄기를 뒤집습니다.
         const fresh = this.getDoc()
-        if (fresh) {
-          if (stub) {
-            const nextStubs = this.gestureAlt ? setStub(fresh.stubs, stub, false) : toggleStub(fresh.stubs, stub)
-            if (nextStubs !== fresh.stubs) this.commitDocChange({ ...fresh, stubs: nextStubs })
-          } else if (isInsideBoard(mapPt.mx, mapPt.my, doc.board.cols, doc.board.rows, doc.board.pitch)) {
-            // 격자 안쪽일 때만 엣지를 토글합니다.
-            //
-            // nearestEdgeToPoint는 범위 검사를 하지 않아서, 종이에서 한참 떨어진 빈 곳을
-            // 클릭해도 "가장 가까운" 엣지를 찾아 지워 버립니다. 팬을 하려다 살짝 클릭만
-            // 되었을 때 엉뚱한 격자선이 사라지는 일이 실제로 생깁니다(FR-2.2는 "엣지 단건
-            // 클릭 토글"이지 "아무 데나 클릭해도 토글"이 아닙니다).
-            const nearest = nearestEdgeToPoint(mapPt.mx, mapPt.my, doc.board.cols, doc.board.rows, doc.board.pitch)
-            if (nearest && crossesSeam(fresh, nearest.kind, nearest.c, nearest.r)) {
-              // 종이 이음매를 건너는 토막은 누른 쪽 절반(그 종이 쪽 진입로)만 켜고 끕니다(docs/10).
-              // 두 절반이 다 켜지면 온전한 격자선이 됩니다. Alt는 지우기.
-              const seamMm = (nearest.kind === 'h' ? nearest.c + 1 : nearest.r + 1) * doc.board.pitch
-              const side = (nearest.kind === 'h' ? mapPt.mx : mapPt.my) < seamMm ? 'a' : 'b'
-              this.commitDocChange({ ...fresh, ...setSeamHalf(fresh, nearest.kind, nearest.c, nearest.r, side, this.gestureAlt ? false : undefined) })
-            } else if (nearest) {
-              const nextEdges = toggleEdge(fresh.edges, nearest.kind, nearest.c, nearest.r)
-              if (nextEdges !== fresh.edges) this.commitDocChange({ ...fresh, edges: nextEdges })
-            }
-          }
+        const target = fresh ? lineTargetAt(fresh, mapPt.mx, mapPt.my) : null
+        if (fresh && target) {
+          const next = applyLineTarget(fresh, target, this.lineEraseNow())
+          if (next !== fresh) this.commitDocChange(next)
         }
       }
 
@@ -875,6 +859,7 @@ export class ToolController {
   handlePointerLeave(): void {
     if (this.activeGesture) return
     this.lastScreen = null
+    this.overlay.lineHover = null
     this.overlay.hoverCell = null
     this.overlay.stampGhost = null
     this.overlay.freePropGhost = null
@@ -982,6 +967,7 @@ export class ToolController {
   // ── 내부: 호버·고스트 미리보기 ───────────────────────────────────────
 
   private updateHoverAndGhost(): void {
+    this.overlay.lineHover = null
     this.overlay.hoverCell = null
     this.overlay.eraseHover = null
     this.overlay.stampGhost = null
@@ -1020,6 +1006,20 @@ export class ToolController {
       const handle = selection ? this.hitHandle(doc, selection, this.lastScreen.x, this.lastScreen.y) : null
       if (handle) this.hoverCursor = handleCursor(handle)
       else if (this.isInsideSelectionBox(doc, selection, mapPt) || hitTest(doc, mapPt.mx, mapPt.my)) this.hoverCursor = 'move'
+      return
+    }
+
+    // L(격자선 긋기): 누르면 바뀔 토막을 미리 보여 줍니다 — 생기면 파랗게, 지워지면 빨갛게(docs/14 §2.5).
+    // 지우기 모드에서 빈 자리는 바뀔 것이 없으므로 아무것도 보이지 않습니다.
+    if (activeTool === 'lineDraw') {
+      if (this.activeGesture === 'lineDraw') return
+      const target = lineTargetAt(doc, mapPt.mx, mapPt.my)
+      if (!target) return
+      const exists = lineTargetExists(doc, target)
+      const erase = this.lineEraseNow()
+      if (erase && !exists) return
+      const [x0, y0, x1, y1] = lineTargetSegment(doc, target)
+      this.overlay.lineHover = { x0, y0, x1, y1, erase: exists }
       return
     }
 
@@ -1253,6 +1253,12 @@ export class ToolController {
     if (next === doc) return
     if (useEditorStore.getState().selection) useEditorStore.getState().setSelection(null)
     this.commitDocChange(next)
+  }
+
+  /** L 도구가 지금 지우는 중인지. 팔레트의 긋기/지우기 전환에 Alt(누르는 동안 반대)를 겹칩니다. */
+  private lineEraseNow(): boolean {
+    const alt = this.activeGesture === 'lineDraw' ? this.gestureAlt : this.isAltDown
+    return useEditorStore.getState().lineErase !== alt
   }
 
   private applyEdgeDrag(prev: NodeCoord, curr: NodeCoord, add: boolean): void {
@@ -1763,11 +1769,11 @@ export class ToolController {
       return { mx: center.mx, my: center.my, wMm: pitch, hMm: pitch, rot: 0, handles: handlesFor(doc, selection) }
     }
     if (selection.kind === 'start' || selection.kind === 'goal') {
-      // 출발·도착은 크기를 끌어 바꾸지 않으므로 핸들 없이 윤곽만 그립니다.
+      // 출발·도착도 모서리 핸들로 크기를 바꿉니다(docs/14 §2.6, 중심 고정).
       const marker = selection.kind === 'start' ? doc.markers.start : doc.markers.goals[selection.index]
       if (!marker) return null
       const box = markerBoxMm(marker, doc.board.pitch)
-      return { mx: box.cx, my: box.cy, wMm: box.w, hMm: box.h, rot: 0, handles: [] }
+      return { mx: box.cx, my: box.cy, wMm: box.w, hMm: box.h, rot: 0, handles: handlesFor(doc, selection) }
     }
     if (selection.kind === 'label') {
       const label = doc.labels[selection.index]
@@ -1837,6 +1843,11 @@ export class ToolController {
   private updateResize(mapPt: MapPoint, shift: boolean): void {
     const state = this.resizeState
     if (!state) return
+    // 출발·도착은 중심을 고정한 배율 조절입니다(docs/14 §2.6).
+    if (state.selection.kind === 'start' || state.selection.kind === 'goal') {
+      this.commitDocChange(resizeMarkerScale(state.base, state.selection, state.orig, mapPt.mx, mapPt.my), false, false)
+      return
+    }
     const keepRatio = state.uniform || (state.ratioByDefault ? !shift : shift)
     const box = resizeBox(state.orig, state.handle, mapPt.mx, mapPt.my, keepRatio)
     this.commitDocChange(applyEditBox(state.base, state.selection, box), false, false)

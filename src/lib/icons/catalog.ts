@@ -15,6 +15,8 @@ import personUrl from '@/assets/icons/person.svg'
 import trafficLightUrl from '@/assets/icons/traffic-light.svg'
 import hamsterUrl from '@/assets/icons/hamster.svg'
 import arrowUrl from '@/assets/icons/arrow.svg'
+// 출발·도착 "햄스터" 마커와 같은 햄스터S 윗면 사진(docs/14 §2.7). 이것만 SVG가 아니라 PNG입니다.
+import hamsterTopUrl from '@/assets/markers/hamster-top.png'
 
 export interface IconDef {
   /** 아이콘 아이디. 맵 문서에 저장될 때 Prop.asset 값으로 그대로 씁니다 */
@@ -25,9 +27,11 @@ export interface IconDef {
   kind: 'object'
   /** 브라우저가 불러올 이미지 주소 (SVG는 별도 디코드 없이 <img src>로 바로 그릴 수 있음) */
   url: string
+  /** 사진(PNG)이면 true. PDF에 넣을 때 SVG처럼 래스터화하지 않고 그대로 넣습니다. */
+  raster?: boolean
 }
 
-/** 인쇄용 아이콘 8종(FR-8.2). 팔레트 "아이콘" 탭이 이 목록을 그대로 그립니다. */
+/** 인쇄용 아이콘 9종(FR-8.2 + 2026-11-11 햄스터S 윗면). 팔레트 "아이콘" 탭이 이 목록을 그대로 그립니다. */
 export const ICONS: IconDef[] = [
   { id: 'flag-start', name: '출발 깃발', kind: 'object', url: flagStartUrl },
   { id: 'flag-goal', name: '도착 깃발', kind: 'object', url: flagGoalUrl },
@@ -37,6 +41,7 @@ export const ICONS: IconDef[] = [
   { id: 'traffic-light', name: '신호등', kind: 'object', url: trafficLightUrl },
   { id: 'hamster', name: '햄스터 로봇', kind: 'object', url: hamsterUrl },
   { id: 'arrow', name: '방향 화살표', kind: 'object', url: arrowUrl },
+  { id: 'hamster-top', name: '햄스터S 윗면', kind: 'object', url: hamsterTopUrl, raster: true },
 ]
 
 /** id로 아이콘 하나 찾기. 없으면 undefined */

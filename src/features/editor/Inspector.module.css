@@ -413,3 +413,15 @@
   outline: 2px solid var(--c-primary);
   outline-offset: -1px;
 }
+
+/* 출발·도착 크기 [− 100% +] [100%] (docs/14 §2.6) */
+.scaleStepper {
+  display: grid;
+  grid-template-columns: 32px minmax(48px, 1fr) 32px auto;
+  gap: var(--sp-1);
+  align-items: center;
+}
+.scaleReadout {
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}

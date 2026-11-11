@@ -225,6 +225,8 @@ export interface StartMarker {
   name?: string
   /** true면 마커 몸통을 격자선 아래에 깝니다(이름표는 늘 위). 2026-10-27 추가(docs/11) */
   under?: boolean
+  /** 크기 배율(0.5~2). 없으면 1 — 햄스터 모양은 실제 로봇 크기. 2026-11-11 추가(docs/14 §2.6) */
+  scale?: number
 }
 
 /** 도착 지점(FR-4.4). 복수 지정 가능. */
@@ -240,6 +242,8 @@ export interface GoalMarker {
   heading?: Direction
   /** StartMarker.under와 같은 의미(docs/11) */
   under?: boolean
+  /** StartMarker.scale과 같은 의미(docs/14 §2.6) */
+  scale?: number
 }
 
 /** 출발·도착 마커 모음. */

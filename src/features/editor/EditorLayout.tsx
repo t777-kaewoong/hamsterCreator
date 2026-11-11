@@ -19,6 +19,7 @@ import { useEffect, useState } from 'react'
 import { PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, TriangleAlert } from 'lucide-react'
 import { Button, Tooltip } from '@/components'
 import TopBar from './TopBar'
+import type { MapDoc } from '@/lib/model/types'
 import ToolRail from './ToolRail'
 import Inspector from './Inspector'
 import { useMapIssues } from './useMapIssues'
@@ -36,9 +37,11 @@ const MIN_SUPPORTED_WIDTH = 1024
 export interface EditorLayoutProps {
   /** 상단바 뒤로가기(ChevronLeft)가 최종 승인됐을 때 호출됩니다. App.tsx가 내려줍니다. */
   onBack: () => void
+  /** 상단바 "열기"로 말판 파일을 골랐을 때 호출됩니다(docs/14 §2.2). App.tsx의 openDoc과 같은 길을 탑니다. */
+  onOpenDoc: (doc: MapDoc) => void
 }
 
-export default function EditorLayout({ onBack }: EditorLayoutProps) {
+export default function EditorLayout({ onBack, onOpenDoc }: EditorLayoutProps) {
   const [paletteCollapsed, setPaletteCollapsed] = useState(false)
   // 처음 그릴 때부터 좁은 창이면 바로 접힌 채로 시작합니다(뒤늦게 접히며 깜빡이지 않도록).
   const [inspectorCollapsed, setInspectorCollapsed] = useState(
@@ -83,7 +86,7 @@ export default function EditorLayout({ onBack }: EditorLayoutProps) {
 
       <div className={styles.layout}>
         <div className={styles.topbarArea}>
-          <TopBar onBack={onBack} />
+          <TopBar onBack={onBack} onOpenDoc={onOpenDoc} />
         </div>
 
         <div className={styles.railArea}>
